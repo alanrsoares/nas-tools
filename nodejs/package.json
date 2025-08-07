@@ -12,6 +12,9 @@
   "description": "",
   "dependencies": {
     "inquirer": "^9.3.7",
+    "neverthrow": "^8.2.0",
+    "true-myth": "^9.0.1",
+    "ts-pattern": "^5.8.0",
     "tsx": "^4.20.3",
     "zx": "^8.8.0"
   },

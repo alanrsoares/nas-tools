@@ -26,6 +26,7 @@ import { $ } from "zx";
 import * as fs from "fs/promises";
 import * as path from "path";
 import inquirer from "inquirer";
+import invariant from "tiny-invariant";
 
 // Constants
 const FILE_EXTENSIONS = {
@@ -45,8 +46,10 @@ interface CueFlacPair {
 // Utility functions
 const isFlacFile = (file: string) =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.FLAC);
+
 const isCueFile = (file: string) =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
+
 const getBasename = (file: string, ext: string) => path.basename(file, ext);
 
 const exists = async (path: string) =>
@@ -55,74 +58,59 @@ const exists = async (path: string) =>
     .then(() => true)
     .catch(() => false);
 
-// Find corresponding FLAC file for a CUE file
-async function findFlacFile(cuePath: string): Promise<string | null> {
-  const directory = path.dirname(cuePath);
-  const cueFile = path.basename(cuePath);
-  const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
-
-  try {
-    const files = await fs.readdir(directory);
-    const flacFiles = files.filter(isFlacFile);
-
-    for (const flacFile of flacFiles) {
-      const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
-      if (cueBasename === flacBasename) {
-        return flacFile;
-      }
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-// Scan for matching .cue and .flac files that are not split
+// Scan for matching .cue and .flac files that are not split (recursive)
 async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
+  invariant(searchPath, "Search path is required");
+
   const foundPairs: CueFlacPair[] = [];
 
   try {
-    const directories = await fs
-      .readdir(searchPath, { withFileTypes: true })
-      .then((files) =>
-        files
-          .filter((dirent) => dirent.isDirectory())
-          .map((dirent) => path.join(searchPath, dirent.name))
-      );
+    // Check the current directory for cue/flac pairs
+    try {
+      const files = await fs.readdir(searchPath);
+      const cueFiles = files.filter(isCueFile);
+      const flacFiles = files.filter(isFlacFile);
 
-    // Also check the search path itself
-    directories.unshift(searchPath);
+      for (const cueFile of cueFiles) {
+        invariant(cueFile, "Cue file name is required");
+        const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
 
-    for (const dir of directories) {
-      try {
-        const files = await fs.readdir(dir);
-        const cueFiles = files.filter(isCueFile);
-        const flacFiles = files.filter(isFlacFile);
+        for (const flacFile of flacFiles) {
+          invariant(flacFile, "Flac file name is required");
+          const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
 
-        for (const cueFile of cueFiles) {
-          const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
+          if (cueBasename === flacBasename) {
+            const cuePath = path.join(searchPath, cueFile);
+            const flacPath = path.join(searchPath, flacFile);
 
-          for (const flacFile of flacFiles) {
-            const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
-
-            if (cueBasename === flacBasename) {
-              const cuePath = path.join(dir, cueFile);
-              const flacPath = path.join(dir, flacFile);
-
-              // Validate files exist and are readable
-              if ((await exists(cuePath)) && (await exists(flacPath))) {
-                foundPairs.push({
-                  directory: dir,
-                  cueFile,
-                  flacFile,
-                });
-              }
-              break;
+            // Validate files exist and are readable
+            if ((await exists(cuePath)) && (await exists(flacPath))) {
+              foundPairs.push({
+                directory: searchPath,
+                cueFile,
+                flacFile,
+              });
             }
+            break;
           }
         }
+      }
+    } catch {
+      // Skip if current directory can't be read
+    }
+
+    // Recursively scan subdirectories
+    const entries = await fs.readdir(searchPath, { withFileTypes: true });
+    const subdirectories = entries
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => path.join(searchPath, dirent.name));
+
+    for (const subdir of subdirectories) {
+      try {
+        const subdirPairs = await scanCueFlacPairs(subdir);
+        foundPairs.push(...subdirPairs);
       } catch {
+        // Skip if subdirectory can't be accessed
         continue;
       }
     }
@@ -135,9 +123,16 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
 
 // Display summary and get user confirmation
 async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
+  invariant(Array.isArray(pairs), "Pairs must be an array");
+
   console.log(`\n📋 Found ${pairs.length} unsplit cue/flac pairs:\n`);
 
   for (const pair of pairs) {
+    invariant(pair, "Pair is required");
+    invariant(pair.directory, "Pair directory is required");
+    invariant(pair.cueFile, "Pair cue file is required");
+    invariant(pair.flacFile, "Pair flac file is required");
+
     console.log(`📂 Directory: ${pair.directory}`);
     console.log(`  📁 CUE: ${pair.cueFile}`);
     console.log(`  🎵 FLAC: ${pair.flacFile}\n`);
@@ -158,6 +153,9 @@ async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
 // Process a single cue/flac pair using bash function
 async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
   const { directory, cueFile } = pair;
+  invariant(directory, "Directory is required");
+  invariant(cueFile, "Cue file is required");
+
   const cuePath = path.join(directory, cueFile);
 
   try {
@@ -194,20 +192,16 @@ async function main() {
   const args = process.argv.slice(2);
 
   // Validate arguments
-  if (args.length !== 1) {
-    console.error("Usage: zx fix-unsplit-cue.ts <folder_path>");
-    process.exit(1);
-  }
+  invariant(args.length === 1, "Usage: zx fix-unsplit-cue.ts <folder_path>");
 
   const folderPath = args[0];
+  invariant(folderPath, "Folder path is required");
 
-  // Validate input directory
-  if (!(await exists(folderPath))) {
-    console.error(
-      `❌ Directory '${folderPath}' does not exist or is not accessible`
-    );
-    process.exit(1);
-  }
+  const folderExists = await exists(folderPath);
+  invariant(
+    folderExists,
+    `❌ Directory '${folderPath}' does not exist or is not accessible`
+  );
 
   console.log(`🔍 Scanning '${folderPath}' for unsplit cue/flac pairs...`);
 
@@ -231,6 +225,10 @@ async function main() {
   let failureCount = 0;
 
   for (const pair of pairs) {
+    invariant(pair, "Pair is required");
+    invariant(pair.directory, "Pair directory is required");
+    invariant(pair.cueFile, "Pair cue file is required");
+
     // before processing, list folder contents and prompt for confirmation
     const folderContents = await fs.readdir(pair.directory);
     console.log(`📁 Contents of ${pair.directory}:`);

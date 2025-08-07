@@ -8,15 +8,19 @@
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "types": ["node"]
   },
-  "include": [
-    "scripts/**/*"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["scripts/**/*"],
+  "exclude": ["node_modules"]
 }
