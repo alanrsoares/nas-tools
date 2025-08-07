@@ -120,6 +120,7 @@ npm run fix-unsplit-cue /path/to/music/collection
 - Uses `inquirer.js` for user-friendly prompts and confirmations
 - Uses `neverthrow` ResultAsync for functional async error handling and better error management
 - Compatible with BusyBox containers (uses minimal shell commands)
+- **Bash Compatibility**: Uses identical shell commands as `../bash/functions.sh`
 - Translates logic from the bash functions in `../bash/functions.sh`
 - Uses async/await for all file system and shell operations
 - Provides detailed error messages and progress indicators

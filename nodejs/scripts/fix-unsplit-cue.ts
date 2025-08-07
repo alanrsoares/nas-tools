@@ -207,9 +207,11 @@ function splitFlacFile(
       await $`mkdir -p ${outDir}`;
 
       // Split the file - zx handles shell escaping automatically
+      // Command compatible with bash/functions.sh split_flac_file function
       await $`cuebreakpoints ${cueFile} | shnsplit -f ${cueFile} -o flac -t "%n. %t" -d ${outDir} ${flacFile}`;
 
       // Tag the split files with metadata if cuetag is available
+      // Command compatible with bash/functions.sh tag_split_files function
       try {
         await $`cuetag ${cueFile} ${outDir}/*.flac`;
         console.log("🏷️ Tagged split tracks with metadata");
