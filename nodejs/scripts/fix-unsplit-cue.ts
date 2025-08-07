@@ -26,8 +26,9 @@
  * The application should display a summary of matches and prompt for confirmation before proceeding.
  */
 
-import { $, argv, path } from "zx";
+import { $ } from "zx";
 import * as fs from "fs";
+import * as path from "path";
 import inquirer from "inquirer";
 
 // Constants
@@ -243,12 +244,14 @@ async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
 
 // Main function
 async function main() {
-  if (argv.length !== 2) {
+  const args = process.argv.slice(2);
+
+  if (args.length !== 1) {
     console.error("Usage: zx fix-unsplit-cue.ts <folder_path>");
     process.exit(1);
   }
 
-  const folderPath = argv[0];
+  const folderPath = args[0];
 
   if (!fs.existsSync(folderPath)) {
     console.error(`❌ Directory '${folderPath}' does not exist`);
