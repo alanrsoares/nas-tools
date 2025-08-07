@@ -162,7 +162,7 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
     console.log(`\n🔄 Processing: ${cueFile}`);
 
     // Change to the directory and run the bash function
-    await $`cd ${directory} && source /Users/alanrsoares/dev/nas-tools/bash/functions.sh && split_cue_flac ${cueFile}`;
+    await $`cd ${directory} && source /home/admin/dev/nas-tools/bash/functions.sh && split_cue_flac ${cueFile}`;
 
     console.log(`✅ Successfully processed: ${cueFile}`);
     return true;
