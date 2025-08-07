@@ -100,16 +100,25 @@ npm run fix-unsplit-cue /path/to/music/collection
 - **File System Errors**: Handles permission issues and missing files gracefully
 - **Split Failures**: Continues processing other files even if one fails
 - **Cleanup Failures**: Reports cleanup errors but doesn't stop the entire process
+- **File Encoding Issues**: Properly handles filenames with special characters (Cyrillic, etc.) using proper shell quoting
+- **File Validation**: Validates that files exist and are readable before attempting to process them
+- **Functional Error Handling**: Uses `neverthrow` Result types for better error propagation and type-safe error handling
+- **Error Types**: Specific error types for different failure scenarios (ValidationError, DependencyError, SplitError)
 
 #### Technical Details
 
 - Built with TypeScript and uses the `zx` library for shell interactions
 - Uses `inquirer.js` for user-friendly prompts and confirmations
+- Uses `neverthrow` for functional error handling and better error management
 - Compatible with BusyBox containers (uses minimal shell commands)
 - Translates logic from the bash functions in `../bash/functions.sh`
 - Uses async/await for all file system and shell operations
 - Provides detailed error messages and progress indicators
 - Extracted constants and utility functions for better maintainability
+- **Serial Processing**: Processes files one at a time to avoid conflicts and resource issues
+- **Proper Shell Quoting**: Handles filenames with special characters correctly
+- **File Validation**: Validates file existence and readability before processing
+- **Functional Error Handling**: Uses Result types for better error propagation and handling
 
 #### Installation
 

@@ -30,6 +30,7 @@ import { $ } from "zx";
 import * as fs from "fs";
 import * as path from "path";
 import inquirer from "inquirer";
+import { Result, ok, err } from "neverthrow";
 
 // Constants
 const TEMP_DIR = "__temp_split";
@@ -54,6 +55,14 @@ interface SplitResult {
   error?: string;
 }
 
+// Error types
+type ValidationError =
+  | "FILE_NOT_FOUND"
+  | "FILE_NOT_READABLE"
+  | "DIRECTORY_NOT_FOUND";
+type DependencyError = "MISSING_DEPENDENCY";
+type SplitError = "SPLIT_FAILED" | "CLEANUP_FAILED" | "UNKNOWN_ERROR";
+
 // Utility functions
 const isFlacFile = (file: string) =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.FLAC);
@@ -61,33 +70,49 @@ const isCueFile = (file: string) =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
 const getBasename = (file: string, ext: string) => path.basename(file, ext);
 
-// Check if required tools are available
-async function checkDependencies(): Promise<boolean> {
+// Validate file exists and is readable
+const validateFile = (filePath: string): Result<boolean, ValidationError> => {
   try {
-    await Promise.all(DEPENDENCIES.map((dep) => $`which ${dep}`));
-    return true;
+    if (!fs.existsSync(filePath)) {
+      return err("FILE_NOT_FOUND");
+    }
+    if (!fs.statSync(filePath).isFile()) {
+      return err("FILE_NOT_READABLE");
+    }
+    return ok(true);
   } catch {
-    console.error("❌ Missing required dependencies:");
-    console.error("   - flac encoder");
-    console.error("   - cuebreakpoints (from cuetools)");
-    console.error("   - shnsplit (from shntool)");
-    console.error("Please install the missing tools.");
-    return false;
-  }
-}
-
-// Check if a directory contains split tracks
-const isAlreadySplit = (directory: string): boolean => {
-  try {
-    const files = fs.readdirSync(directory);
-    return files.filter(isFlacFile).length > 1;
-  } catch {
-    return false;
+    return err("FILE_NOT_READABLE");
   }
 };
 
+// Check if a directory contains split tracks
+const isAlreadySplit = (
+  directory: string
+): Result<boolean, ValidationError> => {
+  try {
+    const files = fs.readdirSync(directory);
+    return ok(files.filter(isFlacFile).length > 1);
+  } catch {
+    return err("DIRECTORY_NOT_FOUND");
+  }
+};
+
+// Check if required tools are available
+async function checkDependencies(): Promise<Result<void, DependencyError>> {
+  try {
+    for (const dep of DEPENDENCIES) {
+      await $`which ${dep}`;
+    }
+    return ok(undefined);
+  } catch {
+    return err("MISSING_DEPENDENCY");
+  }
+}
+
 // Scan for matching .cue and .flac files that are not split
-async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
+async function scanCueFlacPairs(
+  searchPath: string
+): Promise<Result<CueFlacPair[], ValidationError>> {
   const foundPairs: CueFlacPair[] = [];
 
   try {
@@ -106,8 +131,23 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
           for (const flacFile of flacFiles) {
             const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
 
-            if (cueBasename === flacBasename && !isAlreadySplit(dir)) {
-              foundPairs.push({ directory: dir, cueFile, flacFile });
+            if (cueBasename === flacBasename) {
+              const isSplitResult = isAlreadySplit(dir);
+              if (isSplitResult.isErr()) {
+                continue;
+              }
+
+              if (!isSplitResult.value) {
+                const cuePath = path.join(dir, cueFile);
+                const flacPath = path.join(dir, flacFile);
+
+                const cueValidation = validateFile(cuePath);
+                const flacValidation = validateFile(flacPath);
+
+                if (cueValidation.isOk() && flacValidation.isOk()) {
+                  foundPairs.push({ directory: dir, cueFile, flacFile });
+                }
+              }
               break;
             }
           }
@@ -116,11 +156,10 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
         continue;
       }
     }
-  } catch (error) {
-    console.error("❌ Error scanning directories:", error);
+    return ok(foundPairs);
+  } catch {
+    return err("DIRECTORY_NOT_FOUND");
   }
-
-  return foundPairs;
 }
 
 // Split the FLAC file using cue sheet
@@ -128,23 +167,33 @@ async function splitFlacFile(
   cueFile: string,
   flacFile: string,
   outDir: string
-): Promise<boolean> {
+): Promise<Result<void, SplitError>> {
   try {
     console.log(`🔄 Splitting '${flacFile}' using '${cueFile}'...`);
-    await $`mkdir -p ${outDir}`;
-    await $`cuebreakpoints ${cueFile} | shnsplit -f ${cueFile} -o flac -t "%n. %t" -d ${outDir} ${flacFile}`;
 
+    // Create output directory
+    await $`mkdir -p ${outDir}`;
+
+    // Use proper quoting for filenames with special characters
+    const quotedCueFile = `"${cueFile}"`;
+    const quotedFlacFile = `"${flacFile}"`;
+    const quotedOutDir = `"${outDir}"`;
+
+    // Split the file with proper quoting
+    await $`cuebreakpoints ${quotedCueFile} | shnsplit -f ${quotedCueFile} -o flac -t "%n. %t" -d ${quotedOutDir} ${quotedFlacFile}`;
+
+    // Tag the split files with metadata if cuetag is available
     try {
-      await $`cuetag ${cueFile} ${outDir}/*.flac`;
+      await $`cuetag ${quotedCueFile} ${quotedOutDir}/*.flac`;
       console.log("🏷️ Tagged split tracks with metadata");
     } catch {
       console.log("⚠️ cuetag not found, skipping metadata tagging");
     }
 
-    return true;
+    return ok(undefined);
   } catch (error) {
     console.error(`❌ Error splitting file:`, error);
-    return false;
+    return err("SPLIT_FAILED");
   }
 }
 
@@ -153,23 +202,29 @@ async function cleanupAfterSplit(
   directory: string,
   cueFile: string,
   flacFile: string
-): Promise<boolean> {
+): Promise<Result<void, SplitError>> {
   try {
     const tempDir = path.join(directory, TEMP_DIR);
     const splitCueFiles = fs.readdirSync(tempDir).filter(isCueFile);
 
     for (const splitCueFile of splitCueFiles) {
-      await $`mv ${path.join(tempDir, splitCueFile)} ${directory}/`;
+      const quotedSrc = `"${path.join(tempDir, splitCueFile)}"`;
+      const quotedDest = `"${directory}/"`;
+      await $`mv ${quotedSrc} ${quotedDest}`;
     }
 
-    await $`rm ${path.join(directory, cueFile)}`;
-    await $`rm ${path.join(directory, flacFile)}`;
-    await $`rm -rf ${tempDir}`;
+    const quotedCueFile = `"${path.join(directory, cueFile)}"`;
+    const quotedFlacFile = `"${path.join(directory, flacFile)}"`;
+    const quotedTempDir = `"${tempDir}"`;
 
-    return true;
+    await $`rm ${quotedCueFile}`;
+    await $`rm ${quotedFlacFile}`;
+    await $`rm -rf ${quotedTempDir}`;
+
+    return ok(undefined);
   } catch (error) {
     console.error(`❌ Error during cleanup:`, error);
-    return false;
+    return err("CLEANUP_FAILED");
   }
 }
 
@@ -178,17 +233,21 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<SplitResult> {
   const { directory, cueFile, flacFile } = pair;
 
   try {
+    // Change to the directory
     process.chdir(directory);
-    const splitSuccess = await splitFlacFile(cueFile, flacFile, TEMP_DIR);
 
-    if (splitSuccess) {
-      const cleanupSuccess = await cleanupAfterSplit(
+    // Split the file
+    const splitResult = await splitFlacFile(cueFile, flacFile, TEMP_DIR);
+
+    if (splitResult.isOk()) {
+      // Cleanup
+      const cleanupResult = await cleanupAfterSplit(
         directory,
         cueFile,
         flacFile
       );
 
-      if (cleanupSuccess) {
+      if (cleanupResult.isOk()) {
         console.log(`✅ Successfully processed: ${cueFile}`);
         return { success: true, directory, cueFile, flacFile };
       } else {
@@ -221,7 +280,9 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<SplitResult> {
 }
 
 // Display summary and get user confirmation
-async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
+async function confirmProcessing(
+  pairs: CueFlacPair[]
+): Promise<Result<boolean, never>> {
   console.log(`\n📋 Found ${pairs.length} unsplit cue/flac pairs:\n`);
 
   for (const pair of pairs) {
@@ -239,11 +300,13 @@ async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
     },
   ]);
 
-  return proceed;
+  return ok(proceed);
 }
 
 // Main function
-async function main() {
+async function main(): Promise<
+  Result<void, ValidationError | DependencyError>
+> {
   const args = process.argv.slice(2);
 
   if (args.length !== 1) {
@@ -264,21 +327,37 @@ async function main() {
   }
 
   console.log("🔍 Checking dependencies...");
-  if (!(await checkDependencies())) {
-    process.exit(1);
+  const depsResult = await checkDependencies();
+  if (depsResult.isErr()) {
+    console.error("❌ Missing required dependencies:");
+    console.error("   - flac encoder");
+    console.error("   - cuebreakpoints (from cuetools)");
+    console.error("   - shnsplit (from shntool)");
+    console.error("Please install the missing tools.");
+    return err("MISSING_DEPENDENCY");
   }
 
   console.log(`🔍 Scanning '${folderPath}' for unsplit cue/flac pairs...`);
-  const pairs = await scanCueFlacPairs(folderPath);
-
-  if (pairs.length === 0) {
-    console.log("No unsplit cue/flac pairs found.");
-    process.exit(0);
+  const pairsResult = await scanCueFlacPairs(folderPath);
+  if (pairsResult.isErr()) {
+    console.error("❌ Error scanning directories");
+    return err(pairsResult.error);
   }
 
-  if (!(await confirmProcessing(pairs))) {
+  const pairs = pairsResult.value;
+  if (pairs.length === 0) {
+    console.log("No unsplit cue/flac pairs found.");
+    return ok(undefined);
+  }
+
+  const confirmResult = await confirmProcessing(pairs);
+  if (confirmResult.isErr()) {
+    return err("DIRECTORY_NOT_FOUND");
+  }
+
+  if (!confirmResult.value) {
     console.log("Operation cancelled.");
-    process.exit(0);
+    return ok(undefined);
   }
 
   console.log("\n🔄 Processing files...\n");
@@ -287,6 +366,7 @@ async function main() {
   let successCount = 0;
   let failureCount = 0;
 
+  // Process files serially (one at a time)
   for (const pair of pairs) {
     const result = await processCueFlacPair(pair);
     results.push(result);
@@ -307,10 +387,23 @@ async function main() {
   if (failureCount > 0) {
     process.exit(1);
   }
+
+  return ok(undefined);
 }
 
 // Run the main function
-main().catch((error) => {
-  console.error("❌ Unexpected error:", error);
-  process.exit(1);
-});
+main()
+  .then((result) => {
+    result
+      .map(() => {
+        console.log("✅ Script completed successfully");
+      })
+      .mapErr((error) => {
+        console.error("❌ Script failed:", error);
+        process.exit(1);
+      });
+  })
+  .catch((error) => {
+    console.error("❌ Unexpected error:", error);
+    process.exit(1);
+  });
