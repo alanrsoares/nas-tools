@@ -231,6 +231,28 @@ async function main() {
   let failureCount = 0;
 
   for (const pair of pairs) {
+    // before processing, list folder contents and prompt for confirmation
+    const folderContents = await fs.readdir(pair.directory);
+    console.log(`📁 Contents of ${pair.directory}:`);
+    for (const file of folderContents) {
+      console.log(`  ${file}`);
+    }
+    console.log("");
+
+    const { proceed } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "proceed",
+        message: `Do you want to process ${pair.cueFile}?`,
+        default: false,
+      },
+    ]);
+
+    if (!proceed) {
+      console.log(`⏭️ Skipped: ${pair.cueFile}`);
+      continue;
+    }
+
     const success = await processCueFlacPair(pair);
 
     if (success) {
