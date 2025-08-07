@@ -33,6 +33,8 @@ const FILE_EXTENSIONS = {
   FLAC: ".flac",
 } as const;
 
+const BASH_FUNCTIONS_PATH = "/home/admin/dev/nas-tools/bash/functions.sh";
+
 // Types
 interface CueFlacPair {
   directory: string;
@@ -162,7 +164,22 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
     console.log(`\n🔄 Processing: ${cueFile}`);
 
     // Change to the directory and run the bash function
-    await $`cd ${directory} && source /home/admin/dev/nas-tools/bash/functions.sh && split_cue_flac ${cueFile}`;
+    await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && split_cue_flac ${cueFile}`;
+
+    // Prompt for cleanup
+    const { proceed } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "proceed",
+        message:
+          "Do you want to cleanup original files and move split tracks to original directory?",
+        default: false,
+      },
+    ]);
+
+    if (proceed) {
+      await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && cleanup_temp_split ${cuePath}`;
+    }
 
     console.log(`✅ Successfully processed: ${cueFile}`);
     return true;
