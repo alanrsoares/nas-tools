@@ -129,6 +129,78 @@ scan_cue_flac_pairs() {
   fi
 }
 
+# Recursively scan directories for matching .cue and .flac files
+scan_recursive_cue_flac() {
+  local search_path="$1"
+  local found_albums=()
+  
+  # Validate input
+  if [ -z "$search_path" ]; then
+    echo "Usage: scan_recursive_cue_flac <directory_path>"
+    return 1
+  fi
+  
+  if [ ! -d "$search_path" ]; then
+    echo "❌ Directory '$search_path' does not exist"
+    return 1
+  fi
+  
+  # Find all directories containing both .cue and .flac files
+  while IFS= read -r -d '' dir; do
+    local cue_files=()
+    local flac_files=()
+    local has_match=false
+    
+    # Get all .cue files in this directory
+    while IFS= read -r -d '' file; do
+      cue_files+=("$file")
+    done < <(find "$dir" -maxdepth 1 -name "*.cue" -print0 2>/dev/null)
+    
+    # Get all .flac files in this directory
+    while IFS= read -r -d '' file; do
+      flac_files+=("$file")
+    done < <(find "$dir" -maxdepth 1 -name "*.flac" -print0 2>/dev/null)
+    
+    # Check for matching pairs in this directory
+    for cue_file in "${cue_files[@]}"; do
+      local cue_basename="${cue_file##*/}"  # Get filename only
+      cue_basename="${cue_basename%.*}"     # Remove extension
+      
+      for flac_file in "${flac_files[@]}"; do
+        local flac_basename="${flac_file##*/}"  # Get filename only
+        flac_basename="${flac_basename%.*}"     # Remove extension
+        
+        if [ "$cue_basename" = "$flac_basename" ]; then
+          found_albums+=("$dir:$cue_file:$flac_file")
+          has_match=true
+          break
+        fi
+      done
+      
+      if [ "$has_match" = true ]; then
+        break
+      fi
+    done
+  done < <(find "$search_path" -type d -print0 2>/dev/null)
+  
+  # Return results
+  if [ ${#found_albums[@]} -eq 0 ]; then
+    echo "No directories with matching .cue/.flac pairs found in '$search_path'"
+    return 1
+  else
+    printf "Found %d directories with matching .cue/.flac pairs:\n" "${#found_albums[@]}"
+    echo ""
+    for album in "${found_albums[@]}"; do
+      IFS=':' read -r dir cue flac <<< "$album"
+      echo "📂 Directory: $dir"
+      echo "  📁 CUE: $(basename "$cue")"
+      echo "  🎵 FLAC: $(basename "$flac")"
+      echo ""
+    done
+    return 0
+  fi
+}
+
 # Main function - orchestrates the entire process
 split_cue_flac() {
   # Validate input
