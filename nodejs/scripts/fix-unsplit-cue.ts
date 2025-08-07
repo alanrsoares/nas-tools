@@ -143,7 +143,7 @@ async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
       type: "confirm",
       name: "proceed",
       message: "Do you want to proceed with splitting these files?",
-      default: false,
+      default: true,
     },
   ]);
 
@@ -171,7 +171,7 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
         name: "proceed",
         message:
           "Do you want to cleanup original files and move split tracks to original directory?",
-        default: false,
+        default: true,
       },
     ]);
 
@@ -242,7 +242,7 @@ async function main() {
         type: "confirm",
         name: "proceed",
         message: `Do you want to process ${pair.cueFile}?`,
-        default: false,
+        default: true,
       },
     ]);
 
