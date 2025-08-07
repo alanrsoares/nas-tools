@@ -106,7 +106,7 @@ npm run fix-unsplit-cue /path/to/music/collection
 - **File System Errors**: Handles permission issues and missing files gracefully
 - **Split Failures**: **Stops processing on first failure** to prevent cascading errors
 - **Cleanup Failures**: Reports cleanup errors and stops processing
-- **File Encoding Issues**: Properly handles filenames with special characters (Cyrillic, etc.) using proper shell quoting
+- **File Encoding Issues**: Properly handles filenames with special characters (Cyrillic, etc.) using zx's automatic shell escaping
 - **File Validation**: Validates that files exist and are readable before attempting to process them
 - **Functional Error Handling**: Uses `neverthrow` ResultAsync for better async error handling and type-safe error propagation
 - **Error Types**: Specific error types for different failure scenarios (ValidationError, DependencyError, SplitError, UserError)
@@ -125,7 +125,7 @@ npm run fix-unsplit-cue /path/to/music/collection
 - Provides detailed error messages and progress indicators
 - Extracted constants and utility functions for better maintainability
 - **Serial Processing**: Processes files one at a time to avoid conflicts and resource issues
-- **Proper Shell Quoting**: Handles filenames with special characters correctly
+- **Automatic Shell Escaping**: Uses zx's built-in shell escaping for special characters
 - **File Validation**: Validates file existence and readability before processing
 - **Functional Error Handling**: Uses ResultAsync for better async error propagation and handling
 - **Enhanced Error Types**: Comprehensive error categorization for different failure scenarios

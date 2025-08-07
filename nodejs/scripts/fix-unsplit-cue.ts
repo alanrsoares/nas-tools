@@ -206,17 +206,12 @@ function splitFlacFile(
       // Create output directory
       await $`mkdir -p ${outDir}`;
 
-      // Use proper quoting for filenames with special characters
-      const quotedCueFile = `"${cueFile}"`;
-      const quotedFlacFile = `"${flacFile}"`;
-      const quotedOutDir = `"${outDir}"`;
-
-      // Split the file with proper quoting
-      await $`cuebreakpoints ${quotedCueFile} | shnsplit -f ${quotedCueFile} -o flac -t "%n. %t" -d ${quotedOutDir} ${quotedFlacFile}`;
+      // Split the file - zx handles shell escaping automatically
+      await $`cuebreakpoints ${cueFile} | shnsplit -f ${cueFile} -o flac -t "%n. %t" -d ${outDir} ${flacFile}`;
 
       // Tag the split files with metadata if cuetag is available
       try {
-        await $`cuetag ${quotedCueFile} ${quotedOutDir}/*.flac`;
+        await $`cuetag ${cueFile} ${outDir}/*.flac`;
         console.log("🏷️ Tagged split tracks with metadata");
       } catch {
         console.log("⚠️ cuetag not found, skipping metadata tagging");
@@ -238,18 +233,16 @@ function cleanupAfterSplit(
       const splitCueFiles = fs.readdirSync(tempDir).filter(isCueFile);
 
       for (const splitCueFile of splitCueFiles) {
-        const quotedSrc = `"${path.join(tempDir, splitCueFile)}"`;
-        const quotedDest = `"${directory}/"`;
-        await $`mv ${quotedSrc} ${quotedDest}`;
+        const srcPath = path.join(tempDir, splitCueFile);
+        await $`mv ${srcPath} ${directory}/`;
       }
 
-      const quotedCueFile = `"${path.join(directory, cueFile)}"`;
-      const quotedFlacFile = `"${path.join(directory, flacFile)}"`;
-      const quotedTempDir = `"${tempDir}"`;
+      const cueFilePath = path.join(directory, cueFile);
+      const flacFilePath = path.join(directory, flacFile);
 
-      await $`rm ${quotedCueFile}`;
-      await $`rm ${quotedFlacFile}`;
-      await $`rm -rf ${quotedTempDir}`;
+      await $`rm ${cueFilePath}`;
+      await $`rm ${flacFilePath}`;
+      await $`rm -rf ${tempDir}`;
     })(),
     () => "CLEANUP_FAILED" as SplitError
   );
