@@ -43,14 +43,15 @@ npm run fix-unsplit-cue /path/to/music/collection
 2. **Detection**: It identifies pairs where the CUE file name matches the FLAC file name (without extension)
 3. **Validation**: It checks if the directory is already split (multiple FLAC files indicate it's already processed)
 4. **Confirmation**: Displays a summary of found pairs and prompts for user confirmation
-5. **Processing**: For each pair:
+5. **Processing**: For each pair (stops on first failure):
    - Creates a temporary `__temp_split` directory
    - Splits the FLAC file using `cuebreakpoints` and `shnsplit`
    - Tags the split files with metadata using `cuetag` (if available)
    - Moves the split CUE file to the original directory
    - Removes the original CUE and FLAC files
    - Cleans up the temporary directory
-6. **Summary**: Displays a final summary of successful and failed operations
+   - **If any step fails, processing stops immediately**
+6. **Summary**: Displays a final summary of successful and failed operations, including skipped files
 
 #### Example Output
 
@@ -84,32 +85,40 @@ npm run fix-unsplit-cue /path/to/music/collection
 🏷️ Tagged split tracks with metadata
 ✅ Successfully processed: album2.cue
 
-🔄 Splitting 'album3.flac' using 'album3.cue'...
+🔄 Splitting 'album1.flac' using 'album1.cue'...
 🏷️ Tagged split tracks with metadata
-✅ Successfully processed: album3.cue
+✅ Successfully processed: album1.cue
+
+🔄 Splitting 'album2.flac' using 'album2.cue'...
+❌ Failed to process album2.cue: Split failed
+🛑 Stopping processing due to failure.
 
 📊 Summary:
-✅ Successfully processed: 3
-❌ Failed: 0
+✅ Successfully processed: 1
+❌ Failed: 1
 📁 Total: 3
+⏭️ Skipped: 1 remaining files
 ```
 
 #### Error Handling
 
 - **Missing Dependencies**: The script checks for required tools and exits with an error if any are missing
 - **File System Errors**: Handles permission issues and missing files gracefully
-- **Split Failures**: Continues processing other files even if one fails
-- **Cleanup Failures**: Reports cleanup errors but doesn't stop the entire process
+- **Split Failures**: **Stops processing on first failure** to prevent cascading errors
+- **Cleanup Failures**: Reports cleanup errors and stops processing
 - **File Encoding Issues**: Properly handles filenames with special characters (Cyrillic, etc.) using proper shell quoting
 - **File Validation**: Validates that files exist and are readable before attempting to process them
-- **Functional Error Handling**: Uses `neverthrow` Result types for better error propagation and type-safe error handling
-- **Error Types**: Specific error types for different failure scenarios (ValidationError, DependencyError, SplitError)
+- **Functional Error Handling**: Uses `neverthrow` ResultAsync for better async error handling and type-safe error propagation
+- **Error Types**: Specific error types for different failure scenarios (ValidationError, DependencyError, SplitError, UserError)
+- **Enhanced Validation**: Checks file permissions, directory access, and argument validation
+- **Process Directory Changes**: Handles failures when changing working directories during processing
+- **Fail-Fast Behavior**: Stops processing immediately when any file fails to prevent data corruption
 
 #### Technical Details
 
 - Built with TypeScript and uses the `zx` library for shell interactions
 - Uses `inquirer.js` for user-friendly prompts and confirmations
-- Uses `neverthrow` for functional error handling and better error management
+- Uses `neverthrow` ResultAsync for functional async error handling and better error management
 - Compatible with BusyBox containers (uses minimal shell commands)
 - Translates logic from the bash functions in `../bash/functions.sh`
 - Uses async/await for all file system and shell operations
@@ -118,7 +127,8 @@ npm run fix-unsplit-cue /path/to/music/collection
 - **Serial Processing**: Processes files one at a time to avoid conflicts and resource issues
 - **Proper Shell Quoting**: Handles filenames with special characters correctly
 - **File Validation**: Validates file existence and readability before processing
-- **Functional Error Handling**: Uses Result types for better error propagation and handling
+- **Functional Error Handling**: Uses ResultAsync for better async error propagation and handling
+- **Enhanced Error Types**: Comprehensive error categorization for different failure scenarios
 
 #### Installation
 
