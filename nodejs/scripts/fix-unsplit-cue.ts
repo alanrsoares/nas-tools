@@ -77,6 +77,29 @@ const isCueFile = (file: string) =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
 const getBasename = (file: string, ext: string) => path.basename(file, ext);
 
+// Find FLAC file in directory (similar to bash find_flac_file)
+async function findFlacFile(cuePath: string): Promise<string | null> {
+  const directory = path.dirname(cuePath);
+  const cueFile = path.basename(cuePath);
+  const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
+
+  try {
+    const files = fs.readdirSync(directory);
+    const flacFiles = files.filter(isFlacFile);
+
+    for (const flacFile of flacFiles) {
+      const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
+      if (cueBasename === flacBasename) {
+        return flacFile;
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Validate file exists and is readable
 const validateFile = (filePath: string): Result<boolean, ValidationError> => {
   try {
@@ -224,25 +247,39 @@ function splitFlacFile(
 }
 
 // Cleanup after successful split
-function cleanupAfterSplit(
-  directory: string,
-  cueFile: string,
-  flacFile: string
-): ResultAsync<void, SplitError> {
+function cleanupAfterSplit(cuePath: string): ResultAsync<void, SplitError> {
   return ResultAsync.fromPromise(
     (async () => {
+      const directory = path.dirname(cuePath);
+      const cueFile = path.basename(cuePath);
+
+      // Find corresponding FLAC file
+      const flacFile = await findFlacFile(cuePath);
+      if (!flacFile) {
+        throw new Error(
+          `Could not find corresponding FLAC file for ${cueFile}`
+        );
+      }
+
       const tempDir = path.join(directory, TEMP_DIR);
+      const splitFlacFiles = fs.readdirSync(tempDir).filter(isFlacFile);
       const splitCueFiles = fs.readdirSync(tempDir).filter(isCueFile);
 
+      // Move split FLAC files to the original directory
+      for (const splitFlacFile of splitFlacFiles) {
+        const srcPath = path.join(tempDir, splitFlacFile);
+        await $`mv ${srcPath} ${directory}/`;
+      }
+
+      // Move split CUE files to the original directory
       for (const splitCueFile of splitCueFiles) {
         const srcPath = path.join(tempDir, splitCueFile);
         await $`mv ${srcPath} ${directory}/`;
       }
 
-      const cueFilePath = path.join(directory, cueFile);
       const flacFilePath = path.join(directory, flacFile);
 
-      await $`rm ${cueFilePath}`;
+      await $`rm ${cuePath}`;
       await $`rm ${flacFilePath}`;
       await $`rm -rf ${tempDir}`;
     })(),
@@ -281,7 +318,9 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<SplitResult> {
     }
 
     // Cleanup
-    const cleanupResult = await cleanupAfterSplit(directory, cueFile, flacFile);
+    const cleanupResult = await cleanupAfterSplit(
+      path.join(directory, cueFile)
+    );
     if (cleanupResult.isErr()) {
       return {
         success: false,

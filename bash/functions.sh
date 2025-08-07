@@ -1,5 +1,16 @@
 #! /bin/bash
 
+# CUE/FLAC splitting and cleanup functions
+# 
+# Functions available:
+# - split_cue_flac: Split a single CUE/FLAC pair with optional cleanup
+# - cleanup_temp_split: Cleanup function for temporary split directories
+# - scan_recursive_cue_flac: Scan directories for unsplit CUE/FLAC pairs
+#
+# Usage examples:
+#   split_cue_flac path/to/album.cue                    # Split with prompted cleanup
+#   cleanup_temp_split path/to/album.cue                 # Manual cleanup
+
 # Validate input parameters
 validate_cue_input() {
   if [ -z "$1" ]; then
@@ -79,6 +90,71 @@ tag_split_files() {
   else
     echo "⚠️ cuetag not found, skipping metadata tagging."
   fi
+}
+
+# Cleanup after successful split - moves split files to original location and removes temp directory
+cleanup_temp_split() {
+  local cue_path="$1"
+  local directory
+  local cue_file
+  local flac_file
+  local temp_dir
+  
+  # Extract directory and filename from cue path
+  directory="$(dirname "$cue_path")"
+  cue_file="$(basename "$cue_path")"
+  
+  # Find corresponding FLAC file
+  cd "$directory" || return 1
+  flac_file="$(find_flac_file)"
+  if [ $? -ne 0 ]; then
+    echo "❌ Could not find corresponding FLAC file for $cue_file"
+    return 1
+  fi
+  
+  # Set temp directory path
+  temp_dir="$directory/__temp_split"
+  
+  echo "🧹 Cleaning up temporary files..."
+  
+  # Move split FLAC files to the original directory
+  if [ -d "$temp_dir" ]; then
+    for split_flac_file in "$temp_dir"/*.flac; do
+      if [ -f "$split_flac_file" ]; then
+        mv "$split_flac_file" "$directory/"
+        echo "📁 Moved $(basename "$split_flac_file") to original directory"
+      fi
+    done
+  fi
+  
+  # Move split CUE files to the original directory
+  if [ -d "$temp_dir" ]; then
+    for split_cue_file in "$temp_dir"/*.cue; do
+      if [ -f "$split_cue_file" ]; then
+        mv "$split_cue_file" "$directory/"
+        echo "📁 Moved $(basename "$split_cue_file") to original directory"
+      fi
+    done
+  fi
+  
+  # Remove the original cue and flac files
+  if [ -f "$cue_path" ]; then
+    rm "$cue_path"
+    echo "🗑️ Removed original cue file: $cue_file"
+  fi
+  
+  if [ -f "$directory/$flac_file" ]; then
+    rm "$directory/$flac_file"
+    echo "🗑️ Removed original flac file: $flac_file"
+  fi
+  
+  # Remove the temp directory
+  if [ -d "$temp_dir" ]; then
+    rm -rf "$temp_dir"
+    echo "🗑️ Removed temporary directory: $temp_dir"
+  fi
+  
+  echo "✅ Cleanup completed successfully"
 }
 
 # Scan for matching .cue and .flac files
@@ -232,7 +308,7 @@ split_cue_flac() {
   fi
   
   # Create output directory
-  local out_dir="${basename}_split"
+  local out_dir="__temp_split"
   mkdir -p "$out_dir"
   
   # Split the file
@@ -242,4 +318,18 @@ split_cue_flac() {
   tag_split_files "$cue_file" "$out_dir"
   
   echo "✅ Done. Split tracks are in: $out_dir"
-}   
+  
+  # Prompt for cleanup
+  echo ""
+  read -p "🧹 Do you want to cleanup original files and move split tracks to original directory? (y/N): " -n 1 -r
+  echo ""
+  
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    cleanup_temp_split "$1"
+    echo "✅ Done. Split tracks are in original directory, original files removed."
+  else
+    echo "📁 Split tracks remain in $out_dir directory."
+  fi
+}
+
+   
