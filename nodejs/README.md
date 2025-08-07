@@ -6,15 +6,15 @@ This directory contains Node.js scripts for managing NAS tools, specifically for
 
 ### fix-unsplit-cue.ts
 
-A TypeScript script that scans directories for unsplit CUE/FLAC pairs and automatically splits them into individual tracks.
+A TypeScript script that scans directories for unsplit CUE/FLAC pairs and delegates the splitting and cleanup to the bash functions in `../bash/functions.sh`.
 
 #### Features
 
 - Scans a given folder recursively for CUE/FLAC file pairs
 - Identifies files that are not yet split (single FLAC file with matching CUE file)
-- Splits the FLAC file into individual tracks using the CUE sheet
-- Automatically cleans up the original files after successful splitting
+- Delegates splitting and cleanup to the bash `split_cue_flac` function
 - Provides a summary and confirmation prompt before processing
+- Serial processing with fail-fast behavior
 
 #### Prerequisites
 
@@ -44,19 +44,16 @@ npm run fix-unsplit-cue /path/to/music/collection
 3. **Validation**: It checks if the directory is already split (multiple FLAC files indicate it's already processed)
 4. **Confirmation**: Displays a summary of found pairs and prompts for user confirmation
 5. **Processing**: For each pair (stops on first failure):
-   - Creates a temporary `__temp_split` directory
-   - Splits the FLAC file using `cuebreakpoints` and `shnsplit`
-   - Tags the split files with metadata using `cuetag` (if available)
-   - Moves the split CUE file to the original directory
-   - Removes the original CUE and FLAC files
-   - Cleans up the temporary directory
+   - Changes to the directory containing the files
+   - Sources the bash functions from `../bash/functions.sh`
+   - Calls `split_cue_flac` with the CUE file path
+   - The bash function handles splitting, tagging, and prompted cleanup
    - **If any step fails, processing stops immediately**
 6. **Summary**: Displays a final summary of successful and failed operations, including skipped files
 
 #### Example Output
 
 ```
-🔍 Checking dependencies...
 🔍 Scanning '/path/to/music' for unsplit cue/flac pairs...
 
 📋 Found 3 unsplit cue/flac pairs:
@@ -77,19 +74,14 @@ npm run fix-unsplit-cue /path/to/music/collection
 
 🔄 Processing files...
 
-🔄 Splitting 'album1.flac' using 'album1.cue'...
-🏷️ Tagged split tracks with metadata
+🔄 Processing: album1.cue
+✅ Done. Split tracks are in: __temp_split
+
+🧹 Do you want to cleanup original files and move split tracks to original directory? (y/N): y
+✅ Done. Split tracks are in original directory, original files removed.
 ✅ Successfully processed: album1.cue
 
-🔄 Splitting 'album2.flac' using 'album2.cue'...
-🏷️ Tagged split tracks with metadata
-✅ Successfully processed: album2.cue
-
-🔄 Splitting 'album1.flac' using 'album1.cue'...
-🏷️ Tagged split tracks with metadata
-✅ Successfully processed: album1.cue
-
-🔄 Splitting 'album2.flac' using 'album2.cue'...
+🔄 Processing: album2.cue
 ❌ Failed to process album2.cue: Split failed
 🛑 Stopping processing due to failure.
 
@@ -102,15 +94,10 @@ npm run fix-unsplit-cue /path/to/music/collection
 
 #### Error Handling
 
-- **Missing Dependencies**: The script checks for required tools and exits with an error if any are missing
 - **File System Errors**: Handles permission issues and missing files gracefully
 - **Split Failures**: **Stops processing on first failure** to prevent cascading errors
-- **Cleanup Failures**: Reports cleanup errors and stops processing
-- **File Encoding Issues**: Properly handles filenames with special characters (Cyrillic, etc.) using zx's automatic shell escaping
+- **File Encoding Issues**: Properly handles filenames with special characters using zx's automatic shell escaping
 - **File Validation**: Validates that files exist and are readable before attempting to process them
-- **Functional Error Handling**: Uses `neverthrow` ResultAsync for better async error handling and type-safe error propagation
-- **Error Types**: Specific error types for different failure scenarios (ValidationError, DependencyError, SplitError, UserError)
-- **Enhanced Validation**: Checks file permissions, directory access, and argument validation
 - **Process Directory Changes**: Handles failures when changing working directories during processing
 - **Fail-Fast Behavior**: Stops processing immediately when any file fails to prevent data corruption
 
@@ -118,18 +105,13 @@ npm run fix-unsplit-cue /path/to/music/collection
 
 - Built with TypeScript and uses the `zx` library for shell interactions
 - Uses `inquirer.js` for user-friendly prompts and confirmations
-- Uses `neverthrow` ResultAsync for functional async error handling and better error management
+- **Bash Integration**: Delegates all splitting and cleanup logic to `../bash/functions.sh`
 - Compatible with BusyBox containers (uses minimal shell commands)
-- **Bash Compatibility**: Uses identical shell commands as `../bash/functions.sh`
-- Translates logic from the bash functions in `../bash/functions.sh`
 - Uses async/await for all file system and shell operations
 - Provides detailed error messages and progress indicators
-- Extracted constants and utility functions for better maintainability
 - **Serial Processing**: Processes files one at a time to avoid conflicts and resource issues
 - **Automatic Shell Escaping**: Uses zx's built-in shell escaping for special characters
 - **File Validation**: Validates file existence and readability before processing
-- **Functional Error Handling**: Uses ResultAsync for better async error propagation and handling
-- **Enhanced Error Types**: Comprehensive error categorization for different failure scenarios
 
 #### Installation
 
