@@ -23,7 +23,7 @@
  */
 
 import { $ } from "zx";
-import * as fs from "fs";
+import * as fs from "fs/promises";
 import * as path from "path";
 import inquirer from "inquirer";
 
@@ -49,24 +49,20 @@ const isCueFile = (file: string) =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
 const getBasename = (file: string, ext: string) => path.basename(file, ext);
 
-// Check if a directory contains split tracks
-const isAlreadySplit = (directory: string): boolean => {
-  try {
-    const files = fs.readdirSync(directory);
-    return files.filter(isFlacFile).length > 1;
-  } catch {
-    return false;
-  }
-};
+const exists = async (path: string) =>
+  await fs
+    .access(path)
+    .then(() => true)
+    .catch(() => false);
 
 // Find corresponding FLAC file for a CUE file
-function findFlacFile(cuePath: string): string | null {
+async function findFlacFile(cuePath: string): Promise<string | null> {
   const directory = path.dirname(cuePath);
   const cueFile = path.basename(cuePath);
   const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
 
   try {
-    const files = fs.readdirSync(directory);
+    const files = await fs.readdir(directory);
     const flacFiles = files.filter(isFlacFile);
 
     for (const flacFile of flacFiles) {
@@ -83,21 +79,24 @@ function findFlacFile(cuePath: string): string | null {
 }
 
 // Scan for matching .cue and .flac files that are not split
-function scanCueFlacPairs(searchPath: string): CueFlacPair[] {
+async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
   const foundPairs: CueFlacPair[] = [];
 
   try {
-    const directories = fs
-      .readdirSync(searchPath, { withFileTypes: true })
-      .filter((dirent) => dirent.isDirectory())
-      .map((dirent) => path.join(searchPath, dirent.name));
+    const directories = await fs
+      .readdir(searchPath, { withFileTypes: true })
+      .then((files) =>
+        files
+          .filter((dirent) => dirent.isDirectory())
+          .map((dirent) => path.join(searchPath, dirent.name))
+      );
 
     // Also check the search path itself
     directories.unshift(searchPath);
 
     for (const dir of directories) {
       try {
-        const files = fs.readdirSync(dir);
+        const files = await fs.readdir(dir);
         const cueFiles = files.filter(isCueFile);
         const flacFiles = files.filter(isFlacFile);
 
@@ -108,15 +107,16 @@ function scanCueFlacPairs(searchPath: string): CueFlacPair[] {
             const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
 
             if (cueBasename === flacBasename) {
-              // Check if already split
-              if (!isAlreadySplit(dir)) {
-                const cuePath = path.join(dir, cueFile);
-                const flacPath = path.join(dir, flacFile);
+              const cuePath = path.join(dir, cueFile);
+              const flacPath = path.join(dir, flacFile);
 
-                // Validate files exist and are readable
-                if (fs.existsSync(cuePath) && fs.existsSync(flacPath)) {
-                  foundPairs.push({ directory: dir, cueFile, flacFile });
-                }
+              // Validate files exist and are readable
+              if ((await exists(cuePath)) && (await exists(flacPath))) {
+                foundPairs.push({
+                  directory: dir,
+                  cueFile,
+                  flacFile,
+                });
               }
               break;
             }
@@ -202,7 +202,7 @@ async function main() {
   const folderPath = args[0];
 
   // Validate input directory
-  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+  if (!(await exists(folderPath))) {
     console.error(
       `❌ Directory '${folderPath}' does not exist or is not accessible`
     );
@@ -211,7 +211,7 @@ async function main() {
 
   console.log(`🔍 Scanning '${folderPath}' for unsplit cue/flac pairs...`);
 
-  const pairs = scanCueFlacPairs(folderPath);
+  const pairs = await scanCueFlacPairs(folderPath);
 
   if (pairs.length === 0) {
     console.log("No unsplit cue/flac pairs found.");
