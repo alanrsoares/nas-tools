@@ -126,9 +126,9 @@ plugins=(
 #
 #OMB_TERM_USE_TPUT=no
 
-export PS1="\W \$ "
-
 source "$OSH"/oh-my-bash.sh
+
+export PS1="\[\e[0;34m\]\w \$ \[\e[0m\]"
 
 # User configuration
 # export MANPATH="/usr/local/man:$MANPATH"
