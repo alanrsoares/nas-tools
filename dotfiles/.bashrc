@@ -126,6 +126,8 @@ plugins=(
 #
 #OMB_TERM_USE_TPUT=no
 
+export PS1="\W \$ "
+
 source "$OSH"/oh-my-bash.sh
 
 # User configuration
