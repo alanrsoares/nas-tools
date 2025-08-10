@@ -128,13 +128,8 @@ async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
   console.log(`\n📋 Found ${pairs.length} unsplit cue/flac pairs:\n`);
 
   for (const pair of pairs) {
-    invariant(pair, "Pair is required");
-    invariant(pair.directory, "Pair directory is required");
-    invariant(pair.cueFile, "Pair cue file is required");
-    invariant(pair.flacFile, "Pair flac file is required");
-
     console.log(`📂 Directory: ${pair.directory}`);
-    console.log(`  📁 CUE: ${pair.cueFile}`);
+    console.log(`  📄 CUE: ${pair.cueFile}`);
     console.log(`  🎵 FLAC: ${pair.flacFile}\n`);
   }
 
