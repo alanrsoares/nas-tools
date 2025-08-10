@@ -1,0 +1,3 @@
+#!/bin/bash
+
+export FLAC='/volmain/Public/FLAC'

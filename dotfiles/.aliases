@@ -1,0 +1,6 @@
+#!/bin/bash
+
+alias cls=clear
+alias ll='ls -l'
+alias gfr='git pull --rebase'
+alias nr='npm run'
