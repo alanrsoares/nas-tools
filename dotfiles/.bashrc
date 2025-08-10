@@ -9,7 +9,9 @@ export OSH=~/.oh-my-bash
 
 # Set name of the theme to load. Optionally, if you set this to "random"
 # it'll load a random theme each time that oh-my-bash is loaded.
-OSH_THEME="font"
+OSH_THEME="agnoster"
+
+export PS1="\[\e[0;34m\]\w \$ \[\e[0m\]"
 
 # If you set OSH_THEME to "random", you can ignore themes you don't like.
 # OMB_THEME_RANDOM_IGNORED=("powerbash10k" "wanelo")
@@ -127,8 +129,6 @@ plugins=(
 #OMB_TERM_USE_TPUT=no
 
 source "$OSH"/oh-my-bash.sh
-
-export PS1="\[\e[0;34m\]\w \$ \[\e[0m\]"
 
 # User configuration
 # export MANPATH="/usr/local/man:$MANPATH"
