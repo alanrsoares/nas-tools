@@ -1,27 +1,5 @@
 #!/usr/bin/env zx
 
-/**
- * Spec:
- *
- * args:
- *  folder path
- *
- * The script should:
- *  - scan the given folder for all cue files that match the conditions:
- *    - cue file name matches an adjacent flac file
- *    - the cue file is not split
- *  - for each cue file that is not split, it should:
- *      - use the bash split_cue_flac function to handle the splitting and cleanup
- *
- * context, this will run in a busybox container, so we need to use the minimal tools available.
- *
- * refer to : <root_folder>/bash/functions.sh for the functions that are available.
- * If it makes sense translate them so the most of the logic is in typescript.
- *
- * Make heavy use of zx for interaction with os subprograms or shell.
- * The application should display a summary of matches and prompt for confirmation before proceeding.
- */
-
 import { $ } from "zx";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -58,6 +36,18 @@ const exists = async (path: string) =>
     .then(() => true)
     .catch(() => false);
 
+const confirm = async (message: string) => {
+  const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
+    {
+      type: "confirm",
+      name: "proceed",
+      message,
+      default: true,
+    },
+  ]);
+  return proceed;
+};
+
 // Scan for matching .cue and .flac files that are not split (recursive)
 async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
   invariant(searchPath, "Search path is required");
@@ -66,38 +56,8 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
 
   try {
     // Check the current directory for cue/flac pairs
-    try {
-      const files = await fs.readdir(searchPath);
-      const cueFiles = files.filter(isCueFile);
-      const flacFiles = files.filter(isFlacFile);
-
-      for (const cueFile of cueFiles) {
-        invariant(cueFile, "Cue file name is required");
-        const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
-
-        for (const flacFile of flacFiles) {
-          invariant(flacFile, "Flac file name is required");
-          const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
-
-          if (cueBasename === flacBasename) {
-            const cuePath = path.join(searchPath, cueFile);
-            const flacPath = path.join(searchPath, flacFile);
-
-            // Validate files exist and are readable
-            if ((await exists(cuePath)) && (await exists(flacPath))) {
-              foundPairs.push({
-                directory: searchPath,
-                cueFile,
-                flacFile,
-              });
-            }
-            break;
-          }
-        }
-      }
-    } catch {
-      // Skip if current directory can't be read
-    }
+    const currentDirPairs = await findCueFlacPairsInDirectory(searchPath);
+    foundPairs.push(...currentDirPairs);
 
     // Recursively scan subdirectories
     const entries = await fs.readdir(searchPath, { withFileTypes: true });
@@ -121,6 +81,55 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
   return foundPairs;
 }
 
+// Find cue/flac pairs in a single directory
+async function findCueFlacPairsInDirectory(
+  searchPath: string
+): Promise<CueFlacPair[]> {
+  const foundPairs: CueFlacPair[] = [];
+
+  try {
+    const files = await fs.readdir(searchPath);
+    const cueFiles = files.filter(isCueFile);
+    const flacFiles = files.filter(isFlacFile);
+
+    for (const cueFile of cueFiles) {
+      const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
+
+      for (const flacFile of flacFiles) {
+        const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
+
+        if (cueBasename !== flacBasename) {
+          continue;
+        }
+
+        const cuePath = path.join(searchPath, cueFile);
+        const flacPath = path.join(searchPath, flacFile);
+
+        const [cueExists, flacExists] = await Promise.all([
+          exists(cuePath),
+          exists(flacPath),
+        ]);
+
+        if (!cueExists || !flacExists) {
+          continue;
+        }
+
+        foundPairs.push({
+          directory: searchPath,
+          cueFile,
+          flacFile,
+        });
+
+        break;
+      }
+    }
+  } catch {
+    // Skip if current directory can't be read
+  }
+
+  return foundPairs;
+}
+
 // Display summary and get user confirmation
 async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
   invariant(Array.isArray(pairs), "Pairs must be an array");
@@ -133,16 +142,7 @@ async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
     console.log(`  🎵 FLAC: ${pair.flacFile}\n`);
   }
 
-  const { proceed } = await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "proceed",
-      message: "Do you want to proceed with splitting these files?",
-      default: true,
-    },
-  ]);
-
-  return proceed;
+  return await confirm("Do you want to proceed with splitting these files?");
 }
 
 // Process a single cue/flac pair using bash function
@@ -159,16 +159,9 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
     // Change to the directory and run the bash function
     await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && split_cue_flac ${cueFile}`;
 
-    // Prompt for cleanup
-    const { proceed } = await inquirer.prompt([
-      {
-        type: "confirm",
-        name: "proceed",
-        message:
-          "Do you want to cleanup original files and move split tracks to original directory?",
-        default: true,
-      },
-    ]);
+    const proceed = await confirm(
+      "Do you want to cleanup original files and move split tracks to original directory?"
+    );
 
     if (proceed) {
       await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && cleanup_temp_split ${cuePath}`;
@@ -182,7 +175,14 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
   }
 }
 
-// Main function
+/**
+ * Fix Unsplit CUE Files Script
+ *
+ * Scans directories for unsplit CUE/FLAC file pairs and provides an interactive
+ * interface to split them using bash functions.
+ *
+ * See fix-unsplit-cue.md for detailed specification and usage instructions.
+ */
 async function main() {
   const args = process.argv.slice(2);
 
@@ -208,6 +208,7 @@ async function main() {
   }
 
   const proceed = await confirmProcessing(pairs);
+
   if (!proceed) {
     console.log("Operation cancelled.");
     return;
@@ -232,14 +233,7 @@ async function main() {
     }
     console.log("");
 
-    const { proceed } = await inquirer.prompt([
-      {
-        type: "confirm",
-        name: "proceed",
-        message: `Do you want to process ${pair.cueFile}?`,
-        default: true,
-      },
-    ]);
+    const proceed = await confirm(`Do you want to process ${pair.cueFile}?`);
 
     if (!proceed) {
       console.log(`⏭️ Skipped: ${pair.cueFile}`);
