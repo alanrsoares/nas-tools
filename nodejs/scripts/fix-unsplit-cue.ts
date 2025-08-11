@@ -105,7 +105,10 @@ async function scanCueAudioPairs(
     }
 
     // Check the current directory for cue/audio pairs
-    const currentDirPairs = await findCueAudioPairsInDirectory(searchPath);
+    const currentDirPairs = await findCueAudioPairsInDirectory(
+      searchPath,
+      options
+    );
     foundPairs.push(...currentDirPairs);
 
     // Recursively scan subdirectories
