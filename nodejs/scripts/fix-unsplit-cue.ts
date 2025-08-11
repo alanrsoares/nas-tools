@@ -69,8 +69,6 @@ function parseArguments(args: string[]): {
   let folderPath: string | undefined;
   const ignoreFailedFlags = ["--ignore-failed", "-i"];
 
-  console.log({ args, options });
-
   for (const arg of args) {
     if (hasFlag(arg, ignoreFailedFlags)) {
       options.ignoreFailed = true;
@@ -142,9 +140,9 @@ async function findCueAudioPairsInDirectory(
     const cueFiles = files.filter(isCueFile);
     const audioFiles = files.filter(isAudioFile);
 
-    const $hasTempSplit = await hasTempSplit(searchPath);
+    console.log({ files });
 
-    if (options.ignoreFailed && $hasTempSplit) {
+    if (options.ignoreFailed && files.includes("__temp_split")) {
       return foundPairs;
     }
 
@@ -279,7 +277,6 @@ async function main() {
   }
 
   const pairs = await scanCueAudioPairs(folderPath, options);
-  console.log({ options, pairs });
 
   if (pairs.length === 0) {
     logInfo("No unsplit cue/audio pairs found.");
