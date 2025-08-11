@@ -47,21 +47,10 @@ function isAudioFile(file: string): boolean {
 }
 
 // Check if a directory has an empty __temp_split folder (indicating a failed split)
-async function hasEmptyTempSplit(directory: string): Promise<boolean> {
+async function hasTempSplit(directory: string): Promise<boolean> {
   const tempSplitPath = joinPath(directory, "__temp_split");
 
-  try {
-    const tempSplitExists = await exists(tempSplitPath);
-    if (!tempSplitExists) {
-      return false;
-    }
-
-    const tempSplitContents = await readDirectory(tempSplitPath);
-    return tempSplitContents.length === 0;
-  } catch {
-    // If we can't read the directory, assume it's not empty
-    return false;
-  }
+  return await exists(tempSplitPath);
 }
 
 // Parse command line arguments
@@ -107,7 +96,7 @@ async function scanCueAudioPairs(
 
   try {
     // Check if this directory should be skipped due to failed split
-    if (options.ignoreFailed && (await hasEmptyTempSplit(searchPath))) {
+    if (options.ignoreFailed && (await hasTempSplit(searchPath))) {
       logInfo(`Skipping directory with empty __temp_split: ${searchPath}`);
       return foundPairs;
     }
