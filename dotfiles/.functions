@@ -1,1 +1,13 @@
 #!/bin/bash
+
+add-alias() {
+  echo "alias $1='$2'" >> ~/.aliases
+}
+
+remove-alias() {
+  sed -i "/^alias $1=/d" ~/.aliases
+}
+
+list-aliases() {
+  cat ~/.aliases
+}

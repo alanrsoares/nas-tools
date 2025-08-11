@@ -1,3 +1,4 @@
 #!/bin/bash
 
 export FLAC='/volmain/Public/FLAC'
+export NAS_TOOLS='~/dev/nas-tools'
