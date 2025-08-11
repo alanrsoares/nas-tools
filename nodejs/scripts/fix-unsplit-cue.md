@@ -2,7 +2,7 @@
 
 ## Overview
 
-This script scans directories for unsplit CUE/FLAC file pairs and provides an interactive interface to split them using bash functions.
+This script scans directories for unsplit CUE/Audio file pairs (FLAC or WAV) and provides an interactive interface to split them using bash functions.
 
 ## Usage
 
@@ -12,15 +12,16 @@ zx fix-unsplit-cue.ts <folder_path>
 
 ## Arguments
 
-- `folder_path` (required): The root directory to scan for unsplit CUE/FLAC pairs
+- `folder_path` (required): The root directory to scan for unsplit CUE/Audio pairs
 
 ## How It Works
 
 ### 1. Directory Scanning
 
-The script recursively scans the specified folder and its subdirectories to find CUE/FLAC file pairs that meet the following criteria:
+The script recursively scans the specified folder and its subdirectories to find CUE/Audio file pairs that meet the following criteria:
 
-- A `.cue` file exists with a matching `.flac` file (same basename)
+- A `.cue` file exists with a matching audio file (same basename)
+- Supported audio formats: `.flac` and `.wav`
 - Both files are in the same directory
 - The files are accessible and readable
 
@@ -28,8 +29,8 @@ The script recursively scans the specified folder and its subdirectories to find
 
 Before processing any files, the script:
 
-- Displays a summary of all found CUE/FLAC pairs
-- Shows the directory path, CUE filename, and FLAC filename for each pair
+- Displays a summary of all found CUE/Audio pairs
+- Shows the directory path, CUE filename, and audio filename for each pair
 - Prompts for user confirmation to proceed with splitting
 
 ### 3. File Processing
@@ -38,7 +39,7 @@ For each confirmed pair, the script:
 
 - Changes to the target directory
 - Sources the bash functions from `/home/admin/dev/nas-tools/bash/functions.sh`
-- Executes the `split_cue_flac` bash function on the CUE file
+- Executes the `split_cue_audio` bash function on the CUE file
 - Prompts for cleanup confirmation to remove original files and move split tracks
 - If cleanup is confirmed, runs the `cleanup_temp_split` bash function
 
@@ -61,8 +62,15 @@ For each confirmed pair, the script:
 
 The script relies on bash functions defined in `/home/admin/dev/nas-tools/bash/functions.sh`:
 
-- `split_cue_flac`: Handles the actual splitting of CUE/FLAC files
+- `split_cue_audio`: Handles the actual splitting of CUE/Audio files (FLAC or WAV)
 - `cleanup_temp_split`: Cleans up original files and moves split tracks
+
+## Supported Audio Formats
+
+- **FLAC** (`.flac`): Lossless audio compression
+- **WAV** (`.wav`): Uncompressed audio format
+
+The script automatically detects the audio format and uses the appropriate processing method.
 
 ## Output
 
@@ -79,7 +87,7 @@ The script provides detailed console output including:
 - Invalid or non-existent directory paths
 - Inaccessible directories during scanning
 - Failed file operations during processing
-- Missing or corrupted CUE/FLAC files
+- Missing or corrupted CUE/Audio files
 - Bash function execution failures
 
 ## Exit Codes

@@ -24,7 +24,7 @@ import {
 
 // Constants
 const DEFAULT_SOURCE_DIR = "/volmain/Download/Transmission/complete/";
-const DEFAULT_TARGET_DIR = "/volmain/Public/FLAC/";
+const DEFAULT_TARGET_DIR = "/volmain/Public/Music/";
 const DEFAULT_BACKUP_DIR = "/volmain/Download/Transmission/backup/";
 const ALPHABETICAL_RANGES = [
   { name: "A-D", pattern: /^[A-D]/i },
@@ -129,7 +129,7 @@ Usage: zx move-completed.ts [options]
 
 Options:
   --source-dir <path>    Source directory to monitor (default: ${DEFAULT_SOURCE_DIR})
-  --target-dir <path>    Target FLAC library directory (default: ${DEFAULT_TARGET_DIR})
+  --target-dir <path>    Target music library directory (default: ${DEFAULT_TARGET_DIR})
   --backup-dir <path>    Backup directory (default: ${DEFAULT_BACKUP_DIR})
   --dry-run             Preview changes without making them
   --interactive         Prompt for artist name when inference fails
@@ -428,7 +428,7 @@ async function moveAlbumFolder(
  * Move Completed Downloads Script
  *
  * Monitors the Transmission download completion directory and automatically
- * organizes completed music downloads into the appropriate FLAC library structure.
+ * organizes completed music downloads into the appropriate music library structure.
  *
  * See move-completed.md for detailed specification and usage instructions.
  */

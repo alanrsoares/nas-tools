@@ -24,23 +24,33 @@ import {
 const BASH_FUNCTIONS_PATH = "/home/admin/dev/nas-tools/bash/functions.sh";
 
 // Types
-interface CueFlacPair {
+interface CueAudioPair {
   directory: string;
   cueFile: string;
-  flacFile: string;
+  audioFile: string;
 }
 
 // Utility functions
 
-// Scan for matching .cue and .flac files that are not split (recursive)
-async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
+// Check if file is a WAV file
+function isWavFile(file: string): boolean {
+  return file.toLowerCase().endsWith(FILE_EXTENSIONS.WAV);
+}
+
+// Check if file is an audio file (FLAC or WAV)
+function isAudioFile(file: string): boolean {
+  return isFlacFile(file) || isWavFile(file);
+}
+
+// Scan for matching .cue and audio files that are not split (recursive)
+async function scanCueAudioPairs(searchPath: string): Promise<CueAudioPair[]> {
   invariant(searchPath, "Search path is required");
 
-  const foundPairs: CueFlacPair[] = [];
+  const foundPairs: CueAudioPair[] = [];
 
   try {
-    // Check the current directory for cue/flac pairs
-    const currentDirPairs = await findCueFlacPairsInDirectory(searchPath);
+    // Check the current directory for cue/audio pairs
+    const currentDirPairs = await findCueAudioPairsInDirectory(searchPath);
     foundPairs.push(...currentDirPairs);
 
     // Recursively scan subdirectories
@@ -52,7 +62,7 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
 
     for (const subdir of subdirectories) {
       try {
-        const subdirPairs = await scanCueFlacPairs(subdir);
+        const subdirPairs = await scanCueAudioPairs(subdir);
         foundPairs.push(...subdirPairs);
       } catch {
         // Skip if subdirectory can't be accessed
@@ -66,43 +76,51 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
   return foundPairs;
 }
 
-// Find cue/flac pairs in a single directory
-async function findCueFlacPairsInDirectory(
+// Find cue/audio pairs in a single directory
+async function findCueAudioPairsInDirectory(
   searchPath: string
-): Promise<CueFlacPair[]> {
-  const foundPairs: CueFlacPair[] = [];
+): Promise<CueAudioPair[]> {
+  const foundPairs: CueAudioPair[] = [];
 
   try {
     const files = await readDirectory(searchPath);
     const cueFiles = files.filter(isCueFile);
-    const flacFiles = files.filter(isFlacFile);
+    const audioFiles = files.filter(isAudioFile);
 
     for (const cueFile of cueFiles) {
       const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
 
-      for (const flacFile of flacFiles) {
-        const flacBasename = getBasename(flacFile, FILE_EXTENSIONS.FLAC);
+      for (const audioFile of audioFiles) {
+        let audioBasename: string;
+        
+        if (isFlacFile(audioFile)) {
+          audioBasename = getBasename(audioFile, FILE_EXTENSIONS.FLAC);
+        } else if (isWavFile(audioFile)) {
+          audioBasename = getBasename(audioFile, FILE_EXTENSIONS.WAV);
+        } else {
+          continue;
+        }
 
-        if (cueBasename !== flacBasename) {
+        if (cueBasename !== audioBasename) {
           continue;
         }
 
         const cuePath = joinPath(searchPath, cueFile);
-        const flacPath = joinPath(searchPath, flacFile);
+        const audioPath = joinPath(searchPath, audioFile);
 
-        const [cueExists, flacExists] = await Promise.all([
+        const [cueExists, audioExists] = await Promise.all([
           exists(cuePath),
-          exists(flacPath),
+          exists(audioPath),
         ]);
 
-        if (!cueExists || !flacExists) {
+        if (!cueExists || !audioExists) {
           continue;
         }
 
         foundPairs.push({
           directory: searchPath,
           cueFile,
-          flacFile,
+          audioFile,
         });
 
         break;
@@ -116,22 +134,22 @@ async function findCueFlacPairsInDirectory(
 }
 
 // Display summary and get user confirmation
-async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
+async function confirmProcessing(pairs: CueAudioPair[]): Promise<boolean> {
   invariant(Array.isArray(pairs), "Pairs must be an array");
 
-  logInfo(`Found ${pairs.length} unsplit cue/flac pairs:`);
+  logInfo(`Found ${pairs.length} unsplit cue/audio pairs:`);
 
   for (const pair of pairs) {
     logDirectory(`Directory: ${pair.directory}`);
     logFile(`  CUE: ${pair.cueFile}`);
-    logMusic(`  FLAC: ${pair.flacFile}`);
+    logMusic(`  Audio: ${pair.audioFile}`);
   }
 
   return await confirm("Do you want to proceed with splitting these files?");
 }
 
-// Process a single cue/flac pair using bash function
-async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
+// Process a single cue/audio pair using bash function
+async function processCueAudioPair(pair: CueAudioPair): Promise<boolean> {
   const { directory, cueFile } = pair;
   invariant(directory, "Directory is required");
   invariant(cueFile, "Cue file is required");
@@ -142,7 +160,7 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
     logProgress(`Processing: ${cueFile}`);
 
     // Change to the directory and run the bash function
-    await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && split_cue_flac ${cueFile}`;
+    await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && split_cue_audio ${cueFile}`;
 
     const proceed = await confirm(
       "Do you want to cleanup original files and move split tracks to original directory?"
@@ -163,7 +181,7 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
 /**
  * Fix Unsplit CUE Files Script
  *
- * Scans directories for unsplit CUE/FLAC file pairs and provides an interactive
+ * Scans directories for unsplit CUE/Audio file pairs (FLAC or WAV) and provides an interactive
  * interface to split them using bash functions.
  *
  * See fix-unsplit-cue.md for detailed specification and usage instructions.
@@ -183,12 +201,12 @@ async function main() {
     `❌ Directory '${folderPath}' does not exist or is not accessible`
   );
 
-  logInfo(`Scanning '${folderPath}' for unsplit cue/flac pairs...`);
+  logInfo(`Scanning '${folderPath}' for unsplit cue/audio pairs...`);
 
-  const pairs = await scanCueFlacPairs(folderPath);
+  const pairs = await scanCueAudioPairs(folderPath);
 
   if (pairs.length === 0) {
-    logInfo("No unsplit cue/flac pairs found.");
+    logInfo("No unsplit cue/audio pairs found.");
     return;
   }
 
@@ -225,7 +243,7 @@ async function main() {
       continue;
     }
 
-    const success = await processCueFlacPair(pair);
+    const success = await processCueAudioPair(pair);
 
     if (success) {
       successCount++;
