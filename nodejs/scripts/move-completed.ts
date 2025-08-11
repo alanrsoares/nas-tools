@@ -1,6 +1,5 @@
 #!/usr/bin/env zx
 
-import { $ } from "zx";
 import * as path from "path";
 import invariant from "tiny-invariant";
 import { parseFile } from "music-metadata";
@@ -13,8 +12,6 @@ import {
   logWarning,
   logError,
   logProgress,
-  logFile,
-  logDirectory,
   readDirectoryWithTypes,
   readDirectory,
   ensureDirectory,
