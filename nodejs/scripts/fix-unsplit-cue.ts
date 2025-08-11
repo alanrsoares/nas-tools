@@ -133,7 +133,8 @@ async function scanCueAudioPairs(
 
 // Find cue/audio pairs in a single directory
 async function findCueAudioPairsInDirectory(
-  searchPath: string
+  searchPath: string,
+  options: ScriptOptions
 ): Promise<CueAudioPair[]> {
   const foundPairs: CueAudioPair[] = [];
 
@@ -141,6 +142,12 @@ async function findCueAudioPairsInDirectory(
     const files = await readDirectory(searchPath);
     const cueFiles = files.filter(isCueFile);
     const audioFiles = files.filter(isAudioFile);
+
+    console.log({ files, options });
+
+    if (options.ignoreFailed && files.includes("__temp_split")) {
+      return foundPairs;
+    }
 
     for (const cueFile of cueFiles) {
       const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
@@ -190,8 +197,6 @@ async function findCueAudioPairsInDirectory(
 
 // Display summary and get user confirmation
 async function confirmProcessing(pairs: CueAudioPair[]): Promise<boolean> {
-  invariant(Array.isArray(pairs), "Pairs must be an array");
-
   logInfo(`Found ${pairs.length} unsplit cue/audio pairs:`);
 
   for (const pair of pairs) {
@@ -275,6 +280,7 @@ async function main() {
   }
 
   const pairs = await scanCueAudioPairs(folderPath, options);
+  console.log({ options, pairs });
 
   if (pairs.length === 0) {
     logInfo("No unsplit cue/audio pairs found.");
