@@ -69,6 +69,8 @@ function parseArguments(args: string[]): {
   let folderPath: string | undefined;
   const ignoreFailedFlags = ["--ignore-failed", "-i"];
 
+  console.log({ args, options });
+
   for (const arg of args) {
     if (hasFlag(arg, ignoreFailedFlags)) {
       options.ignoreFailed = true;
