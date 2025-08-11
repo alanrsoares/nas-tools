@@ -53,6 +53,10 @@ async function hasTempSplit(directory: string): Promise<boolean> {
   return await exists(tempSplitPath);
 }
 
+function hasFlag(arg: string, flags: string[]): boolean {
+  return flags.includes(arg);
+}
+
 // Parse command line arguments
 function parseArguments(args: string[]): {
   folderPath: string;
@@ -63,11 +67,10 @@ function parseArguments(args: string[]): {
   };
 
   let folderPath: string | undefined;
+  const ignoreFailedFlags = ["--ignore-failed", "-i"];
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    if (arg === "--ignore-failed" || arg === "-i") {
+  for (const arg of args) {
+    if (hasFlag(arg, ignoreFailedFlags)) {
       options.ignoreFailed = true;
     } else if (!folderPath) {
       folderPath = arg;
