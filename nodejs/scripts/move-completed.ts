@@ -252,15 +252,9 @@ async function checkArtistExists(artistPath: string): Promise<boolean> {
   return await exists(artistPath);
 }
 
-// Check if album already exists in artist folder
-async function checkAlbumExists(targetPath: string): Promise<boolean> {
-  return await exists(targetPath);
-}
-
 // Handle naming conflicts
 async function resolveNamingConflict(
   targetPath: string,
-  albumName: string,
   options: ScriptOptions
 ): Promise<string> {
   if (options.dryRun) {
@@ -398,17 +392,13 @@ async function moveAlbumFolder(
   operation: MoveOperation,
   options: ScriptOptions
 ): Promise<boolean> {
-  const { sourcePath, targetPath, artistName, albumName } = operation;
+  const { sourcePath, targetPath, albumName } = operation;
 
   try {
     logProgress(`Moving: ${albumName}`);
 
     // Resolve naming conflicts
-    const finalTargetPath = await resolveNamingConflict(
-      targetPath,
-      albumName,
-      options
-    );
+    const finalTargetPath = await resolveNamingConflict(targetPath, options);
 
     // Create target directory
     await ensureDirectory(getDirname(finalTargetPath));
