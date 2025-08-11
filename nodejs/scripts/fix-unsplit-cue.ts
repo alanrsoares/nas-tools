@@ -30,6 +30,10 @@ interface CueAudioPair {
   audioFile: string;
 }
 
+interface ScriptOptions {
+  ignoreFailed: boolean;
+}
+
 // Utility functions
 
 // Check if file is a WAV file
@@ -42,13 +46,72 @@ function isAudioFile(file: string): boolean {
   return isFlacFile(file) || isWavFile(file);
 }
 
+// Check if a directory has an empty __temp_split folder (indicating a failed split)
+async function hasEmptyTempSplit(directory: string): Promise<boolean> {
+  const tempSplitPath = joinPath(directory, "__temp_split");
+
+  try {
+    const tempSplitExists = await exists(tempSplitPath);
+    if (!tempSplitExists) {
+      return false;
+    }
+
+    const tempSplitContents = await readDirectory(tempSplitPath);
+    return tempSplitContents.length === 0;
+  } catch {
+    // If we can't read the directory, assume it's not empty
+    return false;
+  }
+}
+
+// Parse command line arguments
+function parseArguments(args: string[]): {
+  folderPath: string;
+  options: ScriptOptions;
+} {
+  const options: ScriptOptions = {
+    ignoreFailed: false,
+  };
+
+  let folderPath: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--ignore-failed" || arg === "-i") {
+      options.ignoreFailed = true;
+    } else if (!folderPath) {
+      folderPath = arg;
+    } else {
+      throw new Error(`Unexpected argument: ${arg}`);
+    }
+  }
+
+  if (!folderPath) {
+    throw new Error(
+      "Usage: tsx fix-unsplit-cue.ts [--ignore-failed|-i] <folder_path>"
+    );
+  }
+
+  return { folderPath, options };
+}
+
 // Scan for matching .cue and audio files that are not split (recursive)
-async function scanCueAudioPairs(searchPath: string): Promise<CueAudioPair[]> {
+async function scanCueAudioPairs(
+  searchPath: string,
+  options: ScriptOptions
+): Promise<CueAudioPair[]> {
   invariant(searchPath, "Search path is required");
 
   const foundPairs: CueAudioPair[] = [];
 
   try {
+    // Check if this directory should be skipped due to failed split
+    if (options.ignoreFailed && (await hasEmptyTempSplit(searchPath))) {
+      logInfo(`Skipping directory with empty __temp_split: ${searchPath}`);
+      return foundPairs;
+    }
+
     // Check the current directory for cue/audio pairs
     const currentDirPairs = await findCueAudioPairsInDirectory(searchPath);
     foundPairs.push(...currentDirPairs);
@@ -62,7 +125,7 @@ async function scanCueAudioPairs(searchPath: string): Promise<CueAudioPair[]> {
 
     for (const subdir of subdirectories) {
       try {
-        const subdirPairs = await scanCueAudioPairs(subdir);
+        const subdirPairs = await scanCueAudioPairs(subdir, options);
         foundPairs.push(...subdirPairs);
       } catch {
         // Skip if subdirectory can't be accessed
@@ -92,7 +155,7 @@ async function findCueAudioPairsInDirectory(
 
       for (const audioFile of audioFiles) {
         let audioBasename: string;
-        
+
         if (isFlacFile(audioFile)) {
           audioBasename = getBasename(audioFile, FILE_EXTENSIONS.FLAC);
         } else if (isWavFile(audioFile)) {
@@ -184,16 +247,29 @@ async function processCueAudioPair(pair: CueAudioPair): Promise<boolean> {
  * Scans directories for unsplit CUE/Audio file pairs (FLAC or WAV) and provides an interactive
  * interface to split them using bash functions.
  *
+ * Usage: tsx fix-unsplit-cue.ts [--ignore-failed|-i] <folder_path>
+ *
+ * Options:
+ *   --ignore-failed, -i    Skip directories that have an empty __temp_split folder
+ *                          (indicating a previously failed split attempt)
+ *
  * See fix-unsplit-cue.md for detailed specification and usage instructions.
  */
 async function main() {
   const args = process.argv.slice(2);
 
-  // Validate arguments
-  invariant(args.length === 1, "Usage: zx fix-unsplit-cue.ts <folder_path>");
+  // Parse arguments
+  let folderPath: string;
+  let options: ScriptOptions;
 
-  const folderPath = args[0];
-  invariant(folderPath, "Folder path is required");
+  try {
+    const parsed = parseArguments(args);
+    folderPath = parsed.folderPath;
+    options = parsed.options;
+  } catch (error) {
+    logError(`Invalid arguments: ${error}`);
+    process.exit(1);
+  }
 
   const folderExists = await exists(folderPath);
   invariant(
@@ -202,8 +278,11 @@ async function main() {
   );
 
   logInfo(`Scanning '${folderPath}' for unsplit cue/audio pairs...`);
+  if (options.ignoreFailed) {
+    logInfo("Ignoring directories with empty __temp_split folders");
+  }
 
-  const pairs = await scanCueAudioPairs(folderPath);
+  const pairs = await scanCueAudioPairs(folderPath, options);
 
   if (pairs.length === 0) {
     logInfo("No unsplit cue/audio pairs found.");

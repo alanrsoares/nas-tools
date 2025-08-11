@@ -7,7 +7,7 @@ This script scans directories for unsplit CUE/Audio file pairs (FLAC or WAV) and
 ## Usage
 
 ```bash
-zx fix-unsplit-cue.ts <folder_path>
+tsx fix-unsplit-cue.ts <folder_path>
 ```
 
 ## Arguments
