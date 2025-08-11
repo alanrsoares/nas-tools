@@ -46,13 +46,6 @@ function isAudioFile(file: string): boolean {
   return isFlacFile(file) || isWavFile(file);
 }
 
-// Check if a directory has an empty __temp_split folder (indicating a failed split)
-async function hasTempSplit(directory: string): Promise<boolean> {
-  const tempSplitPath = joinPath(directory, "__temp_split");
-
-  return await exists(tempSplitPath);
-}
-
 function hasFlag(arg: string, flags: string[]): boolean {
   return flags.includes(arg);
 }
@@ -140,9 +133,8 @@ async function findCueAudioPairsInDirectory(
     const cueFiles = files.filter(isCueFile);
     const audioFiles = files.filter(isAudioFile);
 
-    console.log({ files });
-
     if (options.ignoreFailed && files.includes("__temp_split")) {
+      logInfo(`Skipping directory with __temp_split: ${searchPath}`);
       return foundPairs;
     }
 
