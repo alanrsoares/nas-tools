@@ -140,9 +140,9 @@ async function findCueAudioPairsInDirectory(
     const cueFiles = files.filter(isCueFile);
     const audioFiles = files.filter(isAudioFile);
 
-    console.log({ files, options });
+    const $hasTempSplit = await hasTempSplit(searchPath);
 
-    if (options.ignoreFailed && files.includes("__temp_split")) {
+    if (options.ignoreFailed && $hasTempSplit) {
       return foundPairs;
     }
 
