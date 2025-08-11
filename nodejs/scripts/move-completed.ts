@@ -21,10 +21,10 @@ import {
   getBasename,
   getDirname,
 } from "./utils.js";
-
+``;
 // Constants
 const DEFAULT_SOURCE_DIR = "/volmain/Download/Transmission/complete/";
-const DEFAULT_TARGET_DIR = "/volmain/Public/Music/";
+const DEFAULT_TARGET_DIR = "/volmain/Public/FLAC/";
 const DEFAULT_BACKUP_DIR = "/volmain/Download/Transmission/backup/";
 const ALPHABETICAL_RANGES = [
   { name: "A-D", pattern: /^[A-D]/i },
@@ -238,6 +238,11 @@ function getTargetDirectory(artistName: string, targetDir: string): string {
     if (range.pattern.test(firstLetter)) {
       return joinPath(targetDir, range.name, artistName);
     }
+  }
+
+  // add to A-Z if it starts with a number
+  if (/^\d/.test(artistName)) {
+    return joinPath(targetDir, "A-Z", artistName);
   }
 
   // Fallback to U-Z for any unmatched characters
