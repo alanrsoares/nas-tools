@@ -249,9 +249,31 @@ function getTargetDirectory(artistName: string, targetDir: string): string {
   return joinPath(targetDir, "U-Z", artistName);
 }
 
-// Check if artist folder already exists
+// Check if artist folder already exists (case insensitive)
 async function checkArtistExists(artistPath: string): Promise<boolean> {
-  return await exists(artistPath);
+  // First check if the exact path exists
+  if (await exists(artistPath)) {
+    return true;
+  }
+
+  // If not found, check for case-insensitive match in the parent directory
+  const parentDir = getDirname(artistPath);
+  const artistName = getBasename(artistPath);
+
+  try {
+    const entries = await readDirectoryWithTypes(parentDir);
+    const directories = entries
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => dirent.name);
+
+    // Check if any directory name matches case-insensitively
+    return directories.some(
+      (dir) => dir.toLowerCase() === artistName.toLowerCase()
+    );
+  } catch {
+    // If we can't read the parent directory, fall back to the original check
+    return false;
+  }
 }
 
 // Handle naming conflicts
