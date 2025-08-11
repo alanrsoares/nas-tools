@@ -1,16 +1,25 @@
 #!/usr/bin/env zx
 
 import { $ } from "zx";
-import * as fs from "fs/promises";
-import * as path from "path";
-import inquirer from "inquirer";
 import invariant from "tiny-invariant";
-
-// Constants
-const FILE_EXTENSIONS = {
-  CUE: ".cue",
-  FLAC: ".flac",
-} as const;
+import {
+  exists,
+  confirm,
+  isFlacFile,
+  isCueFile,
+  getBasename,
+  logInfo,
+  logSuccess,
+  logError,
+  logProgress,
+  logFile,
+  logDirectory,
+  logMusic,
+  readDirectory,
+  displaySummary,
+  joinPath,
+  FILE_EXTENSIONS,
+} from "./utils.js";
 
 const BASH_FUNCTIONS_PATH = "/home/admin/dev/nas-tools/bash/functions.sh";
 
@@ -22,31 +31,6 @@ interface CueFlacPair {
 }
 
 // Utility functions
-const isFlacFile = (file: string) =>
-  file.toLowerCase().endsWith(FILE_EXTENSIONS.FLAC);
-
-const isCueFile = (file: string) =>
-  file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
-
-const getBasename = (file: string, ext: string) => path.basename(file, ext);
-
-const exists = async (path: string) =>
-  await fs
-    .access(path)
-    .then(() => true)
-    .catch(() => false);
-
-const confirm = async (message: string) => {
-  const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
-    {
-      type: "confirm",
-      name: "proceed",
-      message,
-      default: true,
-    },
-  ]);
-  return proceed;
-};
 
 // Scan for matching .cue and .flac files that are not split (recursive)
 async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
@@ -60,10 +44,11 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
     foundPairs.push(...currentDirPairs);
 
     // Recursively scan subdirectories
-    const entries = await fs.readdir(searchPath, { withFileTypes: true });
+    const { readDirectoryWithTypes } = await import("./utils.js");
+    const entries = await readDirectoryWithTypes(searchPath);
     const subdirectories = entries
       .filter((dirent) => dirent.isDirectory())
-      .map((dirent) => path.join(searchPath, dirent.name));
+      .map((dirent) => joinPath(searchPath, dirent.name));
 
     for (const subdir of subdirectories) {
       try {
@@ -75,7 +60,7 @@ async function scanCueFlacPairs(searchPath: string): Promise<CueFlacPair[]> {
       }
     }
   } catch (error) {
-    console.error("❌ Error scanning directories:", error);
+    logError(`Error scanning directories: ${error}`);
   }
 
   return foundPairs;
@@ -88,7 +73,7 @@ async function findCueFlacPairsInDirectory(
   const foundPairs: CueFlacPair[] = [];
 
   try {
-    const files = await fs.readdir(searchPath);
+    const files = await readDirectory(searchPath);
     const cueFiles = files.filter(isCueFile);
     const flacFiles = files.filter(isFlacFile);
 
@@ -102,8 +87,8 @@ async function findCueFlacPairsInDirectory(
           continue;
         }
 
-        const cuePath = path.join(searchPath, cueFile);
-        const flacPath = path.join(searchPath, flacFile);
+        const cuePath = joinPath(searchPath, cueFile);
+        const flacPath = joinPath(searchPath, flacFile);
 
         const [cueExists, flacExists] = await Promise.all([
           exists(cuePath),
@@ -134,12 +119,12 @@ async function findCueFlacPairsInDirectory(
 async function confirmProcessing(pairs: CueFlacPair[]): Promise<boolean> {
   invariant(Array.isArray(pairs), "Pairs must be an array");
 
-  console.log(`\n📋 Found ${pairs.length} unsplit cue/flac pairs:\n`);
+  logInfo(`Found ${pairs.length} unsplit cue/flac pairs:`);
 
   for (const pair of pairs) {
-    console.log(`📂 Directory: ${pair.directory}`);
-    console.log(`  📄 CUE: ${pair.cueFile}`);
-    console.log(`  🎵 FLAC: ${pair.flacFile}\n`);
+    logDirectory(`Directory: ${pair.directory}`);
+    logFile(`  CUE: ${pair.cueFile}`);
+    logMusic(`  FLAC: ${pair.flacFile}`);
   }
 
   return await confirm("Do you want to proceed with splitting these files?");
@@ -151,10 +136,10 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
   invariant(directory, "Directory is required");
   invariant(cueFile, "Cue file is required");
 
-  const cuePath = path.join(directory, cueFile);
+  const cuePath = joinPath(directory, cueFile);
 
   try {
-    console.log(`\n🔄 Processing: ${cueFile}`);
+    logProgress(`Processing: ${cueFile}`);
 
     // Change to the directory and run the bash function
     await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && split_cue_flac ${cueFile}`;
@@ -167,10 +152,10 @@ async function processCueFlacPair(pair: CueFlacPair): Promise<boolean> {
       await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && cleanup_temp_split ${cuePath}`;
     }
 
-    console.log(`✅ Successfully processed: ${cueFile}`);
+    logSuccess(`Successfully processed: ${cueFile}`);
     return true;
   } catch (error) {
-    console.error(`❌ Failed to process ${cueFile}:`, error);
+    logError(`Failed to process ${cueFile}: ${error}`);
     return false;
   }
 }
@@ -198,23 +183,23 @@ async function main() {
     `❌ Directory '${folderPath}' does not exist or is not accessible`
   );
 
-  console.log(`🔍 Scanning '${folderPath}' for unsplit cue/flac pairs...`);
+  logInfo(`Scanning '${folderPath}' for unsplit cue/flac pairs...`);
 
   const pairs = await scanCueFlacPairs(folderPath);
 
   if (pairs.length === 0) {
-    console.log("No unsplit cue/flac pairs found.");
+    logInfo("No unsplit cue/flac pairs found.");
     return;
   }
 
   const proceed = await confirmProcessing(pairs);
 
   if (!proceed) {
-    console.log("Operation cancelled.");
+    logInfo("Operation cancelled.");
     return;
   }
 
-  console.log("\n🔄 Processing files...\n");
+  logProgress("Processing files...");
 
   // Process files serially
   let successCount = 0;
@@ -226,17 +211,17 @@ async function main() {
     invariant(pair.cueFile, "Pair cue file is required");
 
     // before processing, list folder contents and prompt for confirmation
-    const folderContents = await fs.readdir(pair.directory);
-    console.log(`📁 Contents of ${pair.directory}:`);
+    const folderContents = await readDirectory(pair.directory);
+    logDirectory(`Contents of ${pair.directory}:`);
     for (const file of folderContents) {
-      console.log(`  ${file}`);
+      logFile(`-  ${file}`);
     }
-    console.log("");
+    logInfo("");
 
     const proceed = await confirm(`Do you want to process ${pair.cueFile}?`);
 
     if (!proceed) {
-      console.log(`⏭️ Skipped: ${pair.cueFile}`);
+      logInfo(`Skipped: ${pair.cueFile}`);
       continue;
     }
 
@@ -246,28 +231,20 @@ async function main() {
       successCount++;
     } else {
       failureCount++;
-      console.error("🛑 Stopping processing due to failure.");
+      logError("Stopping processing due to failure.");
       break; // Fail-fast: Stop processing on first failure
     }
   }
 
-  console.log("\n📊 Summary:");
-  console.log(`✅ Successfully processed: ${successCount}`);
-  console.log(`❌ Failed: ${failureCount}`);
-  console.log(`📁 Total: ${pairs.length}`);
+  displaySummary(successCount, failureCount, pairs.length);
 
   if (failureCount > 0) {
-    console.log(
-      `⏭️ Skipped: ${
-        pairs.length - successCount - failureCount
-      } remaining files`
-    );
     process.exit(1);
   }
 }
 
 // Run the main function
 main().catch((error) => {
-  console.error("❌ Script failed:", error);
+  logError(`Script failed: ${error}`);
   process.exit(1);
 });

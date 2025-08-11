@@ -1,0 +1,521 @@
+#!/usr/bin/env zx
+
+import { $ } from "zx";
+import * as path from "path";
+import invariant from "tiny-invariant";
+import { parseFile } from "music-metadata";
+import {
+  exists,
+  confirm,
+  isMusicFile,
+  logInfo,
+  logSuccess,
+  logWarning,
+  logError,
+  logProgress,
+  logFile,
+  logDirectory,
+  readDirectoryWithTypes,
+  readDirectory,
+  ensureDirectory,
+  moveFile,
+  displaySummary,
+  joinPath,
+  getBasename,
+  getDirname,
+} from "./utils.js";
+
+// Constants
+const DEFAULT_SOURCE_DIR = "/volmain/Download/Transmission/complete/";
+const DEFAULT_TARGET_DIR = "/volmain/Public/FLAC/";
+const DEFAULT_BACKUP_DIR = "/volmain/Download/Transmission/backup/";
+const ALPHABETICAL_RANGES = [
+  { name: "A-D", pattern: /^[A-D]/i },
+  { name: "E-F", pattern: /^[E-F]/i },
+  { name: "G-I", pattern: /^[G-I]/i },
+  { name: "J-M", pattern: /^[J-M]/i },
+  { name: "N-Q", pattern: /^[N-Q]/i },
+  { name: "R-T", pattern: /^[R-T]/i },
+  { name: "U-Z", pattern: /^[U-Z]/i },
+] as const;
+
+// Types
+interface AlbumFolder {
+  path: string;
+  name: string;
+  artistName?: string;
+  targetPath?: string;
+  musicFiles: string[];
+}
+
+interface MoveOperation {
+  sourcePath: string;
+  targetPath: string;
+  artistName: string;
+  albumName: string;
+  isNewArtist: boolean;
+}
+
+interface ScriptOptions {
+  sourceDir: string;
+  targetDir: string;
+  backupDir: string;
+  dryRun: boolean;
+  interactive: boolean;
+}
+
+// Utility functions
+
+const promptForArtistName = async (
+  folderName: string,
+  suggestions: string[]
+) => {
+  const { promptForInput } = await import("./utils.js");
+  return await promptForInput(
+    `Could not infer artist name for folder: ${folderName}`,
+    suggestions[0] || "",
+    (input: string) => {
+      if (!input.trim()) {
+        return "Artist name cannot be empty";
+      }
+      return true;
+    }
+  );
+};
+
+// Parse command line arguments
+function parseArguments(): ScriptOptions {
+  const args = process.argv.slice(2);
+  const options: ScriptOptions = {
+    sourceDir: DEFAULT_SOURCE_DIR,
+    targetDir: DEFAULT_TARGET_DIR,
+    backupDir: DEFAULT_BACKUP_DIR,
+    dryRun: false,
+    interactive: false,
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case "--source-dir":
+        if (i + 1 < args.length) {
+          options.sourceDir = args[++i]!;
+        } else {
+          console.error("❌ --source-dir requires a path argument");
+          process.exit(1);
+        }
+        break;
+      case "--target-dir":
+        if (i + 1 < args.length) {
+          options.targetDir = args[++i]!;
+        } else {
+          console.error("❌ --target-dir requires a path argument");
+          process.exit(1);
+        }
+        break;
+      case "--backup-dir":
+        if (i + 1 < args.length) {
+          options.backupDir = args[++i]!;
+        } else {
+          console.error("❌ --backup-dir requires a path argument");
+          process.exit(1);
+        }
+        break;
+      case "--dry-run":
+        options.dryRun = true;
+        break;
+      case "--interactive":
+        options.interactive = true;
+        break;
+      case "--help":
+        console.log(`
+Usage: zx move-completed.ts [options]
+
+Options:
+  --source-dir <path>    Source directory to monitor (default: ${DEFAULT_SOURCE_DIR})
+  --target-dir <path>    Target FLAC library directory (default: ${DEFAULT_TARGET_DIR})
+  --backup-dir <path>    Backup directory (default: ${DEFAULT_BACKUP_DIR})
+  --dry-run             Preview changes without making them
+  --interactive         Prompt for artist name when inference fails
+  --help                Show this help message
+        `);
+        process.exit(0);
+    }
+  }
+
+  return options;
+}
+
+// Scan for album folders in the source directory
+async function scanAlbumFolders(sourceDir: string): Promise<AlbumFolder[]> {
+  const albumFolders: AlbumFolder[] = [];
+
+  try {
+    const entries = await readDirectoryWithTypes(sourceDir);
+    const directories = entries
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => joinPath(sourceDir, dirent.name));
+
+    for (const dir of directories) {
+      try {
+        const files = await readDirectory(dir);
+        const musicFiles = files.filter(isMusicFile);
+
+        if (musicFiles.length > 0) {
+          albumFolders.push({
+            path: dir,
+            name: getBasename(dir),
+            musicFiles,
+          });
+        }
+      } catch {
+        // Skip if directory can't be read
+        continue;
+      }
+    }
+  } catch (error) {
+    logError(`Error scanning source directory: ${error}`);
+  }
+
+  return albumFolders;
+}
+
+// Infer artist name from folder name
+function inferArtistFromFolderName(folderName: string): string | null {
+  // Common patterns for artist-album naming
+  const patterns = [
+    /^(.+?)\s*-\s*(.+?)(?:\s*\((\d{4})\))?$/i, // "Artist - Album (Year)"
+    /^(.+?)\s*\/\s*(.+?)$/i, // "Artist/Album"
+    /^(.+?)\s*_\s*(.+?)$/i, // "Artist_Album"
+    /^(.+?)\s*–\s*(.+?)$/i, // "Artist – Album" (en dash)
+  ];
+
+  for (const pattern of patterns) {
+    const match = folderName.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return null;
+}
+
+// Extract artist name from music file metadata
+async function extractArtistFromMetadata(
+  filePath: string
+): Promise<string | null> {
+  try {
+    const metadata = await parseFile(filePath);
+    return metadata.common.artist || null;
+  } catch {
+    return null;
+  }
+}
+
+// Infer artist name using multiple strategies
+async function inferArtistName(
+  albumFolder: AlbumFolder
+): Promise<string | null> {
+  // Strategy 1: Try to infer from folder name
+  const folderArtist = inferArtistFromFolderName(albumFolder.name);
+  if (folderArtist) {
+    return folderArtist;
+  }
+
+  // Strategy 2: Try to extract from music file metadata
+  for (const musicFile of albumFolder.musicFiles) {
+    const musicFilePath = path.join(albumFolder.path, musicFile);
+    const metadataArtist = await extractArtistFromMetadata(musicFilePath);
+    if (metadataArtist) {
+      return metadataArtist;
+    }
+  }
+
+  return null;
+}
+
+// Determine target directory based on artist name
+function getTargetDirectory(artistName: string, targetDir: string): string {
+  const firstLetter = artistName.charAt(0).toUpperCase();
+
+  for (const range of ALPHABETICAL_RANGES) {
+    if (range.pattern.test(firstLetter)) {
+      return joinPath(targetDir, range.name, artistName);
+    }
+  }
+
+  // Fallback to U-Z for any unmatched characters
+  return joinPath(targetDir, "U-Z", artistName);
+}
+
+// Check if artist folder already exists
+async function checkArtistExists(artistPath: string): Promise<boolean> {
+  return await exists(artistPath);
+}
+
+// Check if album already exists in artist folder
+async function checkAlbumExists(targetPath: string): Promise<boolean> {
+  return await exists(targetPath);
+}
+
+// Handle naming conflicts
+async function resolveNamingConflict(
+  targetPath: string,
+  albumName: string,
+  options: ScriptOptions
+): Promise<string> {
+  if (options.dryRun) {
+    return targetPath;
+  }
+
+  let counter = 1;
+  let newPath = targetPath;
+
+  while (await exists(newPath)) {
+    const dir = path.dirname(targetPath);
+    const base = path.basename(targetPath);
+    const ext = path.extname(base);
+    const name = path.basename(base, ext);
+    newPath = path.join(dir, `${name} (${counter})${ext}`);
+    counter++;
+  }
+
+  if (counter > 1) {
+    logWarning(`Album already exists, using: ${getBasename(newPath)}`);
+  }
+
+  return newPath;
+}
+
+// Generate suggestions for artist name
+function generateArtistSuggestions(folderName: string): string[] {
+  const suggestions: string[] = [];
+
+  // Add folder name as first suggestion
+  suggestions.push(folderName);
+
+  // Add common patterns
+  const patterns = [
+    /^(.+?)\s*-\s*(.+?)$/i,
+    /^(.+?)\s*\/\s*(.+?)$/i,
+    /^(.+?)\s*_\s*(.+?)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = folderName.match(pattern);
+    if (match && match[1]) {
+      suggestions.push(match[1].trim());
+    }
+  }
+
+  // Remove duplicates and empty strings
+  return [...new Set(suggestions.filter((s) => s.trim()))];
+}
+
+// Process album folders and determine move operations
+async function processAlbumFolders(
+  albumFolders: AlbumFolder[],
+  options: ScriptOptions
+): Promise<MoveOperation[]> {
+  const moveOperations: MoveOperation[] = [];
+
+  for (const albumFolder of albumFolders) {
+    logInfo(`Processing: ${albumFolder.name}`);
+
+    // Infer artist name
+    let artistName = await inferArtistName(albumFolder);
+
+    if (!artistName) {
+      if (options.interactive) {
+        const suggestions = generateArtistSuggestions(albumFolder.name);
+        artistName = await promptForArtistName(albumFolder.name, suggestions);
+      } else {
+        logWarning(`Could not infer artist name for: ${albumFolder.name}`);
+        continue;
+      }
+    }
+
+    // Determine target path
+    const targetPath = getTargetDirectory(artistName, options.targetDir);
+    const isNewArtist = !(await checkArtistExists(targetPath));
+
+    moveOperations.push({
+      sourcePath: albumFolder.path,
+      targetPath: joinPath(targetPath, albumFolder.name),
+      artistName,
+      albumName: albumFolder.name,
+      isNewArtist,
+    });
+
+    logSuccess(`Artist: ${artistName}`);
+    logDirectory(`Target: ${targetPath}`);
+    logInfo(`New artist: ${isNewArtist}`);
+  }
+
+  return moveOperations;
+}
+
+// Display summary and get user confirmation
+async function confirmProcessing(
+  operations: MoveOperation[],
+  options: ScriptOptions
+): Promise<boolean> {
+  logInfo(`Found ${operations.length} album folders to process:`);
+
+  for (const operation of operations) {
+    logDirectory(`Source: ${operation.sourcePath}`);
+    logFile(`Target: ${operation.targetPath}`);
+    logInfo(`Artist: ${operation.artistName}`);
+    logInfo(`New artist: ${operation.isNewArtist}`);
+  }
+
+  if (options.dryRun) {
+    logInfo("DRY RUN MODE - No files will be moved");
+    return true;
+  }
+
+  return await confirm("Do you want to proceed with moving these albums?");
+}
+
+// Create backup of source folder
+async function createBackup(
+  sourcePath: string,
+  backupDir: string
+): Promise<void> {
+  const backupPath = joinPath(backupDir, getBasename(sourcePath));
+
+  try {
+    await ensureDirectory(backupDir);
+    await $`cp -r "${sourcePath}" "${backupPath}"`;
+    logFile(`Backup created: ${backupPath}`);
+  } catch (error) {
+    logError(`Failed to create backup: ${error}`);
+    throw error;
+  }
+}
+
+// Move album folder to target location
+async function moveAlbumFolder(
+  operation: MoveOperation,
+  options: ScriptOptions
+): Promise<boolean> {
+  const { sourcePath, targetPath, artistName, albumName } = operation;
+
+  try {
+    logProgress(`Moving: ${albumName}`);
+
+    // Resolve naming conflicts
+    const finalTargetPath = await resolveNamingConflict(
+      targetPath,
+      albumName,
+      options
+    );
+
+    // Create target directory
+    await ensureDirectory(getDirname(finalTargetPath));
+
+    // Move the folder
+    await moveFile(sourcePath, finalTargetPath);
+
+    logSuccess(`Successfully moved: ${albumName}`);
+    logFile(`From: ${sourcePath}`);
+    logFile(`To: ${finalTargetPath}`);
+    return true;
+  } catch (error) {
+    logError(`Failed to move ${albumName}: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Move Completed Downloads Script
+ *
+ * Monitors the Transmission download completion directory and automatically
+ * organizes completed music downloads into the appropriate FLAC library structure.
+ *
+ * See move-completed.md for detailed specification and usage instructions.
+ */
+async function main() {
+  const options = parseArguments();
+
+  // Validate directories
+  const sourceExists = await exists(options.sourceDir);
+  invariant(
+    sourceExists,
+    `❌ Source directory '${options.sourceDir}' does not exist or is not accessible`
+  );
+
+  const targetExists = await exists(options.targetDir);
+  invariant(
+    targetExists,
+    `❌ Target directory '${options.targetDir}' does not exist or is not accessible`
+  );
+
+  logInfo(`Scanning '${options.sourceDir}' for album folders...`);
+
+  const albumFolders = await scanAlbumFolders(options.sourceDir);
+
+  if (albumFolders.length === 0) {
+    logInfo("No album folders found.");
+    return;
+  }
+
+  logDirectory(`Found ${albumFolders.length} album folders`);
+
+  const moveOperations = await processAlbumFolders(albumFolders, options);
+
+  if (moveOperations.length === 0) {
+    logInfo("No valid albums to process.");
+    return;
+  }
+
+  const proceed = await confirmProcessing(moveOperations, options);
+
+  if (!proceed) {
+    logInfo("Operation cancelled.");
+    return;
+  }
+
+  logProgress("Processing albums...");
+
+  // Process albums serially
+  let successCount = 0;
+  let failureCount = 0;
+
+  for (const operation of moveOperations) {
+    try {
+      // Create backup if not in dry-run mode
+      if (!options.dryRun) {
+        await createBackup(operation.sourcePath, options.backupDir);
+      }
+
+      // Move the folder
+      const success = options.dryRun
+        ? true
+        : await moveAlbumFolder(operation, options);
+
+      if (success) {
+        successCount++;
+      } else {
+        failureCount++;
+        console.error("🛑 Stopping processing due to failure.");
+        break; // Fail-fast: Stop processing on first failure
+      }
+    } catch (error) {
+      console.error(`❌ Error processing ${operation.albumName}:`, error);
+      failureCount++;
+      break;
+    }
+  }
+
+  displaySummary(successCount, failureCount, moveOperations.length);
+
+  if (failureCount > 0) {
+    process.exit(1);
+  }
+}
+
+// Run the main function
+main().catch((error) => {
+  logError(`Script failed: ${error}`);
+  process.exit(1);
+});
