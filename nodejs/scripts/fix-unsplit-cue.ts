@@ -98,12 +98,6 @@ async function scanCueAudioPairs(
   const foundPairs: CueAudioPair[] = [];
 
   try {
-    // Check if this directory should be skipped due to failed split
-    if (options.ignoreFailed && (await hasTempSplit(searchPath))) {
-      logInfo(`Skipping directory with empty __temp_split: ${searchPath}`);
-      return foundPairs;
-    }
-
     // Check the current directory for cue/audio pairs
     const currentDirPairs = await findCueAudioPairsInDirectory(
       searchPath,
