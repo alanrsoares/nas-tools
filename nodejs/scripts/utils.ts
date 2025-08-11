@@ -215,13 +215,21 @@ export const displaySummary = (
   totalCount: number
 ): void => {
   console.log("\n📊 Summary:");
-  console.log(`✅ Successfully processed: ${successCount}`);
-  console.log(`❌ Failed: ${failureCount}`);
-  console.log(`📁 Total: ${totalCount}`);
-
+  
+  if (successCount > 0) {
+    console.log(`✅ Successfully moved: ${successCount} albums`);
+  }
+  
   if (failureCount > 0) {
-    const skippedCount = totalCount - successCount - failureCount;
-    console.log(`⏭️ Skipped: ${skippedCount} remaining items`);
+    console.log(`❌ Failed: ${failureCount} albums`);
+  }
+  
+  if (successCount === totalCount) {
+    console.log("🎉 All albums processed successfully!");
+  } else if (successCount > 0) {
+    console.log(`📁 Processed ${successCount}/${totalCount} albums`);
+  } else {
+    console.log("😞 No albums were processed successfully");
   }
 };
 

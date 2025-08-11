@@ -274,7 +274,7 @@ async function resolveNamingConflict(
   }
 
   if (counter > 1) {
-    logWarning(`Album already exists, using: ${getBasename(newPath)}`);
+    logWarning(`⚠️  Album already exists, using: ${getBasename(newPath)}`);
   }
 
   return newPath;
@@ -313,8 +313,6 @@ async function processAlbumFolders(
   const moveOperations: MoveOperation[] = [];
 
   for (const albumFolder of albumFolders) {
-    logInfo(`Processing: ${albumFolder.name}`);
-
     // Infer artist name
     let artistName = await inferArtistName(albumFolder);
 
@@ -323,7 +321,7 @@ async function processAlbumFolders(
         const suggestions = generateArtistSuggestions(albumFolder.name);
         artistName = await promptForArtistName(albumFolder.name, suggestions);
       } else {
-        logWarning(`Could not infer artist name for: ${albumFolder.name}`);
+        logWarning(`⚠️  Could not infer artist name for: ${albumFolder.name}`);
         continue;
       }
     }
@@ -340,9 +338,9 @@ async function processAlbumFolders(
       isNewArtist,
     });
 
-    logSuccess(`Artist: ${artistName}`);
-    logDirectory(`Target: ${targetPath}`);
-    logInfo(`New artist: ${isNewArtist}`);
+    logInfo(
+      `${albumFolder.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`
+    );
   }
 
   return moveOperations;
@@ -353,21 +351,21 @@ async function confirmProcessing(
   operations: MoveOperation[],
   options: ScriptOptions
 ): Promise<boolean> {
-  logInfo(`Found ${operations.length} album folders to process:`);
+  logInfo(`📋 Found ${operations.length} albums to process:`);
 
   for (const operation of operations) {
-    logDirectory(`Source: ${operation.sourcePath}`);
-    logFile(`Target: ${operation.targetPath}`);
-    logInfo(`Artist: ${operation.artistName}`);
-    logInfo(`New artist: ${operation.isNewArtist}`);
+    const artistIndicator = operation.isNewArtist ? "🆕" : "📁";
+    logInfo(
+      `${artistIndicator} ${operation.albumName} → ${operation.artistName}`
+    );
   }
 
   if (options.dryRun) {
-    logInfo("DRY RUN MODE - No files will be moved");
+    logInfo("🔍 DRY RUN MODE - No files will be moved");
     return true;
   }
 
-  return await confirm("Do you want to proceed with moving these albums?");
+  return await confirm("Proceed with moving these albums?");
 }
 
 // Create backup of source folder
@@ -378,12 +376,21 @@ async function createBackup(
   const backupPath = joinPath(backupDir, getBasename(sourcePath));
 
   try {
+    // Check if source still exists before attempting backup
+    if (!(await exists(sourcePath))) {
+      logWarning(`⚠️  Source no longer exists: ${getBasename(sourcePath)}`);
+      return;
+    }
+
     await ensureDirectory(backupDir);
-    await $`cp -r "${sourcePath}" "${backupPath}"`;
-    logFile(`Backup created: ${backupPath}`);
+
+    // Use fs.cp for better reliability than shell cp
+    const { cp } = await import("fs/promises");
+    await cp(sourcePath, backupPath, { recursive: true });
+    logSuccess(`✓ Backup: ${getBasename(sourcePath)}`);
   } catch (error) {
-    logError(`Failed to create backup: ${error}`);
-    throw error;
+    logWarning(`⚠️  Backup failed for ${getBasename(sourcePath)}: ${error}`);
+    // Don't throw - continue with move operation
   }
 }
 
@@ -395,6 +402,12 @@ async function moveAlbumFolder(
   const { sourcePath, targetPath, albumName } = operation;
 
   try {
+    // Check if source still exists before attempting move
+    if (!(await exists(sourcePath))) {
+      logWarning(`⚠️  Source no longer exists: ${albumName}`);
+      return false;
+    }
+
     logProgress(`Moving: ${albumName}`);
 
     // Resolve naming conflicts
@@ -406,12 +419,10 @@ async function moveAlbumFolder(
     // Move the folder
     await moveFile(sourcePath, finalTargetPath);
 
-    logSuccess(`Successfully moved: ${albumName}`);
-    logFile(`From: ${sourcePath}`);
-    logFile(`To: ${finalTargetPath}`);
+    logSuccess(`✓ Moved: ${albumName}`);
     return true;
   } catch (error) {
-    logError(`Failed to move ${albumName}: ${error}`);
+    logError(`❌ Failed to move ${albumName}: ${error}`);
     return false;
   }
 }
@@ -445,27 +456,27 @@ async function main() {
   const albumFolders = await scanAlbumFolders(options.sourceDir);
 
   if (albumFolders.length === 0) {
-    logInfo("No album folders found.");
+    logInfo("✨ No album folders found.");
     return;
   }
 
-  logDirectory(`Found ${albumFolders.length} album folders`);
+  logInfo(`📂 Found ${albumFolders.length} album folders`);
 
   const moveOperations = await processAlbumFolders(albumFolders, options);
 
   if (moveOperations.length === 0) {
-    logInfo("No valid albums to process.");
+    logInfo("⚠️  No valid albums to process.");
     return;
   }
 
   const proceed = await confirmProcessing(moveOperations, options);
 
   if (!proceed) {
-    logInfo("Operation cancelled.");
+    logInfo("❌ Operation cancelled.");
     return;
   }
 
-  logProgress("Processing albums...");
+  logProgress("🔄 Processing albums...");
 
   // Process albums serially
   let successCount = 0;
@@ -487,13 +498,14 @@ async function main() {
         successCount++;
       } else {
         failureCount++;
-        console.error("🛑 Stopping processing due to failure.");
-        break; // Fail-fast: Stop processing on first failure
+        // Continue processing other albums instead of stopping
+        logWarning(`⚠️  Skipping ${operation.albumName} due to failure`);
       }
     } catch (error) {
-      console.error(`❌ Error processing ${operation.albumName}:`, error);
+      logError(`❌ Error processing ${operation.albumName}: ${error}`);
       failureCount++;
-      break;
+      // Continue processing other albums instead of stopping
+      logWarning(`⚠️  Skipping ${operation.albumName} due to error`);
     }
   }
 
