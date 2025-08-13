@@ -11,3 +11,13 @@ remove-alias() {
 list-aliases() {
   cat ~/.aliases
 }
+
+kill-port () {
+	PORT=$1
+	lsof -t -i :$PORT | xargs -r kill -9
+}
+
+KILL-PORT() {
+  PORT=$1
+  sudo lsof -t -i :$PORT | xargs -r sudo kill -9
+}
