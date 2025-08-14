@@ -51,9 +51,6 @@ export const isFlacFile = (file: string): boolean =>
 export const isCueFile = (file: string): boolean =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
 
-export const hasExtension = (file: string, extension: string): boolean =>
-  file.toLowerCase().endsWith(extension.toLowerCase());
-
 // Path manipulation utilities
 export const getBasename = (file: string, ext?: string): string => {
   return ext ? path.basename(file, ext) : path.basename(file);
@@ -62,9 +59,6 @@ export const getBasename = (file: string, ext?: string): string => {
 export const getDirname = (filePath: string): string => path.dirname(filePath);
 
 export const joinPath = (...paths: string[]): string => path.join(...paths);
-
-export const resolvePath = (...paths: string[]): string =>
-  path.resolve(...paths);
 
 // User interaction utilities
 export const confirm = async (message: string): Promise<boolean> => {
@@ -129,49 +123,12 @@ export const logDirectory = (message: string): void => {
   console.log(`📂 ${message}`);
 };
 
-// Error handling utilities
-export const handleError = (error: unknown, context: string): void => {
-  if (error instanceof Error) {
-    logError(`${context}: ${error.message}`);
-  } else {
-    logError(`${context}: ${String(error)}`);
-  }
-};
-
-export const withErrorHandling = async <T>(
-  operation: () => Promise<T>,
-  context: string,
-  fallback?: T
-): Promise<T | undefined> => {
-  try {
-    return await operation();
-  } catch (error) {
-    handleError(error, context);
-    return fallback;
-  }
-};
-
 // File operation utilities
 export const moveFile = async (
   source: string,
   destination: string
 ): Promise<void> => {
   await fs.rename(source, destination);
-};
-
-export const copyFile = async (
-  source: string,
-  destination: string
-): Promise<void> => {
-  await fs.copyFile(source, destination);
-};
-
-export const removeFile = async (filePath: string): Promise<void> => {
-  await fs.unlink(filePath);
-};
-
-export const removeDirectory = async (dirPath: string): Promise<void> => {
-  await fs.rmdir(dirPath, { recursive: true });
 };
 
 // Validation utilities
@@ -184,30 +141,6 @@ export const validateDirectory = async (dirPath: string): Promise<boolean> => {
   return true;
 };
 
-export const validateFile = async (filePath: string): Promise<boolean> => {
-  const $exists = await exists(filePath);
-  if (!$exists) {
-    logError(`File '${filePath}' does not exist or is not accessible`);
-    return false;
-  }
-  return true;
-};
-
-// Array utilities
-export const filterFiles = (
-  files: string[],
-  predicate: (file: string) => boolean
-): string[] => {
-  return files.filter(predicate);
-};
-
-export const mapFiles = <T>(
-  files: string[],
-  mapper: (file: string) => T
-): T[] => {
-  return files.map(mapper);
-};
-
 // Summary utilities
 export const displaySummary = (
   successCount: number,
@@ -215,15 +148,15 @@ export const displaySummary = (
   totalCount: number
 ): void => {
   console.log("\n📊 Summary:");
-  
+
   if (successCount > 0) {
     console.log(`✅ Successfully moved: ${successCount} albums`);
   }
-  
+
   if (failureCount > 0) {
     console.log(`❌ Failed: ${failureCount} albums`);
   }
-  
+
   if (successCount === totalCount) {
     console.log("🎉 All albums processed successfully!");
   } else if (successCount > 0) {
@@ -232,21 +165,3 @@ export const displaySummary = (
     console.log("😞 No albums were processed successfully");
   }
 };
-
-// Common types
-export interface FileInfo {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-}
-
-export interface ProcessingResult {
-  success: boolean;
-  error?: string;
-}
-
-export interface SummaryStats {
-  successCount: number;
-  failureCount: number;
-  totalCount: number;
-}
