@@ -3,3 +3,7 @@
 export FLAC='/volmain/Public/FLAC'
 export NAS_TOOLS='/home/admin/dev/nas-tools'
 export TRANSMISSION_COMPLETE='/volmain/Download/Transmission/complete'
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
