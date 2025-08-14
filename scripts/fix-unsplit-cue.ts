@@ -1,10 +1,12 @@
 #!/usr/bin/env zx
 
 import { $ } from "zx";
+import { Command } from "commander";
 import invariant from "tiny-invariant";
+
 import {
   exists,
-  confirm,
+  confirm as confirmPrompt,
   isFlacFile,
   isCueFile,
   getBasename,
@@ -33,53 +35,17 @@ interface CueAudioPair {
 
 interface ScriptOptions {
   ignoreFailed: boolean;
+  yes: boolean;
 }
 
 // Utility functions
 
-// Check if file is a WAV file
 function isWavFile(file: string): boolean {
   return file.toLowerCase().endsWith(FILE_EXTENSIONS.WAV);
 }
 
-// Check if file is an audio file (FLAC or WAV)
 function isAudioFile(file: string): boolean {
   return isFlacFile(file) || isWavFile(file);
-}
-
-function hasFlag(arg: string, flags: string[]): boolean {
-  return flags.includes(arg);
-}
-
-// Parse command line arguments
-function parseArguments(args: string[]): {
-  folderPath: string;
-  options: ScriptOptions;
-} {
-  const options: ScriptOptions = {
-    ignoreFailed: false,
-  };
-
-  let folderPath: string | undefined;
-  const ignoreFailedFlags = ["--ignore-failed", "-i"];
-
-  for (const arg of args) {
-    if (hasFlag(arg, ignoreFailedFlags)) {
-      options.ignoreFailed = true;
-    } else if (!folderPath) {
-      folderPath = arg;
-    } else {
-      throw new Error(`Unexpected argument: ${arg}`);
-    }
-  }
-
-  if (!folderPath) {
-    throw new Error(
-      "Usage: tsx fix-unsplit-cue.ts [--ignore-failed|-i] <folder_path>"
-    );
-  }
-
-  return { folderPath, options };
 }
 
 // Scan for matching .cue and audio files that are not split (recursive)
@@ -184,7 +150,10 @@ async function findCueAudioPairsInDirectory(
 }
 
 // Display summary and get user confirmation
-async function confirmProcessing(pairs: CueAudioPair[]): Promise<boolean> {
+async function confirmProcessing(
+  pairs: CueAudioPair[],
+  ask: (q: string) => Promise<boolean>
+): Promise<boolean> {
   logInfo(`Found ${pairs.length} unsplit cue/audio pairs:`);
 
   for (const pair of pairs) {
@@ -193,11 +162,14 @@ async function confirmProcessing(pairs: CueAudioPair[]): Promise<boolean> {
     logMusic(`  Audio: ${pair.audioFile}`);
   }
 
-  return await confirm("Do you want to proceed with splitting these files?");
+  return await ask("Do you want to proceed with splitting these files?");
 }
 
 // Process a single cue/audio pair using bash function
-async function processCueAudioPair(pair: CueAudioPair): Promise<boolean> {
+async function processCueAudioPair(
+  pair: CueAudioPair,
+  ask: (q: string) => Promise<boolean>
+): Promise<boolean> {
   const { directory, cueFile } = pair;
   invariant(directory, "Directory is required");
   invariant(cueFile, "Cue file is required");
@@ -210,7 +182,7 @@ async function processCueAudioPair(pair: CueAudioPair): Promise<boolean> {
     // Change to the directory and run the bash function
     await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && split_cue_audio ${cueFile}`;
 
-    const proceed = await confirm(
+    const proceed = await ask(
       "Do you want to cleanup original files and move split tracks to original directory?"
     );
 
@@ -227,40 +199,28 @@ async function processCueAudioPair(pair: CueAudioPair): Promise<boolean> {
 }
 
 /**
- * Fix Unsplit CUE Files Script
+ * Fix Unsplit CUE Files CLI
  *
  * Scans directories for unsplit CUE/Audio file pairs (FLAC or WAV) and provides an interactive
  * interface to split them using bash functions.
  *
- * Usage: tsx fix-unsplit-cue.ts [--ignore-failed|-i] <folder_path>
+ * Usage:
+ *   tsx fix-unsplit-cue.ts [options] <folder_path>
  *
  * Options:
- *   --ignore-failed, -i    Skip directories that have an empty __temp_split folder
- *                          (indicating a previously failed split attempt)
- *
- * See fix-unsplit-cue.md for detailed specification and usage instructions.
+ *   -i, --ignore-failed   Skip directories that have an empty __temp_split folder
+ *   -y, --yes             Assume "yes" to all confirmations (non-interactive)
+ *   -V, --version         Show version
+ *   -h, --help            Show help
  */
-async function main() {
-  const args = process.argv.slice(2);
-
-  // Parse arguments
-  let folderPath: string;
-  let options: ScriptOptions;
-
-  try {
-    const parsed = parseArguments(args);
-    folderPath = parsed.folderPath;
-    options = parsed.options;
-  } catch (error) {
-    logError(`Invalid arguments: ${error}`);
-    process.exit(1);
-  }
-
+async function run(folderPath: string, options: ScriptOptions) {
   const folderExists = await exists(folderPath);
   invariant(
     folderExists,
     `❌ Directory '${folderPath}' does not exist or is not accessible`
   );
+
+  const ask = async (q: string) => (options.yes ? true : confirmPrompt(q));
 
   logInfo(`Scanning '${folderPath}' for unsplit cue/audio pairs...`);
   if (options.ignoreFailed) {
@@ -274,8 +234,7 @@ async function main() {
     return;
   }
 
-  const proceed = await confirmProcessing(pairs);
-
+  const proceed = await confirmProcessing(pairs, ask);
   if (!proceed) {
     logInfo("Operation cancelled.");
     return;
@@ -300,14 +259,13 @@ async function main() {
     }
     logInfo("");
 
-    const proceed = await confirm(`Do you want to process ${pair.cueFile}?`);
-
-    if (!proceed) {
+    const doProcess = await ask(`Do you want to process ${pair.cueFile}?`);
+    if (!doProcess) {
       logInfo(`Skipped: ${pair.cueFile}`);
       continue;
     }
 
-    const success = await processCueAudioPair(pair);
+    const success = await processCueAudioPair(pair, ask);
 
     if (success) {
       successCount++;
@@ -321,12 +279,39 @@ async function main() {
   displaySummary(successCount, failureCount, pairs.length);
 
   if (failureCount > 0) {
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 
-// Run the main function
-main().catch((error) => {
-  logError(`Script failed: ${error}`);
-  process.exit(1);
-});
+// Commander CLI setup
+const program = new Command();
+
+program
+  .name("fix-unsplit-cue")
+  .description(
+    "Scan for unsplit CUE/Audio pairs (FLAC/WAV) and split them using your bash functions."
+  )
+  .argument("<folder_path>", "Root folder to scan recursively")
+  .option(
+    "-i, --ignore-failed",
+    "Skip directories that contain an empty __temp_split folder",
+    false
+  )
+  .option("-y, --yes", 'Assume "yes" to all confirmations', false)
+  .showHelpAfterError()
+  .version("1.0.0")
+  .action(async (folderPath: string, opts: Record<string, unknown>) => {
+    const options: ScriptOptions = {
+      ignoreFailed: Boolean(opts.ignoreFailed),
+      yes: Boolean(opts.yes),
+    };
+
+    try {
+      await run(folderPath, options);
+    } catch (error) {
+      logError(`Script failed: ${error}`);
+      process.exit(1);
+    }
+  });
+
+await program.parseAsync(process.argv);
