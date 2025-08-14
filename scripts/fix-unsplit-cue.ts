@@ -16,6 +16,7 @@ import {
   logDirectory,
   logMusic,
   readDirectory,
+  readDirectoryWithTypes,
   displaySummary,
   joinPath,
   FILE_EXTENSIONS,
@@ -98,8 +99,6 @@ async function scanCueAudioPairs(
     );
     foundPairs.push(...currentDirPairs);
 
-    // Recursively scan subdirectories
-    const { readDirectoryWithTypes } = await import("./utils.js");
     const entries = await readDirectoryWithTypes(searchPath);
     const subdirectories = entries
       .filter((dirent) => dirent.isDirectory())
