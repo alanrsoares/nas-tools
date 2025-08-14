@@ -142,16 +142,14 @@ const program = new Command()
   )
   .showHelpAfterError()
   .action(async (url: string, options: Record<string, unknown>) => {
-    const downloadOptions: DownloadOptions = {
+    await run(url, {
       referer: options.referer as string | undefined,
       cookie: options.cookie as string | undefined,
       dest: options.dest as string,
       ua: options.ua as string,
       retries: options.retries as number,
       timeout: options.timeout as number,
-    };
-
-    await run(url, downloadOptions);
+    });
   });
 
 await program.parseAsync(process.argv);
