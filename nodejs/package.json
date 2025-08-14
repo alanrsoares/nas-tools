@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "fix-unsplit-cue": "tsx scripts/fix-unsplit-cue.ts",
-    "move-completed": "tsx scripts/move-completed.ts",
-    "dir-tree": "tsx scripts/dir-tree.ts"
+    "fix-unsplit-cue": "bun scripts/fix-unsplit-cue.ts",
+    "move-completed": "bun scripts/move-completed.ts",
+    "dir-tree": "bun scripts/dir-tree.ts"
   },
   "keywords": [],
   "author": "",
@@ -21,7 +21,6 @@
     "tiny-invariant": "^1.3.3",
     "true-myth": "^9.0.1",
     "ts-pattern": "^5.8.0",
-    "tsx": "^4.20.3",
     "zx": "^8.8.0"
   },
   "devDependencies": {
