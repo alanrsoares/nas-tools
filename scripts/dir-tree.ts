@@ -142,6 +142,15 @@ async function generateTree(
   }
 }
 
+async function run(targetPath: string, options: TreeOptions) {
+  try {
+    await generateTree(targetPath, options);
+  } catch (error) {
+    logError(`Failed to generate directory tree: ${error}`);
+    process.exit(1);
+  }
+}
+
 const program = new Command("dir-tree")
   .description("Prints a tree of the directory structure")
   .argument(
@@ -154,22 +163,17 @@ const program = new Command("dir-tree")
   .option("-f, --files", "Show files (default: false)", false)
   .option("-D, --directories-only", "Show only directories")
   .option("-e, --exclude <patterns>", "Exclude patterns (comma-separated)")
-  .action(async (targetPath: string, options: any) => {
-    try {
-      const treeOptions: TreeOptions = {
-        maxDepth: parseInt(options.maxDepth) || 10,
-        showHidden: options.all || false,
-        showFiles: options.directoriesOnly ? false : options.files !== false,
-        exclude: options.exclude
-          ? options.exclude.split(",").map((s: string) => s.trim())
-          : [],
-      };
-
-      await generateTree(targetPath, treeOptions);
-    } catch (error) {
-      logError(`Failed to generate directory tree: ${error}`);
-      process.exit(1);
-    }
+  .action(async (targetPath: string, options: Record<string, unknown>) => {
+    await run(targetPath, {
+      maxDepth: parseInt(String(options.maxDepth ?? "10")),
+      showHidden: Boolean(options.all),
+      showFiles: !Boolean(options.directoriesOnly),
+      exclude: options.exclude
+        ? String(options.exclude)
+            .split(",")
+            .map((s) => s.trim())
+        : [],
+    });
   });
 
 await program.parseAsync(process.argv);
