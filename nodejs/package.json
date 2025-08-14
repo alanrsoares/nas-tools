@@ -6,13 +6,15 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "fix-unsplit-cue": "tsx scripts/fix-unsplit-cue.ts",
-    "move-completed": "tsx scripts/move-completed.ts"
+    "move-completed": "tsx scripts/move-completed.ts",
+    "dir-tree": "tsx scripts/dir-tree.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "commander": "^14.0.0",
     "inquirer": "^9.3.7",
     "music-metadata": "^11.7.3",
     "neverthrow": "^8.2.0",
