@@ -172,4 +172,4 @@ const program = new Command("dir-tree")
     }
   });
 
-program.parse(process.argv);
+await program.parseAsync(process.argv);
