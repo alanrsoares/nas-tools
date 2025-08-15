@@ -18,7 +18,8 @@
     "noImplicitOverride": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    "noEmit": false,
+    "outDir": "./dist",
     "downlevelIteration": true,
     "types": ["node"],
     "verbatimModuleSyntax": true,
@@ -27,5 +28,5 @@
     "useUnknownInCatchVariables": true
   },
   "include": ["scripts/**/*"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist"]
 }

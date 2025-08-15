@@ -1,98 +1,156 @@
-# NAS Tools - Node.js Scripts
+# NAS Tools CLI
 
-This directory contains Node.js scripts for managing and organizing music files on the NAS.
+A command-line interface for managing music files, downloads, and file operations on your NAS.
 
-## Scripts
+## Installation
 
-### fix-unsplit-cue.ts
-
-Scans directories for unsplit CUE/FLAC file pairs and provides an interactive interface to split them using bash functions.
-
-**Usage:**
+### Local Development Installation
 
 ```bash
-npm run fix-unsplit-cue <folder_path>
-# or
-npx tsx scripts/fix-unsplit-cue.ts <folder_path>
+# Clone the repository
+git clone <repository-url>
+cd nas-tools
+
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+
+# Install globally
+npm install -g .
 ```
 
-**Features:**
+### Usage
 
-- Recursively scans directories for CUE/FLAC pairs
-- Interactive confirmation before processing
-- Uses bash functions for splitting and cleanup
-- Fail-fast error handling
-- Detailed progress reporting
-
-### move-completed.ts
-
-Monitors the Transmission download completion directory and automatically organizes completed music downloads into the appropriate FLAC library structure.
-
-**Usage:**
+After installation, you can use the `nas-tools` command:
 
 ```bash
-npm run move-completed [options]
-# or
-npx tsx scripts/move-completed.ts [options]
+# Show help
+nas-tools --help
+
+# Show available commands
+nas-tools --help
+```
+
+## Commands
+
+### dir-tree
+
+Generate a tree view of a directory structure.
+
+```bash
+nas-tools dir-tree [path] [options]
 ```
 
 **Options:**
 
-- `--source-dir <path>` - Source directory to monitor (default: `/volmain/Download/Transmission/complete/`)
-- `--target-dir <path>` - Target FLAC library directory (default: `/volmain/Public/FLAC/`)
-- `--backup-dir <path>` - Backup directory (default: `/volmain/Download/Transmission/backup/`)
-- `--dry-run` - Preview changes without making them
-- `--interactive` - Prompt for artist name when inference fails
-- `--help` - Show help message
+- `-d, --max-depth <number>` - Maximum depth to traverse (default: "Infinity")
+- `-H, --show-hidden` - Show hidden files and directories
+- `-f, --show-files` - Show files (default: true)
+- `-e, --exclude <patterns...>` - Exclude files/directories matching patterns
 
-**Features:**
-
-- Artist name inference from folder names and metadata
-- Automatic alphabetical subfolder organization (A-D, E-F, G-I, J-M, N-Q, R-T, U-Z)
-- Conflict resolution for duplicate albums
-- Backup creation before moving files
-- Interactive mode for manual artist name input
-- Dry-run mode for safe testing
-- Comprehensive error handling and logging
-
-**Examples:**
+**Example:**
 
 ```bash
-# Basic usage with default paths
-npm run move-completed
-
-# Custom directories with dry-run
-npm run move-completed -- --dry-run --source-dir /path/to/downloads --target-dir /path/to/music
-
-# Interactive mode for manual artist name input
-npm run move-completed -- --interactive
+nas-tools dir-tree /path/to/directory --max-depth 3 --show-hidden
 ```
 
-## Dependencies
+### download
 
-- **zx**: Shell command execution and script running
-- **inquirer**: Interactive command-line prompts
-- **music-metadata**: Reading music file metadata
-- **tiny-invariant**: Runtime assertions
-- **tsx**: TypeScript execution
-
-## Installation
+Download a file from a URL.
 
 ```bash
-npm install
+nas-tools download <url> [options]
+```
+
+**Options:**
+
+- `-d, --dest <path>` - Destination directory (default: "/volmain/Download/ignore")
+- `-r, --referer <url>` - Referer header
+- `-c, --cookie <string>` - Cookie header
+- `-u, --ua <string>` - User-Agent header
+- `--retries <number>` - Number of retries (default: "3")
+- `--timeout <ms>` - Timeout in milliseconds (default: "30000")
+
+**Example:**
+
+```bash
+nas-tools download https://example.com/file.zip --dest ./downloads --retries 5
+```
+
+### fix-unsplit-cue
+
+Scan for unsplit CUE/Audio pairs (FLAC/WAV) and split them using bash functions.
+
+```bash
+nas-tools fix-unsplit-cue <folder_path> [options]
+```
+
+**Options:**
+
+- `-i, --ignore-failed` - Skip directories that contain an empty \_\_temp_split folder
+- `-y, --yes` - Assume "yes" to all confirmations
+
+**Example:**
+
+```bash
+nas-tools fix-unsplit-cue /path/to/music --yes
+```
+
+### move-completed
+
+Monitor Transmission download completion directory and organize completed music downloads into the music library structure.
+
+```bash
+nas-tools move-completed [options]
+```
+
+**Options:**
+
+- `-s, --source-dir <path>` - Source directory to monitor (default: "/volmain/Download/Transmission/complete/")
+- `-t, --target-dir <path>` - Target music library directory (default: "/volmain/Public/FLAC/")
+- `-b, --backup-dir <path>` - Backup directory (default: "/volmain/Download/Transmission/backup/")
+- `--dry-run` - Preview changes without making them
+- `-i, --interactive` - Prompt for artist name when inference fails
+
+**Example:**
+
+```bash
+nas-tools move-completed --dry-run --interactive
 ```
 
 ## Development
 
-The scripts are written in TypeScript and use tsx for execution. To run them during development:
+### Building
 
 ```bash
-npx tsx scripts/script-name.ts [arguments]
+npm run build
 ```
 
-## Documentation
+### Development Mode
 
-Each script has detailed documentation in its corresponding `.md` file:
+```bash
+npm run dev
+```
 
-- [fix-unsplit-cue.md](scripts/fix-unsplit-cue.md)
-- [move-completed.md](scripts/move-completed.md)
+### Scripts
+
+The original scripts are still available for direct execution:
+
+```bash
+npm run fix-unsplit-cue
+npm run move-completed
+npm run dir-tree
+npm run download
+```
+
+## Requirements
+
+- Node.js 18+
+- npm or bun
+- TypeScript 5.9+
+
+## License
+
+ISC
