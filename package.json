@@ -9,12 +9,12 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "bun run scripts/cli.ts",
+    "dev": "bun run cli/cli.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "fix-unsplit-cue": "bun scripts/fix-unsplit-cue.ts",
-    "move-completed": "bun scripts/move-completed.ts",
-    "dir-tree": "bun scripts/dir-tree.ts",
-    "download": "bun scripts/download.ts"
+    "fix-unsplit-cue": "bun cli/fix-unsplit-cue.ts",
+    "move-completed": "bun cli/move-completed.ts",
+    "dir-tree": "bun cli/dir-tree.ts",
+    "download": "bun cli/download.ts"
   },
   "keywords": [
     "cli",

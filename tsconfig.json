@@ -27,6 +27,6 @@
     "noPropertyAccessFromIndexSignature": true,
     "useUnknownInCatchVariables": true
   },
-  "include": ["scripts/**/*"],
+  "include": ["cli/**/*"],
   "exclude": ["node_modules", "dist"]
 }
