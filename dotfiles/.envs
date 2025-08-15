@@ -8,3 +8,4 @@ export TRANSMISSION_COMPLETE='/volmain/Download/Transmission/complete'
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+export PATH="/volmain/node20/bin:$PATH"
