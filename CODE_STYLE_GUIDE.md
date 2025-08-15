@@ -2,6 +2,13 @@
 
 This document outlines the coding standards and best practices for the nas-tools project.
 
+projct facts:
+
+- Language: typescript
+- Package manager: bun
+- nodejs: v20.x
+- bun: v1.2.x
+
 ## Function Declarations
 
 ### Arrow Functions vs Named Functions
