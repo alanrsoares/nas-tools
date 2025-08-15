@@ -98,10 +98,7 @@ async function buildTree(
 }
 
 // Main function to generate and display the tree
-async function generateTree(
-  dirPath: string,
-  options: TreeOptions = {}
-): Promise<void> {
+async function run(dirPath: string, options: TreeOptions = {}): Promise<void> {
   try {
     // Validate the directory exists
     await validateDirectory(dirPath);
@@ -143,6 +140,6 @@ export function dirTreeCommand(program: Command): void {
         exclude: options.exclude || [],
       };
 
-      await generateTree(path, treeOptions);
+      await run(path, treeOptions);
     });
 }

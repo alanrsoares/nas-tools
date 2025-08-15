@@ -58,10 +58,7 @@ async function fetchOnce(
   }
 }
 
-async function downloadFile(
-  url: string,
-  options: DownloadOptions
-): Promise<void> {
+async function run(url: string, options: DownloadOptions): Promise<void> {
   await mkdir(options.dest, { recursive: true });
 
   const headers: Record<string, string> = {
@@ -130,7 +127,7 @@ export function downloadCommand(program: Command): void {
       };
 
       try {
-        await downloadFile(url, downloadOptions);
+        await run(url, downloadOptions);
       } catch (error) {
         console.error(`Download failed: ${error}`);
         process.exit(1);
