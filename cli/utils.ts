@@ -4,6 +4,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import inquirer from "inquirer";
 import type { Dirent } from "fs";
+import pc from "picocolors";
 
 // Common constants
 export const FILE_EXTENSIONS = {
@@ -95,35 +96,35 @@ export const promptForInput = async (
 
 // Logging utilities
 export const logInfo = (message: string): void => {
-  console.log(`ℹ️  ${message}`);
+  console.log(`${pc.blue("ℹ")} ${message}`);
 };
 
 export const logSuccess = (message: string): void => {
-  console.log(`✅ ${message}`);
+  console.log(`${pc.green("✓")} ${message}`);
 };
 
 export const logWarning = (message: string): void => {
-  console.log(`⚠️  ${message}`);
+  console.log(`${pc.yellow("⚠")} ${message}`);
 };
 
 export const logError = (message: string): void => {
-  console.error(`❌ ${message}`);
+  console.error(`${pc.red("✗")} ${message}`);
 };
 
 export const logProgress = (message: string): void => {
-  console.log(`🔄 ${message}`);
+  console.log(`${pc.cyan("⟳")} ${message}`);
 };
 
 export const logFile = (message: string): void => {
-  console.log(`📁 ${message}`);
+  console.log(`${pc.magenta("📄")} ${message}`);
 };
 
 export const logMusic = (message: string): void => {
-  console.log(`🎵 ${message}`);
+  console.log(`${pc.blue("♪")} ${message}`);
 };
 
 export const logDirectory = (message: string): void => {
-  console.log(`📂 ${message}`);
+  console.log(`${pc.cyan("📁")} ${message}`);
 };
 
 // File operation utilities
@@ -150,21 +151,31 @@ export const displaySummary = (
   failureCount: number,
   totalCount: number
 ): void => {
-  console.log("\n📊 Summary:");
+  console.log(`\n${pc.bold(pc.blue("📊 Summary:"))}`);
 
   if (successCount > 0) {
-    console.log(`✅ Successfully moved: ${successCount} albums`);
+    console.log(
+      `${pc.green("✓")} Successfully moved: ${pc.bold(
+        successCount.toString()
+      )} albums`
+    );
   }
 
   if (failureCount > 0) {
-    console.log(`❌ Failed: ${failureCount} albums`);
+    console.log(
+      `${pc.red("✗")} Failed: ${pc.bold(failureCount.toString())} albums`
+    );
   }
 
   if (successCount === totalCount) {
-    console.log("🎉 All albums processed successfully!");
+    console.log(`${pc.green("★")} All albums processed successfully!`);
   } else if (successCount > 0) {
-    console.log(`📁 Processed ${successCount}/${totalCount} albums`);
+    console.log(
+      `${pc.cyan("📁")} Processed ${pc.bold(successCount.toString())}/${pc.bold(
+        totalCount.toString()
+      )} albums`
+    );
   } else {
-    console.log("😞 No albums were processed successfully");
+    console.log(`${pc.red("☹")} No albums were processed successfully`);
   }
 };
