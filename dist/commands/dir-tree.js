@@ -87,7 +87,9 @@ export function dirTreeCommand(program) {
         .option("-e, --exclude <patterns...>", "Exclude files/directories matching patterns")
         .action(async (path, options) => {
         const treeOptions = {
-            maxDepth: options.maxDepth === "Infinity" ? Infinity : parseInt(options.maxDepth),
+            maxDepth: options.maxDepth === "Infinity"
+                ? Infinity
+                : parseInt(options.maxDepth),
             showHidden: options.showHidden || false,
             showFiles: options.showFiles !== false, // Default to true
             exclude: options.exclude || [],

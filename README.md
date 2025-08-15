@@ -6,6 +6,8 @@ A command-line interface for managing music files, downloads, and file operation
 
 ### Local Development Installation
 
+#### Using npm (Recommended)
+
 ```bash
 # Clone the repository
 git clone <repository-url>
@@ -19,6 +21,26 @@ npm run build
 
 # Install globally
 npm install -g .
+```
+
+#### Using Bun
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd nas-tools
+
+# Install dependencies
+bun install
+
+# Build the project
+bun run build
+
+# Option 1: Install globally with npm (most reliable)
+npm install -g .
+
+# Option 2: Use Bun's link feature for development
+bun link
 ```
 
 ### Usage
