@@ -2,7 +2,7 @@
 
 This document outlines the coding standards and best practices for the nas-tools project.
 
-projct facts:
+project facts:
 
 - Language: typescript
 - Package manager: bun
