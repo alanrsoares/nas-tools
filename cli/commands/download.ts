@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
-import { fetch } from "bun";
+import fetch, { type Response, type Headers } from "node-fetch";
 
 const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
