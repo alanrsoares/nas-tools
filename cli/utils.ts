@@ -31,19 +31,16 @@ export const exists = async (path: string): Promise<boolean> =>
     .then(() => true)
     .catch(() => false);
 
-export const ensureDirectory = async (dirPath: string): Promise<void> => {
+export async function ensureDirectory(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true });
-};
+}
 
-export const readDirectory = async (dirPath: string): Promise<string[]> => {
-  return await fs.readdir(dirPath);
-};
+export const readDirectory = async (dirPath: string): Promise<string[]> =>
+  await fs.readdir(dirPath);
 
 export const readDirectoryWithTypes = async (
   dirPath: string
-): Promise<Dirent[]> => {
-  return await fs.readdir(dirPath, { withFileTypes: true });
-};
+): Promise<Dirent[]> => await fs.readdir(dirPath, { withFileTypes: true });
 
 // File type checking utilities
 export const isMusicFile = (file: string): boolean =>
@@ -56,16 +53,15 @@ export const isCueFile = (file: string): boolean =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
 
 // Path manipulation utilities
-export const getBasename = (file: string, ext?: string): string => {
-  return ext ? path.basename(file, ext) : path.basename(file);
-};
+export const getBasename = (file: string, ext?: string): string =>
+  ext ? path.basename(file, ext) : path.basename(file);
 
 export const getDirname = (filePath: string): string => path.dirname(filePath);
 
 export const joinPath = (...paths: string[]): string => path.join(...paths);
 
 // User interaction utilities
-export const confirm = async (message: string): Promise<boolean> => {
+export async function confirm(message: string): Promise<boolean> {
   const { proceed } = await inquirer.prompt<{ proceed: boolean }>([
     {
       type: "confirm",
@@ -75,13 +71,13 @@ export const confirm = async (message: string): Promise<boolean> => {
     },
   ]);
   return proceed;
-};
+}
 
-export const promptForInput = async (
+export async function promptForInput(
   message: string,
   defaultValue?: string,
   validator?: (input: string) => boolean | string
-): Promise<string> => {
+): Promise<string> {
   const { value } = await inquirer.prompt<{ value: string }>([
     {
       type: "input",
@@ -92,65 +88,57 @@ export const promptForInput = async (
     },
   ]);
   return value.trim();
-};
+}
 
 // Logging utilities
-export const logInfo = (message: string): void => {
+export const logInfo = (message: string): void =>
   console.log(`${pc.blue("ℹ")} ${message}`);
-};
 
-export const logSuccess = (message: string): void => {
+export const logSuccess = (message: string): void =>
   console.log(`${pc.green("✓")} ${message}`);
-};
 
-export const logWarning = (message: string): void => {
+export const logWarning = (message: string): void =>
   console.log(`${pc.yellow("⚠")} ${message}`);
-};
 
-export const logError = (message: string): void => {
+export const logError = (message: string): void =>
   console.error(`${pc.red("✗")} ${message}`);
-};
 
-export const logProgress = (message: string): void => {
+export const logProgress = (message: string): void =>
   console.log(`${pc.cyan("⟳")} ${message}`);
-};
 
-export const logFile = (message: string): void => {
+export const logFile = (message: string): void =>
   console.log(`${pc.magenta("📄")} ${message}`);
-};
 
-export const logMusic = (message: string): void => {
+export const logMusic = (message: string): void =>
   console.log(`${pc.blue("♪")} ${message}`);
-};
 
-export const logDirectory = (message: string): void => {
+export const logDirectory = (message: string): void =>
   console.log(`${pc.cyan("📁")} ${message}`);
-};
 
 // File operation utilities
-export const moveFile = async (
+export async function moveFile(
   source: string,
   destination: string
-): Promise<void> => {
+): Promise<void> {
   await fs.rename(source, destination);
-};
+}
 
 // Validation utilities
-export const validateDirectory = async (dirPath: string): Promise<boolean> => {
+export async function validateDirectory(dirPath: string): Promise<boolean> {
   const $exists = await exists(dirPath);
   if (!$exists) {
     logError(`Directory '${dirPath}' does not exist or is not accessible`);
     return false;
   }
   return true;
-};
+}
 
 // Summary utilities
-export const displaySummary = (
+export function displaySummary(
   successCount: number,
   failureCount: number,
   totalCount: number
-): void => {
+): void {
   console.log(`\n${pc.bold(pc.blue("📊 Summary:"))}`);
 
   if (successCount > 0) {
@@ -178,4 +166,4 @@ export const displaySummary = (
   } else {
     console.log(`${pc.red("☹")} No albums were processed successfully`);
   }
-};
+}
