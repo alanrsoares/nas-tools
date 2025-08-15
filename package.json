@@ -11,7 +11,7 @@
     "build": "tsc",
     "dev": "bun run cli/cli.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prelink": "bun run build"
+    "LINK": "bun run build && bun link"
   },
   "keywords": [
     "cli",
