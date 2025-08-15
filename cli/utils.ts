@@ -1,9 +1,8 @@
 #!/usr/bin/env zx
-
+import type { Dirent } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 import inquirer from "inquirer";
-import type { Dirent } from "fs";
 import pc from "picocolors";
 
 // Common constants
@@ -39,7 +38,7 @@ export const readDirectory = async (dirPath: string): Promise<string[]> =>
   await fs.readdir(dirPath);
 
 export const readDirectoryWithTypes = async (
-  dirPath: string
+  dirPath: string,
 ): Promise<Dirent[]> => await fs.readdir(dirPath, { withFileTypes: true });
 
 // File type checking utilities
@@ -76,7 +75,7 @@ export async function confirm(message: string): Promise<boolean> {
 export async function promptForInput(
   message: string,
   defaultValue?: string,
-  validator?: (input: string) => boolean | string
+  validator?: (input: string) => boolean | string,
 ): Promise<string> {
   const { value } = await inquirer.prompt<{ value: string }>([
     {
@@ -118,7 +117,7 @@ export const logDirectory = (message: string): void =>
 // File operation utilities
 export async function moveFile(
   source: string,
-  destination: string
+  destination: string,
 ): Promise<void> {
   await fs.rename(source, destination);
 }
@@ -137,21 +136,21 @@ export async function validateDirectory(dirPath: string): Promise<boolean> {
 export function displaySummary(
   successCount: number,
   failureCount: number,
-  totalCount: number
+  totalCount: number,
 ): void {
   console.log(`\n${pc.bold(pc.blue("📊 Summary:"))}`);
 
   if (successCount > 0) {
     console.log(
       `${pc.green("✓")} Successfully moved: ${pc.bold(
-        successCount.toString()
-      )} albums`
+        successCount.toString(),
+      )} albums`,
     );
   }
 
   if (failureCount > 0) {
     console.log(
-      `${pc.red("✗")} Failed: ${pc.bold(failureCount.toString())} albums`
+      `${pc.red("✗")} Failed: ${pc.bold(failureCount.toString())} albums`,
     );
   }
 
@@ -160,8 +159,8 @@ export function displaySummary(
   } else if (successCount > 0) {
     console.log(
       `${pc.cyan("📁")} Processed ${pc.bold(successCount.toString())}/${pc.bold(
-        totalCount.toString()
-      )} albums`
+        totalCount.toString(),
+      )} albums`,
     );
   } else {
     console.log(`${pc.red("☹")} No albums were processed successfully`);

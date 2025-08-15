@@ -1,25 +1,25 @@
 import { Command } from "commander";
-import { $ } from "zx";
 import invariant from "tiny-invariant";
+import { $ } from "zx";
 
 import {
-  exists,
   confirm as confirmPrompt,
-  isFlacFile,
-  isCueFile,
+  displaySummary,
+  exists,
+  FILE_EXTENSIONS,
   getBasename,
-  logInfo,
-  logSuccess,
-  logError,
-  logProgress,
-  logFile,
+  isCueFile,
+  isFlacFile,
+  joinPath,
   logDirectory,
+  logError,
+  logFile,
+  logInfo,
   logMusic,
+  logProgress,
+  logSuccess,
   readDirectory,
   readDirectoryWithTypes,
-  displaySummary,
-  joinPath,
-  FILE_EXTENSIONS,
 } from "../utils.js";
 
 const BASH_FUNCTIONS_PATH = "/home/admin/dev/nas-tools/bash/functions.sh";
@@ -49,7 +49,7 @@ function isAudioFile(file: string): boolean {
 // Scan for matching .cue and audio files that are not split (recursive)
 async function scanCueAudioPairs(
   searchPath: string,
-  options: ScriptOptions
+  options: ScriptOptions,
 ): Promise<CueAudioPair[]> {
   invariant(searchPath, "Search path is required");
 
@@ -59,7 +59,7 @@ async function scanCueAudioPairs(
     // Check the current directory for cue/audio pairs
     const currentDirPairs = await findCueAudioPairsInDirectory(
       searchPath,
-      options
+      options,
     );
     foundPairs.push(...currentDirPairs);
 
@@ -87,7 +87,7 @@ async function scanCueAudioPairs(
 // Find cue/audio pairs in a single directory
 async function findCueAudioPairsInDirectory(
   searchPath: string,
-  options: ScriptOptions
+  options: ScriptOptions,
 ): Promise<CueAudioPair[]> {
   const foundPairs: CueAudioPair[] = [];
 
@@ -150,7 +150,7 @@ async function findCueAudioPairsInDirectory(
 // Display summary and get user confirmation
 async function confirmProcessing(
   pairs: CueAudioPair[],
-  ask: (q: string) => Promise<boolean>
+  ask: (q: string) => Promise<boolean>,
 ): Promise<boolean> {
   logInfo(`Found ${pairs.length} unsplit cue/audio pairs:`);
 
@@ -166,7 +166,7 @@ async function confirmProcessing(
 // Process a single cue/audio pair using bash function
 async function processCueAudioPair(
   pair: CueAudioPair,
-  ask: (q: string) => Promise<boolean>
+  ask: (q: string) => Promise<boolean>,
 ): Promise<boolean> {
   const { directory, cueFile } = pair;
   invariant(directory, "Directory is required");
@@ -181,7 +181,7 @@ async function processCueAudioPair(
     await $`cd ${directory} && source ${BASH_FUNCTIONS_PATH} && split_cue_audio ${cueFile}`;
 
     const proceed = await ask(
-      "Do you want to cleanup original files and move split tracks to original directory?"
+      "Do you want to cleanup original files and move split tracks to original directory?",
     );
 
     if (proceed) {
@@ -200,7 +200,7 @@ async function run(folderPath: string, options: ScriptOptions) {
   const folderExists = await exists(folderPath);
   invariant(
     folderExists,
-    `❌ Directory '${folderPath}' does not exist or is not accessible`
+    `❌ Directory '${folderPath}' does not exist or is not accessible`,
   );
 
   const ask = async (q: string) => (options.yes ? true : confirmPrompt(q));
@@ -270,13 +270,13 @@ export function fixUnsplitCueCommand(program: Command): void {
   program
     .command("fix-unsplit-cue")
     .description(
-      "Scan for unsplit CUE/Audio pairs (FLAC/WAV) and split them using bash functions"
+      "Scan for unsplit CUE/Audio pairs (FLAC/WAV) and split them using bash functions",
     )
     .argument("<folder_path>", "Root folder to scan recursively")
     .option(
       "-i, --ignore-failed",
       "Skip directories that contain an empty __temp_split folder",
-      false
+      false,
     )
     .option("-y, --yes", 'Assume "yes" to all confirmations', false)
     .action(async (folderPath: string, options: any) => {

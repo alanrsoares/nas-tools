@@ -1,8 +1,7 @@
-import { Command } from "commander";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
-
-import fetch, { type Response, type Headers } from "node-fetch";
+import { Command } from "commander";
+import fetch, { type Headers, type Response } from "node-fetch";
 
 const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
@@ -41,7 +40,7 @@ function filenameFromHeaders(url: string, headers: Headers): string {
 async function fetchOnce(
   url: string,
   headers: Record<string, string>,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<Response> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs).unref?.();

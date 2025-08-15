@@ -1,24 +1,25 @@
-import { Command } from "commander";
 import * as path from "path";
-import invariant from "tiny-invariant";
+import { Command } from "commander";
 import { parseFile } from "music-metadata";
+import invariant from "tiny-invariant";
+
 import {
-  exists,
   confirm,
-  isMusicFile,
-  logInfo,
-  logSuccess,
-  logWarning,
-  logError,
-  logProgress,
-  readDirectoryWithTypes,
-  readDirectory,
-  ensureDirectory,
-  moveFile,
   displaySummary,
-  joinPath,
+  ensureDirectory,
+  exists,
   getBasename,
   getDirname,
+  isMusicFile,
+  joinPath,
+  logError,
+  logInfo,
+  logProgress,
+  logSuccess,
+  logWarning,
+  moveFile,
+  readDirectory,
+  readDirectoryWithTypes,
 } from "../utils.js";
 
 // Constants
@@ -64,7 +65,7 @@ interface ScriptOptions {
 
 const promptForArtistName = async (
   folderName: string,
-  suggestions: string[]
+  suggestions: string[],
 ) => {
   const { promptForInput } = await import("../utils.js");
   return await promptForInput(
@@ -75,7 +76,7 @@ const promptForArtistName = async (
         return "Artist name cannot be empty";
       }
       return true;
-    }
+    },
   );
 };
 
@@ -115,7 +116,7 @@ async function scanAlbumFolders(sourceDir: string): Promise<AlbumFolder[]> {
 
 // Infer artist name from music files metadata
 async function inferArtistName(
-  albumFolder: AlbumFolder
+  albumFolder: AlbumFolder,
 ): Promise<string | null> {
   for (const musicFile of albumFolder.musicFiles) {
     try {
@@ -167,7 +168,7 @@ async function checkArtistExists(artistPath: string): Promise<boolean> {
 
     // Check if any directory name matches case-insensitively
     return directories.some(
-      (dir) => dir.toLowerCase() === artistName.toLowerCase()
+      (dir) => dir.toLowerCase() === artistName.toLowerCase(),
     );
   } catch {
     // If we can't read the parent directory, fall back to the original check
@@ -178,7 +179,7 @@ async function checkArtistExists(artistPath: string): Promise<boolean> {
 // Handle naming conflicts
 async function resolveNamingConflict(
   targetPath: string,
-  options: ScriptOptions
+  options: ScriptOptions,
 ): Promise<string> {
   if (options.dryRun) {
     return targetPath;
@@ -231,7 +232,7 @@ function generateArtistSuggestions(folderName: string): string[] {
 // Process album folders and determine move operations
 async function processAlbumFolders(
   albumFolders: AlbumFolder[],
-  options: ScriptOptions
+  options: ScriptOptions,
 ): Promise<MoveOperation[]> {
   const moveOperations: MoveOperation[] = [];
 
@@ -262,7 +263,7 @@ async function processAlbumFolders(
     });
 
     logInfo(
-      `${albumFolder.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`
+      `${albumFolder.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`,
     );
   }
 
@@ -272,14 +273,14 @@ async function processAlbumFolders(
 // Display summary and get user confirmation
 async function confirmProcessing(
   operations: MoveOperation[],
-  options: ScriptOptions
+  options: ScriptOptions,
 ): Promise<boolean> {
   logInfo(`📋 Found ${operations.length} albums to process:`);
 
   for (const operation of operations) {
     const artistIndicator = operation.isNewArtist ? "🆕" : "📁";
     logInfo(
-      `${artistIndicator} ${operation.albumName} → ${operation.artistName}`
+      `${artistIndicator} ${operation.albumName} → ${operation.artistName}`,
     );
   }
 
@@ -294,7 +295,7 @@ async function confirmProcessing(
 // Create backup of source folder
 async function createBackup(
   sourcePath: string,
-  backupDir: string
+  backupDir: string,
 ): Promise<void> {
   const backupPath = joinPath(backupDir, getBasename(sourcePath));
 
@@ -320,7 +321,7 @@ async function createBackup(
 // Move album folder to target location
 async function moveAlbumFolder(
   operation: MoveOperation,
-  options: ScriptOptions
+  options: ScriptOptions,
 ): Promise<boolean> {
   const { sourcePath, targetPath, albumName } = operation;
 
@@ -355,13 +356,13 @@ async function run(options: ScriptOptions) {
   const sourceExists = await exists(options.sourceDir);
   invariant(
     sourceExists,
-    `❌ Source directory '${options.sourceDir}' does not exist or is not accessible`
+    `❌ Source directory '${options.sourceDir}' does not exist or is not accessible`,
   );
 
   const targetExists = await exists(options.targetDir);
   invariant(
     targetExists,
-    `❌ Target directory '${options.targetDir}' does not exist or is not accessible`
+    `❌ Target directory '${options.targetDir}' does not exist or is not accessible`,
   );
 
   logInfo(`Scanning '${options.sourceDir}' for album folders...`);
@@ -433,24 +434,24 @@ export function moveCompletedCommand(program: Command): void {
   program
     .command("move-completed")
     .description(
-      "Monitor Transmission download completion directory and organize completed music downloads into the music library structure"
+      "Monitor Transmission download completion directory and organize completed music downloads into the music library structure",
     )
     .option(
       "-s, --source-dir <path>",
       "Source directory to monitor",
-      DEFAULT_SOURCE_DIR
+      DEFAULT_SOURCE_DIR,
     )
     .option(
       "-t, --target-dir <path>",
       "Target music library directory",
-      DEFAULT_TARGET_DIR
+      DEFAULT_TARGET_DIR,
     )
     .option("-b, --backup-dir <path>", "Backup directory", DEFAULT_BACKUP_DIR)
     .option("--dry-run", "Preview changes without making them", false)
     .option(
       "-i, --interactive",
       "Prompt for artist name when inference fails",
-      false
+      false,
     )
     .action(async (options: any) => {
       const scriptOptions: ScriptOptions = {

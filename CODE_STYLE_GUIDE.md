@@ -55,15 +55,15 @@ export async function confirm(message: string): Promise<boolean> {
 export function displaySummary(
   successCount: number,
   failureCount: number,
-  totalCount: number
+  totalCount: number,
 ): void {
   console.log(`\n${pc.bold(pc.blue("📊 Summary:"))}`);
 
   if (successCount > 0) {
     console.log(
       `${pc.green("✓")} Successfully moved: ${pc.bold(
-        successCount.toString()
-      )} albums`
+        successCount.toString(),
+      )} albums`,
     );
   }
   // ... more logic
@@ -111,10 +111,10 @@ export function logInfo(message: string): void { /* ... */ }
 
 ```typescript
 // ✅ Good - Organized imports
+import type { Dirent } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 import inquirer from "inquirer";
-import type { Dirent } from "fs";
 import pc from "picocolors";
 
 // ✅ Good - Constants with proper typing

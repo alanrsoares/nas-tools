@@ -1,8 +1,9 @@
-import { Command } from "commander";
 import * as path from "path";
+import { Command } from "commander";
+
 import {
-  readDirectoryWithTypes,
   logError,
+  readDirectoryWithTypes,
   validateDirectory,
 } from "../utils.js";
 
@@ -26,7 +27,7 @@ async function buildTree(
   dirPath: string,
   prefix: string = "",
   depth: number = 0,
-  options: TreeOptions = {}
+  options: TreeOptions = {},
 ): Promise<string[]> {
   const {
     maxDepth = Infinity,
@@ -84,7 +85,7 @@ async function buildTree(
           childPath,
           prefix + nextPrefix,
           depth + 1,
-          options
+          options,
         );
         lines.push(...childLines);
       }
@@ -127,7 +128,7 @@ export function dirTreeCommand(program: Command): void {
     .option("-f, --show-files", "Show files (default: true)")
     .option(
       "-e, --exclude <patterns...>",
-      "Exclude files/directories matching patterns"
+      "Exclude files/directories matching patterns",
     )
     .action(async (path: string, options: any) => {
       const treeOptions: TreeOptions = {
