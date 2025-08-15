@@ -3,6 +3,7 @@
 import * as path from "path";
 import invariant from "tiny-invariant";
 import { parseFile } from "music-metadata";
+import { Command } from "commander";
 import {
   exists,
   confirm,
@@ -21,7 +22,7 @@ import {
   getBasename,
   getDirname,
 } from "./utils.js";
-``;
+
 // Constants
 const DEFAULT_SOURCE_DIR = "/volmain/Download/Transmission/complete/";
 const DEFAULT_TARGET_DIR = "/volmain/Public/FLAC/";
@@ -80,67 +81,7 @@ const promptForArtistName = async (
   );
 };
 
-// Parse command line arguments
-function parseArguments(): ScriptOptions {
-  const args = process.argv.slice(2);
-  const options: ScriptOptions = {
-    sourceDir: DEFAULT_SOURCE_DIR,
-    targetDir: DEFAULT_TARGET_DIR,
-    backupDir: DEFAULT_BACKUP_DIR,
-    dryRun: false,
-    interactive: false,
-  };
-
-  for (let i = 0; i < args.length; i++) {
-    switch (args[i]) {
-      case "--source-dir":
-        if (i + 1 < args.length) {
-          options.sourceDir = args[++i]!;
-        } else {
-          console.error("❌ --source-dir requires a path argument");
-          process.exit(1);
-        }
-        break;
-      case "--target-dir":
-        if (i + 1 < args.length) {
-          options.targetDir = args[++i]!;
-        } else {
-          console.error("❌ --target-dir requires a path argument");
-          process.exit(1);
-        }
-        break;
-      case "--backup-dir":
-        if (i + 1 < args.length) {
-          options.backupDir = args[++i]!;
-        } else {
-          console.error("❌ --backup-dir requires a path argument");
-          process.exit(1);
-        }
-        break;
-      case "--dry-run":
-        options.dryRun = true;
-        break;
-      case "--interactive":
-        options.interactive = true;
-        break;
-      case "--help":
-        console.log(`
-Usage: zx move-completed.ts [options]
-
-Options:
-  --source-dir <path>    Source directory to monitor (default: ${DEFAULT_SOURCE_DIR})
-  --target-dir <path>    Target music library directory (default: ${DEFAULT_TARGET_DIR})
-  --backup-dir <path>    Backup directory (default: ${DEFAULT_BACKUP_DIR})
-  --dry-run             Preview changes without making them
-  --interactive         Prompt for artist name when inference fails
-  --help                Show this help message
-        `);
-        process.exit(0);
-    }
-  }
-
-  return options;
-}
+// ... existing code ...
 
 // Scan for album folders in the source directory
 async function scanAlbumFolders(sourceDir: string): Promise<AlbumFolder[]> {
@@ -459,9 +400,7 @@ async function moveAlbumFolder(
  *
  * See move-completed.md for detailed specification and usage instructions.
  */
-async function main() {
-  const options = parseArguments();
-
+async function run(options: ScriptOptions) {
   // Validate directories
   const sourceExists = await exists(options.sourceDir);
   invariant(
@@ -540,8 +479,48 @@ async function main() {
   }
 }
 
-// Run the main function
-main().catch((error) => {
-  logError(`Script failed: ${error}`);
-  process.exit(1);
-});
+// Commander CLI setup
+const program = new Command();
+
+program
+  .name("move-completed")
+  .description(
+    "Monitor Transmission download completion directory and organize completed music downloads into the music library structure."
+  )
+  .option(
+    "-s, --source-dir <path>",
+    "Source directory to monitor",
+    DEFAULT_SOURCE_DIR
+  )
+  .option(
+    "-t, --target-dir <path>",
+    "Target music library directory",
+    DEFAULT_TARGET_DIR
+  )
+  .option("-b, --backup-dir <path>", "Backup directory", DEFAULT_BACKUP_DIR)
+  .option("--dry-run", "Preview changes without making them", false)
+  .option(
+    "-i, --interactive",
+    "Prompt for artist name when inference fails",
+    false
+  )
+  .showHelpAfterError()
+  .version("1.0.0")
+  .action(async (opts: Record<string, unknown>) => {
+    const options: ScriptOptions = {
+      sourceDir: opts["sourceDir"] as string,
+      targetDir: opts["targetDir"] as string,
+      backupDir: opts["backupDir"] as string,
+      dryRun: Boolean(opts["dryRun"]),
+      interactive: Boolean(opts["interactive"]),
+    };
+
+    try {
+      await run(options);
+    } catch (error) {
+      logError(`Script failed: ${error}`);
+      process.exit(1);
+    }
+  });
+
+await program.parseAsync(process.argv);
