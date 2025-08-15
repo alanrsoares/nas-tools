@@ -6,25 +6,6 @@ import {
   validateDirectory,
 } from "./utils.js";
 
-/**
- * example:
- * dir-tree .
- * apps/studio-extension/src/
- * ├── components
- * │   ├── card
- * │   └── identicon
- * ├── lib
- * │   ├── adena-broker
- * │   ├── controllers
- * │   ├── injectable
- * │   ├── logger
- * │   └── proxy
- * ├── model
- * ├── styles
- * └── widgets
-    └── connect
- */
-
 interface TreeOptions {
   maxDepth?: number;
   showHidden?: boolean;
