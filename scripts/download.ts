@@ -143,12 +143,12 @@ const program = new Command()
   .showHelpAfterError()
   .action(async (url: string, options: Record<string, unknown>) => {
     await run(url, {
-      referer: options.referer as string | undefined,
-      cookie: options.cookie as string | undefined,
-      dest: options.dest as string,
-      ua: options.ua as string,
-      retries: options.retries as number,
-      timeout: options.timeout as number,
+      referer: options["referer"] as string,
+      cookie: options["cookie"] as string,
+      dest: options["dest"] as string,
+      ua: options["ua"] as string,
+      retries: options["retries"] as number,
+      timeout: options["timeout"] as number,
     });
   });
 

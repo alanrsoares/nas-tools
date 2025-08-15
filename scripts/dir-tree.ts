@@ -146,11 +146,11 @@ const program = new Command("dir-tree")
   .option("-e, --exclude <patterns>", "Exclude patterns (comma-separated)")
   .action(async (targetPath: string, options: Record<string, unknown>) => {
     await run(targetPath, {
-      maxDepth: parseInt(String(options.maxDepth ?? "10")),
-      showHidden: Boolean(options.all),
-      showFiles: !Boolean(options.directoriesOnly),
-      exclude: options.exclude
-        ? String(options.exclude)
+      maxDepth: parseInt(String(options["maxDepth"] ?? "10")),
+      showHidden: Boolean(options["all"]),
+      showFiles: !Boolean(options["directoriesOnly"]),
+      exclude: options["exclude"]
+        ? String(options["exclude"])
             .split(",")
             .map((s) => s.trim())
         : [],

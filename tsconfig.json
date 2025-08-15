@@ -20,7 +20,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "downlevelIteration": true,
-    "types": ["node"]
+    "types": ["node"],
+    "verbatimModuleSyntax": true,
+    "exactOptionalPropertyTypes": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true
   },
   "include": ["scripts/**/*"],
   "exclude": ["node_modules"]

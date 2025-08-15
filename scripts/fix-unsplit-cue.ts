@@ -302,8 +302,8 @@ program
   .version("1.0.0")
   .action(async (folderPath: string, opts: Record<string, unknown>) => {
     const options: ScriptOptions = {
-      ignoreFailed: Boolean(opts.ignoreFailed),
-      yes: Boolean(opts.yes),
+      ignoreFailed: Boolean(opts["ignoreFailed"]),
+      yes: Boolean(opts["yes"]),
     };
 
     try {

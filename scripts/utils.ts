@@ -3,6 +3,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import inquirer from "inquirer";
+import type { Dirent } from "fs";
 
 // Common constants
 export const FILE_EXTENSIONS = {
@@ -37,7 +38,9 @@ export const readDirectory = async (dirPath: string): Promise<string[]> => {
   return await fs.readdir(dirPath);
 };
 
-export const readDirectoryWithTypes = async (dirPath: string) => {
+export const readDirectoryWithTypes = async (
+  dirPath: string
+): Promise<Dirent[]> => {
   return await fs.readdir(dirPath, { withFileTypes: true });
 };
 
