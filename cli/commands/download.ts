@@ -2,6 +2,8 @@ import { Command } from "commander";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
+import { fetch, type Response } from "undici";
+
 const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
