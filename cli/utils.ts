@@ -208,3 +208,5 @@ export function displaySummary(
     console.log(`${pc.red("☹")} No albums were processed successfully`);
   }
 }
+
+export const toNumber = (v?: string) => parseInt(String(v ?? ""), 10);

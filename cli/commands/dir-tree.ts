@@ -5,16 +5,14 @@ import { z } from "zod";
 import {
   logError,
   readDirectoryWithTypes,
+  toNumber,
   validateDirectory,
   withZodValidation,
 } from "../utils.js";
 
 // Define the schema with proper transformations and defaults
 const treeSchema = z.object({
-  maxDepth: z
-    .string()
-    .transform((val) => (val === "Infinity" ? Infinity : parseInt(val, 10)))
-    .pipe(z.number().min(0)),
+  maxDepth: z.string().optional().transform(toNumber),
   showHidden: z.boolean().optional().default(false),
   showFiles: z.boolean().optional().default(true),
   exclude: z.array(z.string()).optional().default([]),
@@ -39,7 +37,7 @@ async function buildTree(
 ): Promise<string[]> {
   const { maxDepth, showHidden, showFiles, exclude } = options;
 
-  if (depth >= maxDepth) {
+  if (maxDepth && depth >= maxDepth) {
     return [];
   }
 

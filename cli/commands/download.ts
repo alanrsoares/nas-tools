@@ -10,20 +10,17 @@ const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
+const DEFAULT_RETRIES = 3;
+const DEFAULT_TIMEOUT = 30_000;
+
 // Define the schema with proper transformations and defaults
 const downloadSchema = z.object({
   referer: z.string().optional(),
   cookie: z.string().optional(),
   dest: z.string().default(DEFAULT_DEST),
   ua: z.string().default(DEFAULT_UA),
-  retries: z
-    .string()
-    .transform((val) => parseInt(val, 10))
-    .pipe(z.number().min(0)),
-  timeout: z
-    .string()
-    .transform((val) => parseInt(val, 10))
-    .pipe(z.number().min(1000)),
+  retries: z.coerce.number().min(0).default(DEFAULT_RETRIES),
+  timeout: z.coerce.number().min(1000).default(DEFAULT_TIMEOUT),
 });
 
 type DownloadOptions = z.infer<typeof downloadSchema>;
@@ -125,8 +122,12 @@ export function downloadCommand(program: Command): void {
     .option("-r, --referer <url>", "Referer header")
     .option("-c, --cookie <string>", "Cookie header")
     .option("-u, --ua <string>", "User-Agent header", DEFAULT_UA)
-    .option("--retries <number>", "Number of retries", "3")
-    .option("--timeout <ms>", "Timeout in milliseconds", "30000")
+    .option("--retries <number>", "Number of retries", String(DEFAULT_RETRIES))
+    .option(
+      "--timeout <ms>",
+      "Timeout in milliseconds",
+      String(DEFAULT_TIMEOUT),
+    )
     .action(
       withZodValidation(downloadSchema, async (args, options) => {
         const [url] = args;
