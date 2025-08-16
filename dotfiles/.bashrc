@@ -161,3 +161,6 @@ source "$OSH"/oh-my-bash.sh
 source ~/.envs
 source ~/.aliases
 source ~/.functions
+
+source "$HOME/.cargo/env.fish"  # For fish
+source $"($nu.home-path)/.cargo/env.nu"  # For nushell
