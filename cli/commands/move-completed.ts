@@ -1,8 +1,9 @@
-import * as path from "path";
+import * as path from "node:path";
 import { Command } from "commander";
 import { parseFile } from "music-metadata";
-import invariant from "tiny-invariant";
+import { z } from "zod";
 
+import invariant from "../lib/invariant.js";
 import {
   confirm,
   displaySummary,
@@ -20,6 +21,7 @@ import {
   moveFile,
   readDirectory,
   readDirectoryWithTypes,
+  withZodValidation,
 } from "../utils.js";
 
 // Constants
@@ -53,13 +55,15 @@ interface MoveOperation {
   isNewArtist: boolean;
 }
 
-interface ScriptOptions {
-  sourceDir: string;
-  targetDir: string;
-  backupDir: string;
-  dryRun: boolean;
-  interactive: boolean;
-}
+const moveCompletedSchema = z.object({
+  sourceDir: z.string(),
+  targetDir: z.string(),
+  backupDir: z.string(),
+  dryRun: z.boolean(),
+  interactive: z.boolean(),
+});
+
+type ScriptOptions = z.infer<typeof moveCompletedSchema>;
 
 // Utility functions
 
@@ -453,20 +457,13 @@ export function moveCompletedCommand(program: Command): void {
       "Prompt for artist name when inference fails",
       false,
     )
-    .action(async (options: any) => {
-      const scriptOptions: ScriptOptions = {
-        sourceDir: options.sourceDir,
-        targetDir: options.targetDir,
-        backupDir: options.backupDir,
-        dryRun: Boolean(options.dryRun),
-        interactive: Boolean(options.interactive),
-      };
-
-      try {
-        await run(scriptOptions);
-      } catch (error) {
-        logError(`Script failed: ${error}`);
-        process.exit(1);
-      }
-    });
+    .action(
+      withZodValidation(moveCompletedSchema, async (args, options) => {
+        const [folderPath] = args;
+        if (!folderPath) {
+          throw new Error("Folder path is required");
+        }
+        await run(options);
+      }),
+    );
 }

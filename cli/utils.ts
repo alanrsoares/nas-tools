@@ -4,6 +4,8 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import inquirer from "inquirer";
 import pc from "picocolors";
+// Zod integration utilities for Commander
+import { z } from "zod";
 
 // Common constants
 export const FILE_EXTENSIONS = {
@@ -130,6 +132,46 @@ export async function validateDirectory(dirPath: string): Promise<boolean> {
     return false;
   }
   return true;
+}
+
+/**
+ * Wraps a command action with Zod validation and error handling
+ * @param schema - Zod schema for validating options
+ * @param action - The action function to execute after validation
+ * @returns A wrapped action function that handles validation automatically
+ */
+export function withZodValidation<T extends z.ZodSchema>(
+  schema: T,
+  action: (args: string[], options: z.infer<T>) => Promise<void> | void,
+) {
+  return async (args: string[], options: Record<string, unknown>) => {
+    try {
+      const validatedOptions = schema.parse(options);
+      await action(args, validatedOptions);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        logError("Invalid options provided:");
+        const zodError = error as z.ZodError;
+        zodError.issues.forEach((issue) => {
+          const path = issue.path.join(".");
+          logError(`  ${path}: ${issue.message}`);
+        });
+        process.exit(1);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Creates a Zod schema for Commander options with proper transformations
+ * @param options - Object defining the schema for each option
+ * @returns A Zod schema that can be used with Commander
+ */
+export function createCommanderSchema<T extends Record<string, z.ZodTypeAny>>(
+  options: T,
+): z.ZodObject<T> {
+  return z.object(options);
 }
 
 // Summary utilities

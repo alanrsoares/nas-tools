@@ -6,15 +6,18 @@ import {
   logError,
   readDirectoryWithTypes,
   validateDirectory,
+  withZodValidation,
 } from "../utils.js";
 
+// Define the schema with proper transformations and defaults
 const treeSchema = z.object({
   maxDepth: z
     .string()
-    .transform((val) => (val === "Infinity" ? Infinity : parseInt(val))),
-  showHidden: z.boolean().optional(),
-  showFiles: z.boolean().optional(),
-  exclude: z.array(z.string()).optional(),
+    .transform((val) => (val === "Infinity" ? Infinity : parseInt(val, 10)))
+    .pipe(z.number().min(0)),
+  showHidden: z.boolean().optional().default(false),
+  showFiles: z.boolean().optional().default(true),
+  exclude: z.array(z.string()).optional().default([]),
 });
 
 type TreeOptions = z.infer<typeof treeSchema>;
@@ -32,19 +35,9 @@ async function buildTree(
   dirPath: string,
   prefix: string = "",
   depth: number = 0,
-  options: TreeOptions = {
-    maxDepth: Infinity,
-    showHidden: false,
-    showFiles: true,
-    exclude: [],
-  },
+  options: TreeOptions,
 ): Promise<string[]> {
-  const {
-    maxDepth = Infinity,
-    showHidden = false,
-    showFiles = true,
-    exclude = [],
-  } = options;
+  const { maxDepth, showHidden, showFiles, exclude } = options;
 
   if (depth >= maxDepth) {
     return [];
@@ -85,7 +78,7 @@ async function buildTree(
       const nextPrefix = isLast ? TREE_CHARS.SPACE : TREE_CHARS.VERTICAL;
 
       // Add the current entry
-      const icon = options.showFiles ? (isDirectory ? "📁" : "📄") : "";
+      const icon = showFiles ? (isDirectory ? "📁" : "📄") : "";
       lines.push(`${prefix}${currentPrefix}${icon} ${entry.name}`);
 
       // Recursively add children for directories
@@ -140,9 +133,10 @@ export function dirTreeCommand(program: Command): void {
       "-e, --exclude <patterns...>",
       "Exclude files/directories matching patterns",
     )
-    .action(async (path: string, options: Record<string, unknown>) => {
-      const treeOptions = treeSchema.parse(options);
-
-      await run(path, treeOptions);
-    });
+    .action(
+      withZodValidation(treeSchema, async (args, options) => {
+        const [dirPath = "."] = args;
+        await run(dirPath, options);
+      }),
+    );
 }

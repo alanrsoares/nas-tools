@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { z } from "zod";
 import { $ } from "zx";
 
 import invariant from "../lib/invariant.js";
@@ -20,6 +21,7 @@ import {
   logSuccess,
   readDirectory,
   readDirectoryWithTypes,
+  withZodValidation,
 } from "../utils.js";
 
 const BASH_FUNCTIONS_PATH = "/home/admin/dev/nas-tools/bash/functions.sh";
@@ -31,10 +33,12 @@ interface CueAudioPair {
   audioFile: string;
 }
 
-interface ScriptOptions {
-  ignoreFailed: boolean;
-  yes: boolean;
-}
+const fixUnsplitCueSchema = z.object({
+  ignoreFailed: z.boolean().optional(),
+  yes: z.boolean().optional(),
+});
+
+type ScriptOptions = z.infer<typeof fixUnsplitCueSchema>;
 
 // Utility functions
 
@@ -273,17 +277,13 @@ export function fixUnsplitCueCommand(program: Command): void {
       false,
     )
     .option("-y, --yes", 'Assume "yes" to all confirmations', false)
-    .action(async (folderPath: string, options: any) => {
-      const scriptOptions: ScriptOptions = {
-        ignoreFailed: Boolean(options.ignoreFailed),
-        yes: Boolean(options.yes),
-      };
-
-      try {
-        await run(folderPath, scriptOptions);
-      } catch (error) {
-        logError(`Script failed: ${error}`);
-        process.exit(1);
-      }
-    });
+    .action(
+      withZodValidation(fixUnsplitCueSchema, async (args, options) => {
+        const [folderPath] = args;
+        if (!folderPath) {
+          throw new Error("Folder path is required");
+        }
+        await run(folderPath, options);
+      }),
+    );
 }

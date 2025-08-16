@@ -4,17 +4,26 @@ import { Command } from "commander";
 import fetch, { type Headers, type Response } from "node-fetch";
 import { z } from "zod";
 
+import { withZodValidation } from "../utils.js";
+
 const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
+// Define the schema with proper transformations and defaults
 const downloadSchema = z.object({
   referer: z.string().optional(),
   cookie: z.string().optional(),
-  dest: z.string(),
-  ua: z.string(),
-  retries: z.string().transform((val) => parseInt(val, 10)),
-  timeout: z.string().transform((val) => parseInt(val, 10)),
+  dest: z.string().default(DEFAULT_DEST),
+  ua: z.string().default(DEFAULT_UA),
+  retries: z
+    .string()
+    .transform((val) => parseInt(val, 10))
+    .pipe(z.number().min(0)),
+  timeout: z
+    .string()
+    .transform((val) => parseInt(val, 10))
+    .pipe(z.number().min(1000)),
 });
 
 type DownloadOptions = z.infer<typeof downloadSchema>;
@@ -118,13 +127,13 @@ export function downloadCommand(program: Command): void {
     .option("-u, --ua <string>", "User-Agent header", DEFAULT_UA)
     .option("--retries <number>", "Number of retries", "3")
     .option("--timeout <ms>", "Timeout in milliseconds", "30000")
-    .action(async (url: string, options: Record<string, unknown>) => {
-      try {
-        const downloadOptions = downloadSchema.parse(options);
-        await run(url, downloadOptions);
-      } catch (error) {
-        console.error(`Download failed: ${error}`);
-        process.exit(1);
-      }
-    });
+    .action(
+      withZodValidation(downloadSchema, async (args, options) => {
+        const [url] = args;
+        if (!url) {
+          throw new Error("URL is required");
+        }
+        await run(url, options);
+      }),
+    );
 }
