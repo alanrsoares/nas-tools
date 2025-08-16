@@ -1,7 +1,7 @@
 import { Command } from "commander";
-import invariant from "tiny-invariant";
 import { $ } from "zx";
 
+import invariant from "../lib/invariant.js";
 import {
   confirm as confirmPrompt,
   displaySummary,
@@ -169,8 +169,6 @@ async function processCueAudioPair(
   ask: (q: string) => Promise<boolean>,
 ): Promise<boolean> {
   const { directory, cueFile } = pair;
-  invariant(directory, "Directory is required");
-  invariant(cueFile, "Cue file is required");
 
   const cuePath = joinPath(directory, cueFile);
 
@@ -230,10 +228,6 @@ async function run(folderPath: string, options: ScriptOptions) {
   let failureCount = 0;
 
   for (const pair of pairs) {
-    invariant(pair, "Pair is required");
-    invariant(pair.directory, "Pair directory is required");
-    invariant(pair.cueFile, "Pair cue file is required");
-
     // before processing, list folder contents and prompt for confirmation
     const folderContents = await readDirectory(pair.directory);
     logDirectory(`Contents of ${pair.directory}:`);

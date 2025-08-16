@@ -2,19 +2,22 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
 import fetch, { type Headers, type Response } from "node-fetch";
+import { z } from "zod";
 
 const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
-interface DownloadOptions {
-  referer?: string;
-  cookie?: string;
-  dest: string;
-  ua: string;
-  retries: number;
-  timeout: number;
-}
+const downloadSchema = z.object({
+  referer: z.string().optional(),
+  cookie: z.string().optional(),
+  dest: z.string(),
+  ua: z.string(),
+  retries: z.string().transform((val) => parseInt(val, 10)),
+  timeout: z.string().transform((val) => parseInt(val, 10)),
+});
+
+type DownloadOptions = z.infer<typeof downloadSchema>;
 
 function filenameFromHeaders(url: string, headers: Headers): string {
   const cd = headers.get("content-disposition");
@@ -115,17 +118,9 @@ export function downloadCommand(program: Command): void {
     .option("-u, --ua <string>", "User-Agent header", DEFAULT_UA)
     .option("--retries <number>", "Number of retries", "3")
     .option("--timeout <ms>", "Timeout in milliseconds", "30000")
-    .action(async (url: string, options: any) => {
-      const downloadOptions: DownloadOptions = {
-        dest: options.dest,
-        referer: options.referer,
-        cookie: options.cookie,
-        ua: options.ua,
-        retries: parseInt(options.retries),
-        timeout: parseInt(options.timeout),
-      };
-
+    .action(async (url: string, options: Record<string, unknown>) => {
       try {
+        const downloadOptions = downloadSchema.parse(options);
         await run(url, downloadOptions);
       } catch (error) {
         console.error(`Download failed: ${error}`);

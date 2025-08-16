@@ -1,5 +1,6 @@
 import * as path from "path";
 import { Command } from "commander";
+import { z } from "zod";
 
 import {
   logError,
@@ -7,12 +8,16 @@ import {
   validateDirectory,
 } from "../utils.js";
 
-interface TreeOptions {
-  maxDepth?: number;
-  showHidden?: boolean;
-  showFiles?: boolean;
-  exclude?: string[];
-}
+const treeSchema = z.object({
+  maxDepth: z
+    .string()
+    .transform((val) => (val === "Infinity" ? Infinity : parseInt(val))),
+  showHidden: z.boolean().optional(),
+  showFiles: z.boolean().optional(),
+  exclude: z.array(z.string()).optional(),
+});
+
+type TreeOptions = z.infer<typeof treeSchema>;
 
 // Tree characters for display
 const TREE_CHARS = {
@@ -27,7 +32,12 @@ async function buildTree(
   dirPath: string,
   prefix: string = "",
   depth: number = 0,
-  options: TreeOptions = {},
+  options: TreeOptions = {
+    maxDepth: Infinity,
+    showHidden: false,
+    showFiles: true,
+    exclude: [],
+  },
 ): Promise<string[]> {
   const {
     maxDepth = Infinity,
@@ -99,7 +109,7 @@ async function buildTree(
 }
 
 // Main function to generate and display the tree
-async function run(dirPath: string, options: TreeOptions = {}): Promise<void> {
+async function run(dirPath: string, options: TreeOptions): Promise<void> {
   try {
     // Validate the directory exists
     await validateDirectory(dirPath);
@@ -130,16 +140,8 @@ export function dirTreeCommand(program: Command): void {
       "-e, --exclude <patterns...>",
       "Exclude files/directories matching patterns",
     )
-    .action(async (path: string, options: any) => {
-      const treeOptions: TreeOptions = {
-        maxDepth:
-          options.maxDepth === "Infinity"
-            ? Infinity
-            : parseInt(options.maxDepth),
-        showHidden: options.showHidden || false,
-        showFiles: options.showFiles !== false, // Default to true
-        exclude: options.exclude || [],
-      };
+    .action(async (path: string, options: Record<string, unknown>) => {
+      const treeOptions = treeSchema.parse(options);
 
       await run(path, treeOptions);
     });
