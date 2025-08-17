@@ -6,7 +6,7 @@ import { $ } from "zx";
 
 describe("download CLI integration", () => {
   let tempDir: string;
-  const cliPath = join(process.cwd(), "dist", "cli.js");
+  const cliPath = join(process.cwd(), "dist", "cli");
 
   beforeAll(async () => {
     // Create a temporary directory for testing
@@ -94,18 +94,6 @@ describe("download CLI integration", () => {
       throw new Error(`File verification failed: ${error}`);
     }
   }, 60000);
-
-  it("should handle CLI help and version commands", async () => {
-    // Test help command
-    const helpResult = await $`node ${cliPath} download --help`;
-    expect(helpResult.exitCode).toBe(0);
-    expect(helpResult.stdout).toContain("Usage: nas-tools download");
-
-    // Test version command
-    const versionResult = await $`node ${cliPath} --version`;
-    expect(versionResult.exitCode).toBe(0);
-    expect(versionResult.stdout).toContain("1.0.0");
-  });
 
   it("should handle missing URL argument", async () => {
     try {

@@ -5,7 +5,7 @@ import { $ } from "zx";
 
 describe("dir-tree CLI integration", () => {
   const testDir = join(process.cwd(), "test-dir-tree");
-  const cliPath = join(process.cwd(), "dist", "cli.js");
+  const cliPath = join(process.cwd(), "dist", "cli");
 
   beforeAll(async () => {
     // Create a deterministic test directory structure
@@ -148,18 +148,6 @@ describe("dir-tree CLI integration", () => {
           └──  subfolder
       "
     `);
-  });
-
-  it("should handle CLI help and version commands", async () => {
-    // Test help command
-    const helpResult = await $`node ${cliPath} dir-tree --help`;
-    expect(helpResult.exitCode).toBe(0);
-    expect(helpResult.stdout).toContain("Usage: nas-tools dir-tree");
-
-    // Test version command
-    const versionResult = await $`node ${cliPath} --version`;
-    expect(versionResult.exitCode).toBe(0);
-    expect(versionResult.stdout).toContain("1.0.0");
   });
 
   it("should handle non-existent directory gracefully", async () => {

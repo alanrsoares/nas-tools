@@ -2,14 +2,14 @@
   "name": "nas-tools",
   "version": "1.0.1",
   "description": "NAS tools CLI for managing music files, downloads, and file operations",
-  "main": "dist/cli.js",
+  "main": "dist/cli/index.js",
   "type": "module",
   "bin": {
-    "nas-tools": "./dist/cli.js"
+    "nas-tools": "./dist/cli/index.js"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "bun run cli/cli.ts",
+    "dev": "bun run cli",
     "test": "bun test",
     "format": "prettier --write .",
     "LINK": "bun run build && bun link"

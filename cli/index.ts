@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 
+import pkg from "../package.json" with { type: "json" };
+
 const program = new Command();
 
 program
@@ -8,7 +10,7 @@ program
   .description(
     "NAS tools CLI for managing music files, downloads, and file operations",
   )
-  .version("1.0.0");
+  .version(pkg.version);
 
 const COMMAND_MODULES = [
   import("./commands/dir-tree.js"),
