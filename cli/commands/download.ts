@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
 import got, { type Headers, type Response } from "got";
+import { Maybe } from "true-myth";
 import { z } from "zod";
 
 const DEFAULT_DEST = "/volmain/Download/ignore";
@@ -19,28 +20,38 @@ const optionsSchema = z.object({
 
 type CommandOptions = z.infer<typeof optionsSchema>;
 
+const RFC5987_RE = /filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i;
+const RFC5987_RE_2 = /filename\s*=\s*("?)([^";]+)\1/i;
+
 function filenameFromHeaders(url: string, headers: Headers): string {
+  const fallbackName = basename(new URL(url).pathname) || "download.bin";
+
   const cd = headers["content-disposition"];
-  if (cd) {
-    const cdStr = Array.isArray(cd) ? cd[0] : cd;
-    if (cdStr) {
-      // Try RFC 5987 (filename*=UTF-8'')
-      const star = cdStr.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i);
-      if (star && star[1]) {
-        return decodeURIComponent(star[1].replace(/^["']|["']$/g, "").trim());
-      }
-      // Fallback: filename="..."
-      const plain = cdStr.match(/filename\s*=\s*("?)([^";]+)\1/i);
-      if (plain && plain[2]) {
-        try {
-          return decodeURIComponent(plain[2]);
-        } catch {
-          return plain[2];
-        }
-      }
-    }
+  if (!cd) {
+    return fallbackName;
   }
-  return basename(new URL(url).pathname) || "download.bin";
+
+  const cdStr = Maybe.of(Array.isArray(cd) ? cd[0] : cd);
+  if (cdStr.isNothing) {
+    return fallbackName;
+  }
+
+  // Try RFC 5987 (filename*=UTF-8'')
+  const star = Maybe.of(cdStr.value.match(RFC5987_RE)?.[1]);
+  if (star.isJust) {
+    return decodeURIComponent(star.value.replace(/^["']|["']$/g, "").trim());
+  }
+
+  // Fallback: filename="..."
+  const plain = Maybe.of(cdStr.value.match(RFC5987_RE_2)?.[2]);
+
+  return plain.mapOr(fallbackName, (p) => {
+    try {
+      return decodeURIComponent(p);
+    } catch {
+      return p;
+    }
+  });
 }
 
 async function fetchOnce(

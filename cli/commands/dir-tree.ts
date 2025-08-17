@@ -42,6 +42,72 @@ const colors = {
   audio: pc.cyan,
 } as const;
 
+type FileCategory = keyof typeof colors;
+
+const archiveExtensions = [
+  ".zip",
+  ".tar",
+  ".gz",
+  ".bz2",
+  ".xz",
+  ".rar",
+  ".7z",
+  ".tgz",
+];
+
+const imageExtensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp"];
+
+const videoExtensions = [
+  ".mp4",
+  ".avi",
+  ".mkv",
+  ".mov",
+  ".wmv",
+  ".flv",
+  ".webm",
+  ".m4v",
+];
+
+const audioExtensions = [
+  ".mp3",
+  ".flac",
+  ".wav",
+  ".aac",
+  ".ogg",
+  ".m4a",
+  ".wma",
+];
+
+const specialExtensions = [
+  ".json",
+  ".xml",
+  ".yaml",
+  ".yml",
+  ".toml",
+  ".ini",
+  ".conf",
+  ".config",
+];
+
+const executableExtensions = [".exe", ".sh", ".bat", ".cmd", ".com", ".app"];
+
+const hasExtension = (name: string, extensions: string[]): boolean =>
+  extensions.some((ext) => name.toLowerCase().endsWith(ext));
+
+const EXTENSIONS = {
+  archive: archiveExtensions,
+  image: imageExtensions,
+  video: videoExtensions,
+  audio: audioExtensions,
+  special: specialExtensions,
+  executable: executableExtensions,
+} as const satisfies Record<
+  Exclude<FileCategory, "hidden" | "file" | "directory" | "symlink">,
+  string[]
+>;
+
+const EXTENSION_TYPES = Object.keys(EXTENSIONS) as (keyof typeof EXTENSIONS)[];
+
 // Helper function to determine file color
 function getFileColor(
   entry: {
@@ -62,113 +128,14 @@ function getFileColor(
     return colors.directory(name);
   }
 
-  // Check if it's a symlink (if the API supports it)
   if (entry.isSymbolicLink && entry.isSymbolicLink()) {
     return colors.symlink(name);
   }
 
-  // Check if it's executable (common executable extensions)
-  const executableExtensions = [".exe", ".sh", ".bat", ".cmd", ".com", ".app"];
-  const isExecutable = executableExtensions.some((ext) =>
-    name.toLowerCase().endsWith(ext),
-  );
-
-  if (isExecutable) {
-    return colors.executable(name);
-  }
-
-  // Check for archive files
-  const archiveExtensions = [
-    ".zip",
-    ".tar",
-    ".gz",
-    ".bz2",
-    ".xz",
-    ".rar",
-    ".7z",
-    ".tgz",
-  ];
-  const isArchive = archiveExtensions.some((ext) =>
-    name.toLowerCase().endsWith(ext),
-  );
-
-  if (isArchive) {
-    return colors.archive(name);
-  }
-
-  // Check for image files
-  const imageExtensions = [
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".gif",
-    ".bmp",
-    ".svg",
-    ".webp",
-    ".ico",
-  ];
-  const isImage = imageExtensions.some((ext) =>
-    name.toLowerCase().endsWith(ext),
-  );
-
-  if (isImage) {
-    return colors.image(name);
-  }
-
-  // Check for video files
-  const videoExtensions = [
-    ".mp4",
-    ".avi",
-    ".mkv",
-    ".mov",
-    ".wmv",
-    ".flv",
-    ".webm",
-    ".m4v",
-  ];
-  const isVideo = videoExtensions.some((ext) =>
-    name.toLowerCase().endsWith(ext),
-  );
-
-  if (isVideo) {
-    return colors.video(name);
-  }
-
-  // Check for audio files
-  const audioExtensions = [
-    ".mp3",
-    ".flac",
-    ".wav",
-    ".aac",
-    ".ogg",
-    ".m4a",
-    ".wma",
-  ];
-  const isAudio = audioExtensions.some((ext) =>
-    name.toLowerCase().endsWith(ext),
-  );
-
-  if (isAudio) {
-    return colors.audio(name);
-  }
-
-  // Check for special files (config files, etc.)
-  const specialExtensions = [
-    ".json",
-    ".xml",
-    ".yaml",
-    ".yml",
-    ".toml",
-    ".ini",
-    ".conf",
-    ".config",
-  ];
-  const isSpecial = specialExtensions.some((ext) =>
-    name.toLowerCase().endsWith(ext),
-  );
-
-  if (isSpecial) {
-    return colors.special(name);
+  for (const type of EXTENSION_TYPES) {
+    if (hasExtension(name, EXTENSIONS[type])) {
+      return colors[type](name);
+    }
   }
 
   return colors.file(name);
