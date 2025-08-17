@@ -1,108 +1,306 @@
-# If you come from bash you might have to change your $PATH.
-# export PATH=$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH
+# =============================================================================
+# 🚀 ENHANCED ZSH CONFIGURATION
+# =============================================================================
 
-# Path to your Oh My Zsh installation.
+# =============================================================================
+# 📁 OH MY ZSH CONFIGURATION
+# =============================================================================
+
+# Path to your Oh My Zsh installation
 export ZSH="$HOME/.oh-my-zsh"
 
-# Set name of the theme to load --- if set to "random", it will
-# load a random theme each time Oh My Zsh is loaded, in which case,
-# to know which specific one was loaded, run: echo $RANDOM_THEME
-# See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
-ZSH_THEME="robbyrussell"
+# Modern theme with better visual appeal
+ZSH_THEME="agnoster"
 
-# Set list of themes to pick from when loading at random
-# Setting this variable when ZSH_THEME=random will cause zsh to load
-# a theme from this variable instead of looking in $ZSH/themes/
-# If set to an empty array, this variable will have no effect.
-# ZSH_THEME_RANDOM_CANDIDATES=( "robbyrussell" "agnoster" )
+# Auto-update behavior
+zstyle ':omz:update' mode auto
+zstyle ':omz:update' frequency 7
 
-# Uncomment the following line to use case-sensitive completion.
-# CASE_SENSITIVE="true"
+# =============================================================================
+# 🔌 PLUGINS - Enhanced productivity
+# =============================================================================
 
-# Uncomment the following line to use hyphen-insensitive completion.
-# Case-sensitive completion must be off. _ and - will be interchangeable.
-# HYPHEN_INSENSITIVE="true"
+plugins=(
+  git
+  zsh-autosuggestions
+  zsh-syntax-highlighting
+  docker
+  docker-compose
+  node
+  npm
+  yarn
+  vscode
+  macos
+  history
+  extract
+  sudo
+  copypath
+  dirhistory
+  web-search
+  jsontools
+  urltools
+  colored-man-pages
+  command-not-found
+)
 
-# Uncomment one of the following lines to change the auto-update behavior
-# zstyle ':omz:update' mode disabled  # disable automatic updates
-# zstyle ':omz:update' mode auto      # update automatically without asking
-# zstyle ':omz:update' mode reminder  # just remind me to update when it's time
+# =============================================================================
+# ⚡ PERFORMANCE OPTIMIZATIONS
+# =============================================================================
 
-# Uncomment the following line to change how often to auto-update (in days).
-# zstyle ':omz:update' frequency 13
+# Disable marking untracked files as dirty for better performance
+DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-# Uncomment the following line if pasting URLs and other text is messed up.
-# DISABLE_MAGIC_FUNCTIONS="true"
+# Disable auto-setting terminal title for better performance
+DISABLE_AUTO_TITLE="true"
 
-# Uncomment the following line to disable colors in ls.
-# DISABLE_LS_COLORS="true"
+# =============================================================================
+# 🎨 COMPLETION & INTERFACE ENHANCEMENTS
+# =============================================================================
 
-# Uncomment the following line to disable auto-setting terminal title.
-# DISABLE_AUTO_TITLE="true"
+# Case-insensitive completion
+HYPHEN_INSENSITIVE="true"
 
-# Uncomment the following line to enable command auto-correction.
-# ENABLE_CORRECTION="true"
+# Display red dots whilst waiting for completion
+COMPLETION_WAITING_DOTS="true"
 
-# Uncomment the following line to display red dots whilst waiting for completion.
-# You can also set it to another string to have that shown instead of the default red dots.
-# e.g. COMPLETION_WAITING_DOTS="%F{yellow}waiting...%f"
-# Caution: this setting can cause issues with multiline prompts in zsh < 5.7.1 (see #5765)
-# COMPLETION_WAITING_DOTS="true"
+# Enable command auto-correction
+ENABLE_CORRECTION="true"
 
-# Uncomment the following line if you want to disable marking untracked files
-# under VCS as dirty. This makes repository status check for large repositories
-# much, much faster.
-# DISABLE_UNTRACKED_FILES_DIRTY="true"
+# =============================================================================
+# 📚 HISTORY CONFIGURATION
+# =============================================================================
 
-# Uncomment the following line if you want to change the command execution time
-# stamp shown in the history command output.
-# You can set one of the optional three formats:
-# "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
-# or set a custom format using the strftime function format specifications,
-# see 'man strftime' for details.
-# HIST_STAMPS="mm/dd/yyyy"
+# History settings
+HISTSIZE=10000
+SAVEHIST=10000
+HISTFILE=~/.zsh_history
 
-# Would you like to use another custom folder than $ZSH/custom?
-# ZSH_CUSTOM=/path/to/new-custom-folder
+# History options
+setopt SHARE_HISTORY          # Share history between different instances of the shell
+setopt HIST_EXPIRE_DUPS_FIRST # Expire duplicate entries first when trimming history
+setopt HIST_IGNORE_DUPS       # Don't record an entry that was just recorded again
+setopt HIST_IGNORE_ALL_DUPS   # Delete old recorded entry if new entry is a duplicate
+setopt HIST_FIND_NO_DUPS      # Do not display a line previously found
+setopt HIST_SAVE_NO_DUPS      # Don't write duplicate entries in the history file
+setopt HIST_REDUCE_BLANKS     # Remove superfluous blanks before recording entry
+setopt HIST_VERIFY            # Don't execute immediately upon history expansion
+setopt HIST_BEEP              # Beep when accessing nonexistent history
 
-# Which plugins would you like to load?
-# Standard plugins can be found in $ZSH/plugins/
-# Custom plugins may be added to $ZSH_CUSTOM/plugins/
-# Example format: plugins=(rails git textmate ruby lighthouse)
-# Add wisely, as too many plugins slow down shell startup.
-plugins=(git)
+# History format with timestamps
+HIST_STAMPS="yyyy-mm-dd"
 
+# =============================================================================
+# 🔧 ENVIRONMENT VARIABLES
+# =============================================================================
+
+# Language and locale
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
+# Editor configuration
+if command -v nvim &> /dev/null; then
+  export EDITOR='nvim'
+  export VISUAL='nvim'
+elif command -v vim &> /dev/null; then
+  export EDITOR='vim'
+  export VISUAL='vim'
+else
+  export EDITOR='nano'
+  export VISUAL='nano'
+fi
+
+# Path enhancements
+export PATH="$HOME/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+
+# Node.js version manager (if using nvm)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# Rust (if installed)
+[ -s "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+
+# =============================================================================
+# 🎯 ALIASES & FUNCTIONS
+# =============================================================================
+
+# Navigation
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
+alias .....='cd ../../../..'
+
+# List directory contents
+alias ll='ls -la'
+alias la='ls -A'
+alias l='ls -CF'
+alias lsd='ls -la | grep "^d"'
+
+# Git shortcuts
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline --graph --decorate'
+alias gco='git checkout'
+alias gcb='git checkout -b'
+alias gb='git branch'
+alias gd='git diff'
+alias gf='git fetch'
+alias gm='git merge'
+alias grb='git rebase'
+
+# Docker shortcuts
+alias d='docker'
+alias dc='docker-compose'
+alias dps='docker ps'
+alias dpsa='docker ps -a'
+alias di='docker images'
+alias dex='docker exec -it'
+alias dlog='docker logs'
+
+# Development
+alias py='python3'
+alias pip='pip3'
+alias node='node'
+alias npm='npm'
+alias yarn='yarn'
+
+# System
+alias c='clear'
+alias h='history'
+alias j='jobs -l'
+alias ports='netstat -tulanp'
+alias myip='curl http://ipecho.net/plain; echo'
+alias weather='curl -s "wttr.in/?format=3"'
+
+# macOS specific
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  alias showfiles='defaults write com.apple.finder AppleShowAllFiles YES; killall Finder'
+  alias hidefiles='defaults write com.apple.finder AppleShowAllFiles NO; killall Finder'
+  alias flushdns='sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder'
+  alias emptytrash='sudo rm -rfv /Volumes/*/.Trashes; sudo rm -rfv ~/.Trash; sudo rm -rfv /private/var/log/asl/*.asl'
+fi
+
+# =============================================================================
+# 🎨 PROMPT CUSTOMIZATION
+# =============================================================================
+
+# Custom prompt function
+function custom_prompt() {
+  # Exit code
+  local exit_code=$?
+  
+  # Git branch
+  local git_branch=""
+  if git rev-parse --git-dir > /dev/null 2>&1; then
+    git_branch="$(git branch --show-current)"
+    if [[ -n "$git_branch" ]]; then
+      git_branch=" %F{green}git:(%F{yellow}$git_branch%F{green})"
+    fi
+  fi
+  
+  # Current directory
+  local current_dir="%F{blue}%~"
+  
+  # Exit code indicator
+  local exit_indicator=""
+  if [[ $exit_code -ne 0 ]]; then
+    exit_indicator=" %F{red}✗"
+  else
+    exit_indicator=" %F{green}✓"
+  fi
+  
+  # Set prompt
+  PROMPT="%F{cyan}%n%F{white}@%F{green}%m$current_dir$git_branch$exit_indicator %F{white}❯ "
+}
+
+# Set custom prompt
+autoload -U add-zsh-hook
+add-zsh-hook precmd custom_prompt
+
+# =============================================================================
+# 🔍 ENHANCED COMPLETION
+# =============================================================================
+
+# Initialize completion system
+autoload -Uz compinit
+compinit
+
+# Completion options
+zstyle ':completion:*' auto-description 'specify: %d'
+zstyle ':completion:*' completer _expand _complete _correct _approximate
+zstyle ':completion:*' format 'Completing %d'
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*' menu select=2
+zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
+zstyle ':completion:*' list-colors ''
+zstyle ':completion:*' list-prompt %SAt %p: Hit TAB for more, or the character to insert%s
+zstyle ':completion:*' matcher-list '' 'm:{a-z}={A-Z}' 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=* l:|=*'
+zstyle ':completion:*' select-prompt %SScrolling active: current selection at %p%s
+zstyle ':completion:*' use-compctl false
+zstyle ':completion:*' verbose true
+
+# =============================================================================
+# ⌨️ KEY BINDINGS
+# =============================================================================
+
+# Use emacs key bindings
+bindkey -e
+
+# History search
+bindkey '^[[A' history-beginning-search-backward
+bindkey '^[[B' history-beginning-search-forward
+
+# Word navigation
+bindkey '^[[1;5C' forward-word
+bindkey '^[[1;5D' backward-word
+
+# Delete word
+bindkey '^H' backward-kill-word
+bindkey '^[[3;5~' kill-word
+
+# =============================================================================
+# 🚀 STARTUP OPTIMIZATIONS
+# =============================================================================
+
+# Disable flow control commands (keeps C-s from freezing everything)
+stty -ixon
+
+# =============================================================================
+# 📦 SOURCE EXTERNAL FILES
+# =============================================================================
+
+# Source Oh My Zsh
 source $ZSH/oh-my-zsh.sh
 
-# User configuration
+# Source additional configuration files
+[[ -f ~/.envs ]] && source ~/.envs
+[[ -f ~/.aliases ]] && source ~/.aliases
+[[ -f ~/.functions ]] && source ~/.functions
 
-# export MANPATH="/usr/local/man:$MANPATH"
+# =============================================================================
+# 🎉 WELCOME MESSAGE
+# =============================================================================
 
-# You may need to manually set your language environment
-# export LANG=en_US.UTF-8
+# Display system info on startup
+echo "🚀 Welcome back, $(whoami)! Your enhanced shell is ready."
+echo "📅 $(date '+%A, %B %d, %Y at %I:%M %p')"
+echo "💻 $(uname -srm)"
+echo ""
 
-# Preferred editor for local and remote sessions
-# if [[ -n $SSH_CONNECTION ]]; then
-#   export EDITOR='vim'
-# else
-#   export EDITOR='nvim'
-# fi
+# =============================================================================
+# 🔧 AUTO-LOAD PLUGINS (if not already loaded by Oh My Zsh)
+# =============================================================================
 
-# Compilation flags
-# export ARCHFLAGS="-arch $(uname -m)"
+# Auto-suggestions
+if [[ ! -f ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then
+  echo "💡 Tip: Install zsh-autosuggestions for better completion:"
+  echo "   git clone https://github.com/zsh-users/zsh-autosuggestions ~/.zsh/zsh-autosuggestions"
+fi
 
-# Set personal aliases, overriding those provided by Oh My Zsh libs,
-# plugins, and themes. Aliases can be placed here, though Oh My Zsh
-# users are encouraged to define aliases within a top-level file in
-# the $ZSH_CUSTOM folder, with .zsh extension. Examples:
-# - $ZSH_CUSTOM/aliases.zsh
-# - $ZSH_CUSTOM/macos.zsh
-# For a full list of active aliases, run `alias`.
-#
-# Example aliases
-# alias zshconfig="mate ~/.zshrc"
-# alias ohmyzsh="mate ~/.oh-my-zsh"
-
-source ~/.envs
-source ~/.aliases
-source ~/.functions
+# Syntax highlighting
+if [[ ! -f ~/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then
+  echo "💡 Tip: Install zsh-syntax-highlighting for syntax highlighting:"
+  echo "   git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.zsh/zsh-syntax-highlighting"
+fi
