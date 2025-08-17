@@ -1,6 +1,14 @@
 # =============================================================================
 # 🚀 ENHANCED ZSH CONFIGURATION
 # =============================================================================
+# 
+# 💡 For the best experience, install a Nerd Font:
+#    https://www.nerdfonts.com/font-downloads
+#    Recommended: Hack Nerd Font, FiraCode Nerd Font, or JetBrains Mono Nerd Font
+# 
+# 🔧 To enable Powerline symbols, set your terminal font to a Nerd Font
+#    and ensure your terminal supports Unicode characters
+# =============================================================================
 
 # =============================================================================
 # 📁 OH MY ZSH CONFIGURATION
@@ -178,32 +186,105 @@ alias weather='curl -s "wttr.in/?format=3"'
 # 🎨 PROMPT CUSTOMIZATION
 # =============================================================================
 
-# Custom prompt function
+# Custom prompt function with Powerline and Nerd Fonts
 function custom_prompt() {
   # Exit code
   local exit_code=$?
   
-  # Git branch
-  local git_branch=""
+  # Powerline symbols (requires Nerd Fonts)
+  local SEPARATOR="%F{240}"
+  local BRANCH="%F{240}"
+  local DETACHED="%F{240}"
+  local AHEAD="%F{240}↑"
+  local BEHIND="%F{240}↓"
+  local STAGED="%F{240}●"
+  local UNSTAGED="%F{240}✚"
+  local UNTRACKED="%F{240}…"
+  local STASHED="%F{240}⚑"
+  local CLEAN="%F{240}✔"
+  local MERGE="%F{240}⚡"
+  local REBASE="%F{240}⚡"
+  
+  # Git status with advanced features
+  local git_status=""
   if git rev-parse --git-dir > /dev/null 2>&1; then
-    git_branch="$(git branch --show-current)"
+    local git_branch=$(git branch --show-current 2>/dev/null)
+    local git_remote=""
+    local git_ahead=""
+    local git_behind=""
+    local git_dirty=""
+    local git_stash=""
+    local git_state=""
+    
+    # Check if we're in a git repository
     if [[ -n "$git_branch" ]]; then
-      git_branch="%F{green} (%F{white} %F{yellow}$git_branch%F{green})"
+      # Check for merge/rebase state
+      if [[ -d ".git/rebase-merge" ]]; then
+        git_state=" %F{red}${REBASE}"
+      elif [[ -d ".git/rebase-apply" ]]; then
+        git_state=" %F{red}${REBASE}"
+      elif [[ -f ".git/MERGE_HEAD" ]]; then
+        git_state=" %F{red}${MERGE}"
+      fi
+      
+      # Check if branch is ahead/behind
+      git_remote=$(git for-each-ref --format='%(upstream:short)' $(git symbolic-ref -q HEAD) 2>/dev/null)
+      if [[ -n "$git_remote" ]]; then
+        git_ahead=$(git rev-list --count HEAD..$git_remote 2>/dev/null)
+        git_behind=$(git rev-list --count $git_remote..HEAD 2>/dev/null)
+      fi
+      
+      # Check for stashed changes
+      if git rev-parse --verify refs/stash >/dev/null 2>&1; then
+        git_stash=" %F{blue}${STASHED}"
+      fi
+      
+      # Check for uncommitted changes
+      if ! git diff --quiet --ignore-submodules --cached 2>/dev/null; then
+        git_dirty=" %F{green}${STAGED}"
+      fi
+      if ! git diff-files --quiet --ignore-submodules 2>/dev/null; then
+        git_dirty="${git_dirty} %F{red}${UNSTAGED}"
+      fi
+      if [[ -n $(git ls-files --others --exclude-standard 2>/dev/null) ]]; then
+        git_dirty="${git_dirty} %F{blue}${UNTRACKED}"
+      fi
+      
+      # Build git status string with Powerline style
+      git_status=" %F{240}${BRANCH} %F{cyan}${git_branch}"
+      if [[ -n "$git_ahead" && "$git_ahead" != "0" ]]; then
+        git_status="${git_status} %F{green}${AHEAD}${git_ahead}"
+      fi
+      if [[ -n "$git_behind" && "$git_behind" != "0" ]]; then
+        git_status="${git_status} %F{red}${BEHIND}${git_behind}"
+      fi
+      git_status="${git_status}${git_dirty}${git_stash}${git_state}"
+    else
+      # Detached HEAD state
+      local git_commit=$(git rev-parse --short HEAD 2>/dev/null)
+      if [[ -n "$git_commit" ]]; then
+        git_status=" %F{240}${DETACHED} %F{red}${git_commit}"
+      fi
     fi
   fi
   
-  # Current directory
-  local current_dir="%F{cyan} %~"
+  # Current directory with home directory shortening and Nerd Fonts
+  local current_dir=$(pwd | sed "s|^$HOME|~|")
+  local current_dir="%F{blue} ${current_dir}"
   
-  # Exit code indicator
+  # Exit code indicator with Nerd Fonts
   local exit_indicator=""
   if [[ $exit_code -ne 0 ]]; then
     exit_indicator=" %F{red}✗"
   else
     exit_indicator=" %F{green}✓"
-  fi  
-  # Set prompt
-  PROMPT="%F{green} $current_dir$git_branch$exit_indicator"$'\n'"%F{white}❯ "
+  fi
+  
+  # Username and hostname with Nerd Fonts
+  local user_host="%F{cyan} %n%F{white}@%F{green}%m"
+  
+  # Build the prompt with Powerline-style separators and visual hierarchy
+  PROMPT="%F{blue}%B${user_host}%b%F{blue} ${SEPARATOR} %F{white}${current_dir}${git_status}${exit_indicator}"$'\n'"%F{white}❯ "
 }
 
 # Set custom prompt
