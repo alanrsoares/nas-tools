@@ -22,4 +22,4 @@ await Promise.all(
 );
 
 // Parse command line arguments
-program.parse();
+await program.parseAsync();
