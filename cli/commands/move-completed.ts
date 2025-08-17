@@ -119,21 +119,13 @@ async function scanAlbumFolders(sourceDir: string): Promise<AlbumFolder[]> {
 async function inferArtistName(
   albumFolder: AlbumFolder,
 ): Promise<string | null> {
-  for (const musicFile of albumFolder.musicFiles) {
-    try {
-      const filePath = joinPath(albumFolder.path, musicFile);
+  return (
+    albumFolder.musicFiles.find(async (file) => {
+      const filePath = joinPath(albumFolder.path, file);
       const metadata = await parseFile(filePath);
-
-      if (metadata.common.artist) {
-        return metadata.common.artist;
-      }
-    } catch {
-      // Continue to next file if metadata parsing fails
-      continue;
-    }
-  }
-
-  return null;
+      return Boolean(metadata.common.artist);
+    }) ?? null
+  );
 }
 
 // Get target directory based on artist name
