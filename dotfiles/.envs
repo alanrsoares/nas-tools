@@ -1,9 +1,8 @@
 #!/bin/bash
 
 export FLAC='/volmain/Public/FLAC'
-export NAS_TOOLS='/home/admin/dev/nas-tools'
-export NAS_SCRIPTS="$NAS_TOOLS/scripts"
 export TRANSMISSION_COMPLETE='/volmain/Download/Transmission/complete'
+export NAS_TOOLS='/home/admin/dev/nas-tools'
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
