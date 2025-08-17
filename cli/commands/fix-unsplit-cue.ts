@@ -37,7 +37,7 @@ const optionsSchema = z.object({
   yes: z.boolean(),
 });
 
-type ScriptOptions = z.infer<typeof optionsSchema>;
+type CommandOptions = z.infer<typeof optionsSchema>;
 
 // Utility functions
 
@@ -52,7 +52,7 @@ function isAudioFile(file: string): boolean {
 // Scan for matching .cue and audio files that are not split (recursive)
 async function scanCueAudioPairs(
   searchPath: string,
-  options: ScriptOptions,
+  options: CommandOptions,
 ): Promise<CueAudioPair[]> {
   invariant(searchPath, "Search path is required");
 
@@ -90,7 +90,7 @@ async function scanCueAudioPairs(
 // Find cue/audio pairs in a single directory
 async function findCueAudioPairsInDirectory(
   searchPath: string,
-  options: ScriptOptions,
+  options: CommandOptions,
 ): Promise<CueAudioPair[]> {
   const foundPairs: CueAudioPair[] = [];
 
@@ -197,7 +197,7 @@ async function processCueAudioPair(
   }
 }
 
-async function run(folderPath: string, options: ScriptOptions) {
+async function run(folderPath: string, options: CommandOptions) {
   const folderExists = await exists(folderPath);
   invariant(
     folderExists,

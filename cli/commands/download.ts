@@ -17,7 +17,7 @@ const optionsSchema = z.object({
   timeout: z.string().transform((val) => parseInt(val, 10)),
 });
 
-type DownloadOptions = z.infer<typeof optionsSchema>;
+type CommandOptions = z.infer<typeof optionsSchema>;
 
 function filenameFromHeaders(url: string, headers: Headers): string {
   const cd = headers["content-disposition"];
@@ -58,7 +58,7 @@ async function fetchOnce(
   });
 }
 
-async function run(url: string, options: DownloadOptions): Promise<void> {
+async function run(url: string, options: CommandOptions): Promise<void> {
   await mkdir(options.dest, { recursive: true });
 
   const headers: Record<string, string> = {

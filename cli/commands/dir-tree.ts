@@ -17,7 +17,7 @@ const optionsSchema = z.object({
   exclude: z.array(z.string()).optional().default([]),
 });
 
-type TreeOptions = z.infer<typeof optionsSchema>;
+type CommandOptions = z.infer<typeof optionsSchema>;
 
 // Tree characters for display
 const TREE_CHARS = {
@@ -32,7 +32,7 @@ async function buildTree(
   dirPath: string,
   prefix: string = "",
   depth: number = 0,
-  options: TreeOptions,
+  options: CommandOptions,
 ): Promise<string[]> {
   const {
     maxDepth = Infinity,
@@ -107,7 +107,7 @@ async function buildTree(
 }
 
 // Main function to generate and display the tree
-async function run(dirPath: string, options: TreeOptions): Promise<void> {
+async function run(dirPath: string, options: CommandOptions): Promise<void> {
   // Validate the directory exists
   const isValid = await validateDirectory(dirPath);
   if (!isValid) {

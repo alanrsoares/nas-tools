@@ -64,7 +64,7 @@ const optionsSchema = z.object({
   interactive: z.boolean().optional().default(false),
 });
 
-type ScriptOptions = z.infer<typeof optionsSchema>;
+type CommandOptions = z.infer<typeof optionsSchema>;
 
 // Utility functions
 
@@ -183,7 +183,7 @@ async function checkArtistExists(artistPath: string): Promise<boolean> {
 // Handle naming conflicts
 async function resolveNamingConflict(
   targetPath: string,
-  options: ScriptOptions,
+  options: CommandOptions,
 ): Promise<string> {
   if (options.dryRun) {
     return targetPath;
@@ -236,7 +236,7 @@ function generateArtistSuggestions(folderName: string): string[] {
 // Process album folders and determine move operations
 async function processAlbumFolders(
   albumFolders: AlbumFolder[],
-  options: ScriptOptions,
+  options: CommandOptions,
 ): Promise<MoveOperation[]> {
   const moveOperations: MoveOperation[] = [];
 
@@ -277,7 +277,7 @@ async function processAlbumFolders(
 // Display summary and get user confirmation
 async function confirmProcessing(
   operations: MoveOperation[],
-  options: ScriptOptions,
+  options: CommandOptions,
 ): Promise<boolean> {
   logInfo(`📋 Found ${operations.length} albums to process:`);
 
@@ -325,7 +325,7 @@ async function createBackup(
 // Move album folder to target location
 async function moveAlbumFolder(
   operation: MoveOperation,
-  options: ScriptOptions,
+  options: CommandOptions,
 ): Promise<boolean> {
   const { sourcePath, targetPath, albumName } = operation;
 
@@ -355,7 +355,7 @@ async function moveAlbumFolder(
   }
 }
 
-async function run(options: ScriptOptions) {
+async function run(options: CommandOptions) {
   // Validate directories
   const sourceExists = await exists(options.sourceDir);
   invariant(
