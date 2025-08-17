@@ -44,69 +44,35 @@ const colors = {
 
 type FileCategory = keyof typeof colors;
 
-const archiveExtensions = [
-  ".zip",
-  ".tar",
-  ".gz",
-  ".bz2",
-  ".xz",
-  ".rar",
-  ".7z",
-  ".tgz",
-];
-
-const imageExtensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp"];
-
-const videoExtensions = [
-  ".mp4",
-  ".avi",
-  ".mkv",
-  ".mov",
-  ".wmv",
-  ".flv",
-  ".webm",
-  ".m4v",
-];
-
-const audioExtensions = [
-  ".mp3",
-  ".flac",
-  ".wav",
-  ".aac",
-  ".ogg",
-  ".m4a",
-  ".wma",
-];
-
-const specialExtensions = [
-  ".json",
-  ".xml",
-  ".yaml",
-  ".yml",
-  ".toml",
-  ".ini",
-  ".conf",
-  ".config",
-];
-
-const executableExtensions = [".exe", ".sh", ".bat", ".cmd", ".com", ".app"];
-
 const hasExtension = (name: string, extensions: string[]): boolean =>
   extensions.some((ext) => name.toLowerCase().endsWith(ext));
 
-const EXTENSIONS = {
-  archive: archiveExtensions,
-  image: imageExtensions,
-  video: videoExtensions,
-  audio: audioExtensions,
-  special: specialExtensions,
-  executable: executableExtensions,
-} as const satisfies Record<
-  Exclude<FileCategory, "hidden" | "file" | "directory" | "symlink">,
-  string[]
+type ColoredCategory = Exclude<
+  FileCategory,
+  "hidden" | "file" | "directory" | "symlink"
 >;
 
-const EXTENSION_TYPES = Object.keys(EXTENSIONS) as (keyof typeof EXTENSIONS)[];
+const extensionsByCategory = {
+  archive: [".zip", ".tar", ".gz", ".bz2", ".xz", ".rar", ".7z", ".tgz"],
+  audio: [".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a", ".wma"],
+  executable: [".exe", ".sh", ".bat", ".cmd", ".com", ".app"],
+  image: [".jpg", ".jpeg", ".png", ".gif", ".bmp"],
+  special: [
+    ".json",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".conf",
+    ".config",
+  ],
+  video: [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v"],
+} as const satisfies Record<ColoredCategory, string[]>;
+
+type ExtensionCategory = keyof typeof extensionsByCategory;
+
+const extensionTypes = Object.keys(extensionsByCategory) as ExtensionCategory[];
 
 // Helper function to determine file color
 function getFileColor(
@@ -132,8 +98,8 @@ function getFileColor(
     return colors.symlink(name);
   }
 
-  for (const type of EXTENSION_TYPES) {
-    if (hasExtension(name, EXTENSIONS[type])) {
+  for (const type of extensionTypes) {
+    if (hasExtension(name, extensionsByCategory[type])) {
       return colors[type](name);
     }
   }
