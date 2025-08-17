@@ -6,7 +6,7 @@ import {
   logError,
   readDirectoryWithTypes,
   validateDirectory,
-} from "../utils.js";
+} from "../lib/utils.js";
 
 const optionsSchema = z.object({
   maxDepth: z

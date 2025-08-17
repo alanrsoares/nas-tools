@@ -22,7 +22,7 @@ import {
   promptForInput,
   readDirectory,
   readDirectoryWithTypes,
-} from "../utils.js";
+} from "../lib/utils.js";
 
 // Constants
 const DEFAULT_SOURCE_DIR = "/volmain/Download/Transmission/complete/";

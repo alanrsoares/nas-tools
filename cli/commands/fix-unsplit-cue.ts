@@ -21,7 +21,7 @@ import {
   logSuccess,
   readDirectory,
   readDirectoryWithTypes,
-} from "../utils.js";
+} from "../lib/utils.js";
 
 const BASH_FUNCTIONS_PATH = "/home/admin/dev/nas-tools/bash/functions.sh";
 
