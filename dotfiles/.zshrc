@@ -124,10 +124,12 @@ export NVM_DIR="$HOME/.nvm"
 # 🎨 PROMPT CUSTOMIZATION
 # =============================================================================
 
+
 # Custom prompt function
 function custom_prompt() {
   # Exit code
   local exit_code=$?
+  local prompt_icon=""
   
   # Git branch
   local git_branch=""
@@ -149,7 +151,7 @@ function custom_prompt() {
     exit_indicator=" %F{green}✓"
   fi  
   # Set prompt
-  PROMPT="%F{red} $current_dir$git_branch$exit_indicator"$'\n'"%F{white}❯ "
+  PROMPT="%F{red}$prompt_icon $current_dir$git_branch$exit_indicator"$'\n'"%F{white}❯ "
 }
 
 # Set custom prompt
