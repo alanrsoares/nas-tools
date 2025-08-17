@@ -146,6 +146,15 @@ export class Result<T, E> extends Either<E, T> {
     return new Result(either);
   }
 
+  static async fromPromise<T, E>(promise: Promise<T>): Promise<Result<T, E>> {
+    try {
+      const value = await promise;
+      return Result.ok(value);
+    } catch (error) {
+      return Result.error(error as E);
+    }
+  }
+
   ok(): T | undefined {
     return this.isRight() ? this.right() : undefined;
   }
