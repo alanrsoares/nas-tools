@@ -104,7 +104,7 @@ async function run(url: string, options: DownloadOptions): Promise<void> {
   }
 }
 
-export function downloadCommand(program: Command): void {
+export default function downloadCommand(program: Command): void {
   program
     .command("download")
     .description("Download a file from a URL")

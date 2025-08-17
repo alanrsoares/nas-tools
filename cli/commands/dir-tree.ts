@@ -128,7 +128,7 @@ async function run(dirPath: string, options: TreeOptions): Promise<void> {
   }
 }
 
-export function dirTreeCommand(program: Command): void {
+export default function dirTreeCommand(program: Command): void {
   program
     .command("dir-tree")
     .description("Generate a tree view of a directory structure")

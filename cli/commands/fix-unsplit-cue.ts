@@ -263,7 +263,7 @@ async function run(folderPath: string, options: ScriptOptions) {
   }
 }
 
-export function fixUnsplitCueCommand(program: Command): void {
+export default function fixUnsplitCueCommand(program: Command): void {
   program
     .command("fix-unsplit-cue")
     .description(

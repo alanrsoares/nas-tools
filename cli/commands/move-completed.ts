@@ -434,7 +434,7 @@ async function run(options: ScriptOptions) {
   }
 }
 
-export function moveCompletedCommand(program: Command): void {
+export default function moveCompletedCommand(program: Command): void {
   program
     .command("move-completed")
     .description(

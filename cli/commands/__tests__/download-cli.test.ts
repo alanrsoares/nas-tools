@@ -29,9 +29,6 @@ describe("download CLI integration", () => {
     const testUrl =
       "https://raw.githubusercontent.com/thedevdojo/pines/refs/heads/main/cover.jpg";
 
-    console.log(`📥 Testing CLI download: ${testUrl}`);
-    console.log(`📁 Temp directory: ${tempDir}`);
-
     // Run the CLI command
     const result =
       await $`node ${cliPath} download ${testUrl} --dest ${tempDir}`;
@@ -57,15 +54,11 @@ describe("download CLI integration", () => {
     // Verify it's actually a JPEG file by checking the magic bytes
     const jpegMagicBytes = Buffer.from([0xff, 0xd8, 0xff]);
     expect(fileContent.subarray(0, 3)).toEqual(jpegMagicBytes);
-
-    console.log(`✅ Successfully downloaded ${fileContent.length} bytes`);
   }, 60000); // 60 second timeout for network operations
 
   it("should handle invalid URLs gracefully via CLI", async () => {
     const invalidUrl =
       "https://invalid-domain-that-does-not-exist-12345.com/file.jpg";
-
-    console.log(`❌ Testing CLI with invalid URL: ${invalidUrl}`);
 
     // The CLI should exit with code 1 for errors
     try {
@@ -74,7 +67,6 @@ describe("download CLI integration", () => {
     } catch (error: any) {
       // zx throws an error when the command fails, which is expected
       expect(error.exitCode).toBe(1);
-      console.log("✅ CLI correctly handled invalid URL");
     }
   }, 30000);
 
@@ -82,8 +74,6 @@ describe("download CLI integration", () => {
     const testUrl =
       "https://raw.githubusercontent.com/thedevdojo/pines/refs/heads/main/cover.jpg";
     const customUA = "Custom-Test-Agent/1.0";
-
-    console.log(`🧪 Testing CLI with custom User-Agent: ${customUA}`);
 
     // Run the CLI command with custom User-Agent
     const result =
@@ -100,7 +90,6 @@ describe("download CLI integration", () => {
       await access(filePath);
       const fileContent = await readFile(filePath);
       expect(fileContent.length).toBeGreaterThan(0);
-      console.log("✅ CLI with custom User-Agent worked correctly");
     } catch (error) {
       throw new Error(`File verification failed: ${error}`);
     }
@@ -124,7 +113,6 @@ describe("download CLI integration", () => {
       throw new Error("Expected CLI to fail with missing URL");
     } catch (error: any) {
       expect(error.exitCode).toBe(1);
-      console.log("✅ CLI correctly handled missing URL argument");
     }
   });
 });
