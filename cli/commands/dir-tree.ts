@@ -13,7 +13,7 @@ const optionsSchema = z.object({
     .string()
     .transform((val) => (val === "Infinity" ? Infinity : parseInt(val))),
   showHidden: z.boolean().optional(),
-  showFiles: z.boolean().optional(),
+  showFiles: z.boolean().optional().default(false),
   exclude: z.array(z.string()).optional(),
 });
 
@@ -135,7 +135,7 @@ export function dirTreeCommand(program: Command): void {
     .argument("[path]", "Directory path to display", ".")
     .option("-d, --max-depth <number>", "Maximum depth to traverse", "Infinity")
     .option("-H, --show-hidden", "Show hidden files and directories")
-    .option("-f, --show-files", "Show files (default: true)")
+    .option("-f, --show-files", "Show files (default: false)")
     .option(
       "-e, --exclude <patterns...>",
       "Exclude files/directories matching patterns",

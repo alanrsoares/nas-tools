@@ -39,8 +39,6 @@ describe("dir-tree CLI integration", () => {
   });
 
   it("should display directory tree with default options", async () => {
-    console.log(`📁 Testing dir-tree with default options: ${testDir}`);
-
     // Run the CLI command
     const result = await $`node ${cliPath} dir-tree ${testDir}`;
 
@@ -50,23 +48,41 @@ describe("dir-tree CLI integration", () => {
     // Verify the output matches expected structure
     expect(result.stdout).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
-      ├──  file1.txt
-      ├──  file2.txt
       ├──  folder1
-      │   └──  file3.txt
       └──  folder2
-          ├──  file4.txt
           └──  subfolder
-              └──  file5.txt
+      "
+    `);
+  });
+
+  it("should show files when --show-files | -f is used", async () => {
+    const result1 = await $`node ${cliPath} dir-tree ${testDir} --show-files`;
+
+    // Verify the command executed successfully
+    expect(result1.exitCode).toBe(0);
+
+    // Verify the output contains files
+    expect(result1.stdout).toMatchInlineSnapshot(`
+      "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
+      ├── 📄 file1.txt
+      ├── 📄 file2.txt
+      ├── 📁 folder1
+      │   └── 📄 file3.txt
+      └── 📁 folder2
+          ├── 📄 file4.txt
+          └── 📁 subfolder
+              └── 📄 file5.txt
       "
     `);
 
-    console.log("✅ Default dir-tree output is correct");
+    // -f is equivalent to --show-files
+    const result2 = await $`node ${cliPath} dir-tree ${testDir} -f`;
+
+    // Verify the output does not contain files
+    expect(result2.stdout).toBe(result1.stdout);
   });
 
   it("should show hidden files when --show-hidden is used", async () => {
-    console.log(`🔍 Testing dir-tree with --show-hidden: ${testDir}`);
-
     // Run the CLI command with show-hidden option
     const result = await $`node ${cliPath} dir-tree ${testDir} --show-hidden`;
 
@@ -77,24 +93,14 @@ describe("dir-tree CLI integration", () => {
     expect(result.stdout).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
       ├──  .hidden
-      │   └──  secret.txt
-      ├──  file1.txt
-      ├──  file2.txt
       ├──  folder1
-      │   └──  file3.txt
       └──  folder2
-          ├──  file4.txt
           └──  subfolder
-              └──  file5.txt
       "
     `);
-
-    console.log("✅ Hidden files are shown when --show-hidden is used");
   });
 
   it("should respect max-depth option", async () => {
-    console.log(`📏 Testing dir-tree with max-depth=1: ${testDir}`);
-
     // Run the CLI command with max-depth=1
     const result = await $`node ${cliPath} dir-tree ${testDir} --max-depth 1`;
 
@@ -104,19 +110,13 @@ describe("dir-tree CLI integration", () => {
     // Verify the output respects max-depth
     expect(result.stdout).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
-      ├──  file1.txt
-      ├──  file2.txt
       ├──  folder1
       └──  folder2
       "
     `);
-
-    console.log("✅ Max-depth option is respected");
   });
 
   it("should exclude files/directories with --exclude option", async () => {
-    console.log(`🚫 Testing dir-tree with --exclude: ${testDir}`);
-
     // Run the CLI command with exclude option
     const result =
       await $`node ${cliPath} dir-tree ${testDir} --exclude folder1 file1.txt`;
@@ -127,20 +127,13 @@ describe("dir-tree CLI integration", () => {
     // Verify the output excludes specified patterns
     expect(result.stdout).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
-      ├──  file2.txt
       └──  folder2
-          ├──  file4.txt
           └──  subfolder
-              └──  file5.txt
       "
     `);
-
-    console.log("✅ Exclude option works correctly");
   });
 
   it("should handle current directory (.) as default", async () => {
-    console.log("📍 Testing dir-tree with current directory (.)");
-
     // Change to test directory and run dir-tree without path argument
     const result = await $`cd ${testDir} && node ${cliPath} dir-tree`;
 
@@ -150,18 +143,11 @@ describe("dir-tree CLI integration", () => {
     // Verify the output contains expected content
     expect(result.stdout).toMatchInlineSnapshot(`
       "📁 .
-      ├──  file1.txt
-      ├──  file2.txt
       ├──  folder1
-      │   └──  file3.txt
       └──  folder2
-          ├──  file4.txt
           └──  subfolder
-              └──  file5.txt
       "
     `);
-
-    console.log("✅ Current directory (.) works as default");
   });
 
   it("should handle CLI help and version commands", async () => {
@@ -184,7 +170,6 @@ describe("dir-tree CLI integration", () => {
       throw new Error("Expected CLI to fail with non-existent directory");
     } catch (error: any) {
       expect(error.exitCode).toBe(1);
-      console.log("✅ CLI correctly handled non-existent directory");
     }
   });
 
@@ -197,7 +182,5 @@ describe("dir-tree CLI integration", () => {
     // This test mainly ensures the CLI doesn't crash on directory access issues
     const result = await $`node ${cliPath} dir-tree ${restrictedDir}`;
     expect(result.exitCode).toBe(0);
-
-    console.log("✅ CLI handles directory access correctly");
   });
 });
