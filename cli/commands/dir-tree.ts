@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import { Command } from "commander";
+import pc from "picocolors";
 import { z } from "zod";
 
 import {
@@ -26,6 +27,152 @@ const TREE_CHARS = {
   VERTICAL: "│   ",
   SPACE: "    ",
 } as const;
+
+// Color functions for different file types
+const colors = {
+  directory: (name: string) => pc.blue(name),
+  file: (name: string) => name,
+  hidden: (name: string) => pc.gray(name),
+  executable: (name: string) => pc.green(name),
+  symlink: (name: string) => pc.cyan(name),
+  special: (name: string) => pc.magenta(name),
+  archive: (name: string) => pc.red(name),
+  image: (name: string) => pc.yellow(name),
+  video: (name: string) => pc.magenta(name),
+  audio: (name: string) => pc.cyan(name),
+} as const;
+
+// Helper function to determine file color
+function getFileColor(
+  entry: {
+    name: string;
+    isDirectory: () => boolean;
+    isSymbolicLink?: () => boolean;
+    isFile?: () => boolean;
+  },
+  isHidden: boolean,
+): string {
+  const name = entry.name;
+
+  if (isHidden) {
+    return colors.hidden(name);
+  }
+
+  if (entry.isDirectory()) {
+    return colors.directory(name);
+  }
+
+  // Check if it's a symlink (if the API supports it)
+  if (entry.isSymbolicLink && entry.isSymbolicLink()) {
+    return colors.symlink(name);
+  }
+
+  // Check if it's executable (common executable extensions)
+  const executableExtensions = [".exe", ".sh", ".bat", ".cmd", ".com", ".app"];
+  const isExecutable = executableExtensions.some((ext) =>
+    name.toLowerCase().endsWith(ext),
+  );
+
+  if (isExecutable) {
+    return colors.executable(name);
+  }
+
+  // Check for archive files
+  const archiveExtensions = [
+    ".zip",
+    ".tar",
+    ".gz",
+    ".bz2",
+    ".xz",
+    ".rar",
+    ".7z",
+    ".tgz",
+  ];
+  const isArchive = archiveExtensions.some((ext) =>
+    name.toLowerCase().endsWith(ext),
+  );
+
+  if (isArchive) {
+    return colors.archive(name);
+  }
+
+  // Check for image files
+  const imageExtensions = [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".bmp",
+    ".svg",
+    ".webp",
+    ".ico",
+  ];
+  const isImage = imageExtensions.some((ext) =>
+    name.toLowerCase().endsWith(ext),
+  );
+
+  if (isImage) {
+    return colors.image(name);
+  }
+
+  // Check for video files
+  const videoExtensions = [
+    ".mp4",
+    ".avi",
+    ".mkv",
+    ".mov",
+    ".wmv",
+    ".flv",
+    ".webm",
+    ".m4v",
+  ];
+  const isVideo = videoExtensions.some((ext) =>
+    name.toLowerCase().endsWith(ext),
+  );
+
+  if (isVideo) {
+    return colors.video(name);
+  }
+
+  // Check for audio files
+  const audioExtensions = [
+    ".mp3",
+    ".flac",
+    ".wav",
+    ".aac",
+    ".ogg",
+    ".m4a",
+    ".wma",
+  ];
+  const isAudio = audioExtensions.some((ext) =>
+    name.toLowerCase().endsWith(ext),
+  );
+
+  if (isAudio) {
+    return colors.audio(name);
+  }
+
+  // Check for special files (config files, etc.)
+  const specialExtensions = [
+    ".json",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".conf",
+    ".config",
+  ];
+  const isSpecial = specialExtensions.some((ext) =>
+    name.toLowerCase().endsWith(ext),
+  );
+
+  if (isSpecial) {
+    return colors.special(name);
+  }
+
+  return colors.file(name);
+}
 
 // Recursively build the tree structure
 async function buildTree(
@@ -79,9 +226,11 @@ async function buildTree(
       const currentPrefix = isLast ? TREE_CHARS.LAST_BRANCH : TREE_CHARS.BRANCH;
       const nextPrefix = isLast ? TREE_CHARS.SPACE : TREE_CHARS.VERTICAL;
 
-      // Add the current entry
+      // Add the current entry with colors
       const icon = options.showFiles ? (isDirectory ? "📁" : "📄") : "";
-      lines.push(`${prefix}${currentPrefix}${icon} ${entry.name}`);
+      const isHidden = entry.name.startsWith(".");
+      const coloredName = getFileColor(entry, isHidden);
+      lines.push(`${prefix}${currentPrefix}${icon} ${coloredName}`);
 
       if (!isDirectory) {
         continue;
@@ -116,7 +265,7 @@ async function run(dirPath: string, options: CommandOptions): Promise<void> {
     );
   }
 
-  console.log(`📁 ${dirPath}`);
+  console.log(`📁 ${pc.blue(dirPath)}`);
   const treeLines = await buildTree(dirPath, "", 0, options);
 
   if (treeLines.length === 0) {
