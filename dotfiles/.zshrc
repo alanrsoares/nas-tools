@@ -188,7 +188,7 @@ function custom_prompt() {
   if git rev-parse --git-dir > /dev/null 2>&1; then
     git_branch="$(git branch --show-current)"
     if [[ -n "$git_branch" ]]; then
-      git_branch="%F{white} · %F{cyan} %F{green}$git_branch"
+      git_branch="%F{white} · %F{cyan}\ue65b %F{green} %F{yellow}$git_branch%F{green}"
     fi
   fi
   
