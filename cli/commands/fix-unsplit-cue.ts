@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { z } from "zod";
 import { $ } from "zx";
 
 import invariant from "../lib/invariant.js";
@@ -30,6 +31,11 @@ interface CueAudioPair {
   cueFile: string;
   audioFile: string;
 }
+
+const scriptOptionsSchema = z.object({
+  ignoreFailed: z.boolean(),
+  yes: z.boolean(),
+});
 
 interface ScriptOptions {
   ignoreFailed: boolean;
@@ -273,11 +279,8 @@ export function fixUnsplitCueCommand(program: Command): void {
       false,
     )
     .option("-y, --yes", 'Assume "yes" to all confirmations', false)
-    .action(async (folderPath: string, options: any) => {
-      const scriptOptions: ScriptOptions = {
-        ignoreFailed: Boolean(options.ignoreFailed),
-        yes: Boolean(options.yes),
-      };
+    .action(async (folderPath: string, options: Record<string, unknown>) => {
+      const scriptOptions = scriptOptionsSchema.parse(options);
 
       try {
         await run(folderPath, scriptOptions);

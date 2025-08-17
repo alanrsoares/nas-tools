@@ -1,8 +1,8 @@
 import * as path from "path";
 import { Command } from "commander";
 import { parseFile } from "music-metadata";
-import invariant from "tiny-invariant";
 
+import invariant from "../lib/invariant.js";
 import {
   confirm,
   displaySummary,
@@ -453,13 +453,13 @@ export function moveCompletedCommand(program: Command): void {
       "Prompt for artist name when inference fails",
       false,
     )
-    .action(async (options: any) => {
+    .action(async (options: Record<string, unknown>) => {
       const scriptOptions: ScriptOptions = {
-        sourceDir: options.sourceDir,
-        targetDir: options.targetDir,
-        backupDir: options.backupDir,
-        dryRun: Boolean(options.dryRun),
-        interactive: Boolean(options.interactive),
+        sourceDir: String(options["sourceDir"] ?? DEFAULT_SOURCE_DIR),
+        targetDir: String(options["targetDir"] ?? DEFAULT_TARGET_DIR),
+        backupDir: String(options["backupDir"] ?? DEFAULT_BACKUP_DIR),
+        dryRun: Boolean(options["dryRun"]),
+        interactive: Boolean(options["interactive"]),
       };
 
       try {
