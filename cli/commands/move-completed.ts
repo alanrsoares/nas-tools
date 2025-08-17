@@ -95,21 +95,18 @@ async function scanAlbumFolders(sourceDir: string): Promise<AlbumFolder[]> {
       .map((dirent) => joinPath(sourceDir, dirent.name));
 
     for (const dir of directories) {
-      try {
-        const files = await readDirectory(dir);
-        const musicFiles = files.filter(isMusicFile);
+      const files = await readDirectory(dir).catch(() => []);
+      const musicFiles = files.filter(isMusicFile);
 
-        if (musicFiles.length > 0) {
-          albumFolders.push({
-            path: dir,
-            name: getBasename(dir),
-            musicFiles,
-          });
-        }
-      } catch {
-        // Skip if directory can't be read
+      if (!musicFiles.length) {
         continue;
       }
+
+      albumFolders.push({
+        path: dir,
+        name: getBasename(dir),
+        musicFiles,
+      });
     }
   } catch (error) {
     logError(`Error scanning source directory: ${error}`);
