@@ -12,9 +12,9 @@ const optionsSchema = z.object({
   maxDepth: z
     .string()
     .transform((val) => (val === "Infinity" ? Infinity : parseInt(val))),
-  showHidden: z.boolean().optional(),
+  showHidden: z.boolean().optional().default(false),
   showFiles: z.boolean().optional().default(false),
-  exclude: z.array(z.string()).optional(),
+  exclude: z.array(z.string()).optional().default([]),
 });
 
 type TreeOptions = z.infer<typeof optionsSchema>;
@@ -32,12 +32,7 @@ async function buildTree(
   dirPath: string,
   prefix: string = "",
   depth: number = 0,
-  options: TreeOptions = {
-    maxDepth: Infinity,
-    showHidden: false,
-    showFiles: true,
-    exclude: [],
-  },
+  options: TreeOptions,
 ): Promise<string[]> {
   const {
     maxDepth = Infinity,
