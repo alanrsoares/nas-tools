@@ -111,7 +111,12 @@ async function buildTree(
 // Main function to generate and display the tree
 async function run(dirPath: string, options: TreeOptions): Promise<void> {
   // Validate the directory exists
-  await validateDirectory(dirPath);
+  const isValid = await validateDirectory(dirPath);
+  if (!isValid) {
+    throw new Error(
+      `Directory '${dirPath}' does not exist or is not accessible`,
+    );
+  }
 
   console.log(`📁 ${dirPath}`);
   const treeLines = await buildTree(dirPath, "", 0, options);
