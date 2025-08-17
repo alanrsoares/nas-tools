@@ -1,4 +1,4 @@
-import * as path from "path";
+import * as path from "node:path";
 import { Command } from "commander";
 import { parseFile } from "music-metadata";
 import { z } from "zod";
