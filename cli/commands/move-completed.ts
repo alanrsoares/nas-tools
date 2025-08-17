@@ -18,6 +18,7 @@ import {
   logSuccess,
   logWarning,
   moveFile,
+  promptForInput,
   readDirectory,
   readDirectoryWithTypes,
 } from "../utils.js";
@@ -63,11 +64,10 @@ interface ScriptOptions {
 
 // Utility functions
 
-const promptForArtistName = async (
+async function promptForArtistName(
   folderName: string,
   suggestions: string[],
-) => {
-  const { promptForInput } = await import("../utils.js");
+): Promise<string> {
   return await promptForInput(
     `Could not infer artist name for folder: ${folderName}`,
     suggestions[0] || "",
@@ -78,7 +78,7 @@ const promptForArtistName = async (
       return true;
     },
   );
-};
+}
 
 // Scan for album folders in the source directory
 async function scanAlbumFolders(sourceDir: string): Promise<AlbumFolder[]> {
