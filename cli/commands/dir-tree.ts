@@ -30,16 +30,16 @@ const TREE_CHARS = {
 
 // Color functions for different file types
 const colors = {
-  directory: (name: string) => pc.blue(name),
-  file: (name: string) => name,
-  hidden: (name: string) => pc.gray(name),
-  executable: (name: string) => pc.green(name),
-  symlink: (name: string) => pc.cyan(name),
-  special: (name: string) => pc.magenta(name),
-  archive: (name: string) => pc.red(name),
-  image: (name: string) => pc.yellow(name),
-  video: (name: string) => pc.magenta(name),
-  audio: (name: string) => pc.cyan(name),
+  directory: pc.blue,
+  file: pc.white,
+  hidden: pc.gray,
+  executable: pc.green,
+  symlink: pc.cyan,
+  special: pc.magenta,
+  archive: pc.red,
+  image: pc.yellow,
+  video: pc.magenta,
+  audio: pc.cyan,
 } as const;
 
 // Helper function to determine file color
