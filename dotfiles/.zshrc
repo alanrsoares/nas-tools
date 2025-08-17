@@ -201,10 +201,9 @@ function custom_prompt() {
     exit_indicator=" %F{red}✗"
   else
     exit_indicator=" %F{green}✓"
-  fi
-  
+  fi  
   # Set prompt
-  PROMPT="%F{green}$ $current_dir$git_branch$exit_indicator"$'\n'"%F{white}❯ "
+  PROMPT="%F{green} $current_dir$git_branch$exit_indicator"$'\n'"%F{white}❯ "
 }
 
 # Set custom prompt
