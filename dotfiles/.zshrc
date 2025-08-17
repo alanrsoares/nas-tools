@@ -193,7 +193,7 @@ function custom_prompt() {
   fi
   
   # Current directory
-  local current_dir="%F{blue}%~"
+  local current_dir="%F{cyan}%~"
   
   # Exit code indicator
   local exit_indicator=""
