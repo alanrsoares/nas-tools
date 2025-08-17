@@ -1,6 +1,7 @@
 import * as path from "path";
 import { Command } from "commander";
 import { parseFile } from "music-metadata";
+import { z } from "zod";
 
 import invariant from "../lib/invariant.js";
 import {
@@ -54,13 +55,16 @@ interface MoveOperation {
   isNewArtist: boolean;
 }
 
-interface ScriptOptions {
-  sourceDir: string;
-  targetDir: string;
-  backupDir: string;
-  dryRun: boolean;
-  interactive: boolean;
-}
+// schema: strings are optional and have defaults
+const scriptOptionsSchema = z.object({
+  sourceDir: z.string().optional().default(DEFAULT_SOURCE_DIR),
+  targetDir: z.string().optional().default(DEFAULT_TARGET_DIR),
+  backupDir: z.string().optional().default(DEFAULT_BACKUP_DIR),
+  dryRun: z.boolean().optional().default(false),
+  interactive: z.boolean().optional().default(false),
+});
+
+type ScriptOptions = z.infer<typeof scriptOptionsSchema>;
 
 // Utility functions
 
@@ -454,13 +458,7 @@ export function moveCompletedCommand(program: Command): void {
       false,
     )
     .action(async (options: Record<string, unknown>) => {
-      const scriptOptions: ScriptOptions = {
-        sourceDir: String(options["sourceDir"] ?? DEFAULT_SOURCE_DIR),
-        targetDir: String(options["targetDir"] ?? DEFAULT_TARGET_DIR),
-        backupDir: String(options["backupDir"] ?? DEFAULT_BACKUP_DIR),
-        dryRun: Boolean(options["dryRun"]),
-        interactive: Boolean(options["interactive"]),
-      };
+      const scriptOptions = scriptOptionsSchema.parse(options);
 
       try {
         await run(scriptOptions);
