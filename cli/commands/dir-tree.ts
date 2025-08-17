@@ -88,17 +88,20 @@ async function buildTree(
       const icon = options.showFiles ? (isDirectory ? "📁" : "📄") : "";
       lines.push(`${prefix}${currentPrefix}${icon} ${entry.name}`);
 
-      // Recursively add children for directories
-      if (isDirectory) {
-        const childPath = path.join(dirPath, entry.name);
-        const childLines = await buildTree(
-          childPath,
-          prefix + nextPrefix,
-          depth + 1,
-          options,
-        );
-        lines.push(...childLines);
+      if (!isDirectory) {
+        continue;
       }
+
+      // Recursively add children for directories
+      const childPath = path.join(dirPath, entry.name);
+      const childLines = await buildTree(
+        childPath,
+        prefix + nextPrefix,
+        depth + 1,
+        options,
+      );
+
+      lines.push(...childLines);
     }
 
     return lines;
