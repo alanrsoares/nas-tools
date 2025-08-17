@@ -10,18 +10,16 @@ program
   )
   .version("1.0.0");
 
-const COMMANDS = [
+const COMMAND_MODULES = [
   import("./commands/dir-tree.js"),
   import("./commands/download.js"),
   import("./commands/fix-unsplit-cue.js"),
   import("./commands/move-completed.js"),
 ];
 
-// Add commands
-for (const command of COMMANDS) {
-  const commandModule = await command;
-  commandModule.default(program);
-}
+await Promise.all(
+  COMMAND_MODULES.map((m) => m.then((m) => m.default(program))),
+);
 
 // Parse command line arguments
 program.parse();
