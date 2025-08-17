@@ -8,7 +8,7 @@ import {
   validateDirectory,
 } from "../utils.js";
 
-const treeSchema = z.object({
+const optionsSchema = z.object({
   maxDepth: z
     .string()
     .transform((val) => (val === "Infinity" ? Infinity : parseInt(val))),
@@ -17,7 +17,7 @@ const treeSchema = z.object({
   exclude: z.array(z.string()).optional(),
 });
 
-type TreeOptions = z.infer<typeof treeSchema>;
+type TreeOptions = z.infer<typeof optionsSchema>;
 
 // Tree characters for display
 const TREE_CHARS = {
@@ -110,21 +110,16 @@ async function buildTree(
 
 // Main function to generate and display the tree
 async function run(dirPath: string, options: TreeOptions): Promise<void> {
-  try {
-    // Validate the directory exists
-    await validateDirectory(dirPath);
+  // Validate the directory exists
+  await validateDirectory(dirPath);
 
-    console.log(`📁 ${dirPath}`);
-    const treeLines = await buildTree(dirPath, "", 0, options);
+  console.log(`📁 ${dirPath}`);
+  const treeLines = await buildTree(dirPath, "", 0, options);
 
-    if (treeLines.length === 0) {
-      console.log("   (empty directory)");
-    } else {
-      treeLines.forEach((line) => console.log(line));
-    }
-  } catch (error) {
-    logError(`Failed to generate tree: ${error}`);
-    process.exit(1);
+  if (treeLines.length === 0) {
+    console.log("   (empty directory)");
+  } else {
+    treeLines.forEach((line) => console.log(line));
   }
 }
 
@@ -141,8 +136,11 @@ export function dirTreeCommand(program: Command): void {
       "Exclude files/directories matching patterns",
     )
     .action(async (path: string, options: Record<string, unknown>) => {
-      const treeOptions = treeSchema.parse(options);
-
-      await run(path, treeOptions);
+      try {
+        await run(path, optionsSchema.parse(options));
+      } catch (error) {
+        logError(`Failed to generate tree: ${error}`);
+        process.exit(1);
+      }
     });
 }

@@ -56,7 +56,7 @@ interface MoveOperation {
 }
 
 // schema: strings are optional and have defaults
-const scriptOptionsSchema = z.object({
+const optionsSchema = z.object({
   sourceDir: z.string().optional().default(DEFAULT_SOURCE_DIR),
   targetDir: z.string().optional().default(DEFAULT_TARGET_DIR),
   backupDir: z.string().optional().default(DEFAULT_BACKUP_DIR),
@@ -64,7 +64,7 @@ const scriptOptionsSchema = z.object({
   interactive: z.boolean().optional().default(false),
 });
 
-type ScriptOptions = z.infer<typeof scriptOptionsSchema>;
+type ScriptOptions = z.infer<typeof optionsSchema>;
 
 // Utility functions
 
@@ -458,10 +458,8 @@ export function moveCompletedCommand(program: Command): void {
       false,
     )
     .action(async (options: Record<string, unknown>) => {
-      const scriptOptions = scriptOptionsSchema.parse(options);
-
       try {
-        await run(scriptOptions);
+        await run(optionsSchema.parse(options));
       } catch (error) {
         logError(`Script failed: ${error}`);
         process.exit(1);

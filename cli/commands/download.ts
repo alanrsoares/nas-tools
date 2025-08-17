@@ -8,7 +8,7 @@ const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
-const downloadSchema = z.object({
+const optionsSchema = z.object({
   referer: z.string().optional(),
   cookie: z.string().optional(),
   dest: z.string(),
@@ -17,7 +17,7 @@ const downloadSchema = z.object({
   timeout: z.string().transform((val) => parseInt(val, 10)),
 });
 
-type DownloadOptions = z.infer<typeof downloadSchema>;
+type DownloadOptions = z.infer<typeof optionsSchema>;
 
 function filenameFromHeaders(url: string, headers: Headers): string {
   const cd = headers.get("content-disposition");
@@ -120,8 +120,7 @@ export function downloadCommand(program: Command): void {
     .option("--timeout <ms>", "Timeout in milliseconds", "30000")
     .action(async (url: string, options: Record<string, unknown>) => {
       try {
-        const downloadOptions = downloadSchema.parse(options);
-        await run(url, downloadOptions);
+        await run(url, optionsSchema.parse(options));
       } catch (error) {
         console.error(`Download failed: ${error}`);
         process.exit(1);

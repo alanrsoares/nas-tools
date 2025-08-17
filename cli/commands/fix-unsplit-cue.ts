@@ -32,15 +32,12 @@ interface CueAudioPair {
   audioFile: string;
 }
 
-const scriptOptionsSchema = z.object({
+const optionsSchema = z.object({
   ignoreFailed: z.boolean(),
   yes: z.boolean(),
 });
 
-interface ScriptOptions {
-  ignoreFailed: boolean;
-  yes: boolean;
-}
+type ScriptOptions = z.infer<typeof optionsSchema>;
 
 // Utility functions
 
@@ -280,10 +277,8 @@ export function fixUnsplitCueCommand(program: Command): void {
     )
     .option("-y, --yes", 'Assume "yes" to all confirmations', false)
     .action(async (folderPath: string, options: Record<string, unknown>) => {
-      const scriptOptions = scriptOptionsSchema.parse(options);
-
       try {
-        await run(folderPath, scriptOptions);
+        await run(folderPath, optionsSchema.parse(options));
       } catch (error) {
         logError(`Script failed: ${error}`);
         process.exit(1);
