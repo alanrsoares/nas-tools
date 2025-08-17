@@ -1,6 +1,6 @@
 {
   "name": "nas-tools",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "NAS tools CLI for managing music files, downloads, and file operations",
   "main": "dist/cli.js",
   "type": "module",
