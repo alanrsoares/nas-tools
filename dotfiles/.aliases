@@ -2,6 +2,7 @@
 
 alias cls=clear
 alias ls=exa
+alias fd=fd-find
 alias ll='ls -l'
 alias gfr='git pull --rebase'
 alias nr='npm run'
