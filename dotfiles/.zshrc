@@ -204,7 +204,7 @@ function custom_prompt() {
   fi
   
   # Set prompt
-  PROMPT="%F{cyan}%n%F{white}@%F{green}%m$current_dir$git_branch$exit_indicator %F{white}❯ "
+  PROMPT="🚀 %F{cyan}%n%F{white}@%F{green}%m$current_dir$git_branch$exit_indicator %F{white}❯ "
 }
 
 # Set custom prompt
