@@ -174,14 +174,6 @@ alias ports='netstat -tulanp'
 alias myip='curl http://ipecho.net/plain; echo'
 alias weather='curl -s "wttr.in/?format=3"'
 
-# macOS specific
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  alias showfiles='defaults write com.apple.finder AppleShowAllFiles YES; killall Finder'
-  alias hidefiles='defaults write com.apple.finder AppleShowAllFiles NO; killall Finder'
-  alias flushdns='sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder'
-  alias emptytrash='sudo rm -rfv /Volumes/*/.Trashes; sudo rm -rfv ~/.Trash; sudo rm -rfv /private/var/log/asl/*.asl'
-fi
-
 # =============================================================================
 # 🎨 PROMPT CUSTOMIZATION
 # =============================================================================
