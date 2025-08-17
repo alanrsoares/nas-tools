@@ -121,60 +121,6 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
 
 # =============================================================================
-# 🎯 ALIASES & FUNCTIONS
-# =============================================================================
-
-# Navigation
-alias ..='cd ..'
-alias ...='cd ../..'
-alias ....='cd ../../..'
-alias .....='cd ../../../..'
-
-# List directory contents
-alias ll='ls -la'
-alias la='ls -A'
-alias l='ls -CF'
-alias lsd='ls -la | grep "^d"'
-
-# Git shortcuts
-alias gs='git status'
-alias ga='git add'
-alias gc='git commit'
-alias gp='git push'
-alias gl='git log --oneline --graph --decorate'
-alias gco='git checkout'
-alias gcb='git checkout -b'
-alias gb='git branch'
-alias gd='git diff'
-alias gf='git fetch'
-alias gm='git merge'
-alias grb='git rebase'
-
-# Docker shortcuts
-alias d='docker'
-alias dc='docker-compose'
-alias dps='docker ps'
-alias dpsa='docker ps -a'
-alias di='docker images'
-alias dex='docker exec -it'
-alias dlog='docker logs'
-
-# Development
-alias py='python3'
-alias pip='pip3'
-alias node='node'
-alias npm='npm'
-alias yarn='yarn'
-
-# System
-alias c='clear'
-alias h='history'
-alias j='jobs -l'
-alias ports='netstat -tulanp'
-alias myip='curl http://ipecho.net/plain; echo'
-alias weather='curl -s "wttr.in/?format=3"'
-
-# =============================================================================
 # 🎨 PROMPT CUSTOMIZATION
 # =============================================================================
 
