@@ -182,13 +182,14 @@ describe("dir-tree CLI integration", () => {
 
   it("should handle non-existent directory gracefully", async () => {
     const nonExistentPath = join(testDir, "non-existent-folder");
-
-    try {
-      await $`node ${cliPath} dir-tree ${nonExistentPath}`;
-      throw new Error("Expected CLI to fail with non-existent directory");
-    } catch (error: any) {
-      expect(error.exitCode).toBe(1);
-    }
+    await $`node ${cliPath} dir-tree ${nonExistentPath}`.catch((x) => {
+      expect(x.exitCode).toBe(1);
+      expect(x.stderr.toString()).toMatchInlineSnapshot(`
+        "✗ Directory '/Users/alanrsoares/dev/nas-tools/test-dir-tree/non-existent-folder' does not exist or is not accessible
+        ✗ Failed to generate tree: Error: Directory '/Users/alanrsoares/dev/nas-tools/test-dir-tree/non-existent-folder' does not exist or is not accessible
+        "
+      `);
+    });
   });
 
   it("should handle permission errors gracefully", async () => {
