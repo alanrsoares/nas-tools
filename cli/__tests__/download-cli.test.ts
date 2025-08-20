@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -40,20 +40,23 @@ describe("download CLI integration", () => {
     const expectedFilename = "cover.jpg";
     const filePath = join(tempDir, expectedFilename);
 
-    // Check if file exists
-    try {
-      await access(filePath);
-    } catch (error) {
+    // Check if file exists using Bun.file
+    const file = Bun.file(filePath);
+    const exists = await file.exists();
+    if (!exists) {
       throw new Error(`File does not exist: ${filePath}`);
     }
 
-    // Check if file has content (not empty)
-    const fileContent = await readFile(filePath);
-    expect(fileContent.length).toBeGreaterThan(0);
+    // Check if file has content (not empty) using Bun.file
+    expect(file.size).toBeGreaterThan(0);
 
     // Verify it's actually a JPEG file by checking the magic bytes
-    const jpegMagicBytes = Buffer.from([0xff, 0xd8, 0xff]);
+    const fileContent = await file.bytes();
+    const jpegMagicBytes = new Uint8Array([0xff, 0xd8, 0xff]);
     expect(fileContent.subarray(0, 3)).toEqual(jpegMagicBytes);
+
+    // Bonus: Verify MIME type
+    expect(file.type).toBe("image/jpeg");
   }, 60000); // 60 second timeout for network operations
 
   it("should handle invalid URLs gracefully via CLI", async () => {
@@ -86,13 +89,14 @@ describe("download CLI integration", () => {
     const expectedFilename = "cover.jpg";
     const filePath = join(tempDir, expectedFilename);
 
-    try {
-      await access(filePath);
-      const fileContent = await readFile(filePath);
-      expect(fileContent.length).toBeGreaterThan(0);
-    } catch (error) {
-      throw new Error(`File verification failed: ${error}`);
+    // Use Bun.file for file verification
+    const file = Bun.file(filePath);
+    const exists = await file.exists();
+    if (!exists) {
+      throw new Error(`File does not exist: ${filePath}`);
     }
+
+    expect(file.size).toBeGreaterThan(0);
   }, 60000);
 
   it("should handle missing URL argument", async () => {
