@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { $ } from "bun";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { $ } from "zx";
 
 describe("download CLI integration", () => {
   let tempDir: string;

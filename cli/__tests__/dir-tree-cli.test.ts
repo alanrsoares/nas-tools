@@ -1,7 +1,41 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { $ } from "bun";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { $ } from "zx";
+
+const MOCK_FILES = [
+  {
+    path: ["file1.txt"],
+    content: "content1",
+  },
+  {
+    path: ["file2.txt"],
+    content: "content2",
+  },
+  {
+    path: ["folder1", "file3.txt"],
+    content: "content3",
+  },
+  {
+    path: ["folder2", "file4.txt"],
+    content: "content4",
+  },
+  {
+    path: ["folder2", "subfolder", "file5.txt"],
+    content: "content5",
+  },
+  {
+    path: [".hidden", "secret.txt"],
+    content: "secret",
+  },
+];
+
+// Create a set of mock folders derived from the mock files
+const MOCK_FOLDERS = new Set(
+  MOCK_FILES.filter((x) => x.path.length > 1).map(({ path }) =>
+    path.slice(0, -1),
+  ),
+);
 
 describe("dir-tree CLI integration", () => {
   const testDir = join(process.cwd(), "test-dir-tree");
@@ -10,20 +44,16 @@ describe("dir-tree CLI integration", () => {
   beforeAll(async () => {
     // Create a deterministic test directory structure
     await mkdir(testDir, { recursive: true });
-    await mkdir(join(testDir, "folder1"));
-    await mkdir(join(testDir, "folder2"));
-    await mkdir(join(testDir, "folder2", "subfolder"));
-    await mkdir(join(testDir, ".hidden"));
 
-    await writeFile(join(testDir, "file1.txt"), "content1");
-    await writeFile(join(testDir, "file2.txt"), "content2");
-    await writeFile(join(testDir, "folder1", "file3.txt"), "content3");
-    await writeFile(join(testDir, "folder2", "file4.txt"), "content4");
-    await writeFile(
-      join(testDir, "folder2", "subfolder", "file5.txt"),
-      "content5",
-    );
-    await writeFile(join(testDir, ".hidden", "secret.txt"), "secret");
+    // Create mock folders
+    for (const folder of MOCK_FOLDERS) {
+      await mkdir(join(testDir, ...folder), { recursive: true });
+    }
+
+    // Create mock files
+    for (const file of MOCK_FILES) {
+      await Bun.write(join(testDir, ...file.path), file.content);
+    }
 
     // Ensure the CLI is built
     await $`bun run build`;
@@ -46,7 +76,7 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output matches expected structure
-    expect(result.stdout).toMatchInlineSnapshot(`
+    expect(result.text()).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
       ├──  folder1
       └──  folder2
@@ -62,7 +92,7 @@ describe("dir-tree CLI integration", () => {
     expect(result1.exitCode).toBe(0);
 
     // Verify the output contains files
-    expect(result1.stdout).toMatchInlineSnapshot(`
+    expect(result1.text()).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
       ├── 📄 file1.txt
       ├── 📄 file2.txt
@@ -79,7 +109,7 @@ describe("dir-tree CLI integration", () => {
     const result2 = await $`node ${cliPath} dir-tree ${testDir} -f`;
 
     // Verify the output does not contain files
-    expect(result2.stdout).toBe(result1.stdout);
+    expect(result2.text()).toBe(result1.text());
   });
 
   it("should show hidden files when --show-hidden is used", async () => {
@@ -90,7 +120,7 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output contains hidden content
-    expect(result.stdout).toMatchInlineSnapshot(`
+    expect(result.text()).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
       ├──  .hidden
       ├──  folder1
@@ -108,7 +138,7 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output respects max-depth
-    expect(result.stdout).toMatchInlineSnapshot(`
+    expect(result.text()).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
       ├──  folder1
       └──  folder2
@@ -125,7 +155,7 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output excludes specified patterns
-    expect(result.stdout).toMatchInlineSnapshot(`
+    expect(result.text()).toMatchInlineSnapshot(`
       "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
       └──  folder2
           └──  subfolder
@@ -141,7 +171,7 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output contains expected content
-    expect(result.stdout).toMatchInlineSnapshot(`
+    expect(result.text()).toMatchInlineSnapshot(`
       "📁 .
       ├──  folder1
       └──  folder2
