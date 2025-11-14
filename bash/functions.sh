@@ -96,6 +96,10 @@ split_audio_file() {
   local out_dir="$3"
   local audio_format="$4"
   
+  # Set UTF-8 locale to handle non-ASCII characters in filenames
+  export LANG=en_US.UTF-8
+  export LC_ALL=en_US.UTF-8
+  
   echo "🔄 Splitting '$audio_file' using '$cue_file'..."
   cuebreakpoints "$cue_file" | shnsplit -f "$cue_file" -o "$audio_format" -t "%n. %t" -d "$out_dir" "$audio_file"
 }
@@ -180,6 +184,10 @@ cleanup_temp_split() {
 
 # Main function - orchestrates the entire process
 split_cue_audio() {
+  # Set UTF-8 locale at the start to handle non-ASCII characters
+  export LANG=en_US.UTF-8
+  export LC_ALL=en_US.UTF-8
+  
   # Validate input
   if ! validate_cue_input "$1"; then
     return 1
