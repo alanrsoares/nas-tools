@@ -1,0 +1,122 @@
+import { access, stat } from "node:fs/promises";
+import { Command } from "commander";
+import { ResultAsync } from "neverthrow";
+import { z } from "zod";
+
+import { fail, formatError, parseWith } from "../lib/fp.js";
+import {
+  NAS_PATHS,
+  pathExists,
+  printReport,
+  type Finding,
+} from "../lib/report.js";
+import { logError } from "../lib/utils.js";
+
+const optionsSchema = z.object({
+  json: z.boolean().optional().default(false),
+});
+
+type CommandOptions = z.infer<typeof optionsSchema>;
+
+interface DoctorReport {
+  title: string;
+  checks: Array<{ name: string; ok: boolean; detail: string }>;
+  findings: Finding[];
+}
+
+const tools = [
+  "/opt/bin/opkg",
+  "/opt/bin/flac",
+  "/opt/bin/cuebreakpoints",
+  "/opt/bin/shnsplit",
+  "/opt/bin/metaflac",
+  "/usr/local/bin/docker",
+] as const;
+
+async function canAccess(path: string): Promise<boolean> {
+  return await ResultAsync.fromPromise(access(path), () => undefined)
+    .map(() => true)
+    .unwrapOr(false);
+}
+
+function run(
+  options: CommandOptions,
+): ResultAsync<void, ReturnType<typeof fail>> {
+  return ResultAsync.fromSafePromise(
+    (async () => {
+      const checks: DoctorReport["checks"] = [];
+      const findings: Finding[] = [];
+
+      for (const [name, path] of Object.entries(NAS_PATHS)) {
+        const ok = await pathExists(path);
+        checks.push({ name, ok, detail: path });
+        if (!ok && ["download", "flac", "public"].includes(name)) {
+          findings.push({
+            severity: "warn",
+            message: `Expected NAS path missing: ${name}`,
+            path,
+          });
+        }
+      }
+
+      for (const tool of tools) {
+        const ok = await canAccess(tool);
+        checks.push({
+          name: `tool:${tool.split("/").pop()}`,
+          ok,
+          detail: tool,
+        });
+        if (!ok && tool !== "/usr/local/bin/docker") {
+          findings.push({
+            severity: "warn",
+            message: `Expected Entware/media tool missing: ${tool}`,
+            path: tool,
+          });
+        }
+      }
+
+      const dockerSocket = "/var/run/docker.sock";
+      const socketStat = await ResultAsync.fromPromise(
+        stat(dockerSocket),
+        () => undefined,
+      ).unwrapOr(undefined);
+      checks.push({
+        name: "docker-socket",
+        ok: Boolean(socketStat),
+        detail: dockerSocket,
+      });
+      if (socketStat && !(await canAccess(dockerSocket))) {
+        findings.push({
+          severity: "info",
+          message:
+            "Docker socket exists but current user may lack daemon access.",
+          path: dockerSocket,
+        });
+      }
+
+      printReport({ title: "NAS doctor", checks, findings }, options.json);
+    })(),
+  );
+}
+
+export default function doctorCommand(program: Command): void {
+  program
+    .command("doctor")
+    .description("Report ADM NAS paths, Entware tools, and app prerequisites")
+    .option("--json", "Print JSON report", false)
+    .action(async (options: Record<string, unknown>) => {
+      const result = await parseWith(
+        optionsSchema,
+        options,
+        "Invalid doctor options",
+      ).asyncAndThen(run);
+
+      result.match(
+        () => undefined,
+        (error) => {
+          logError(`Doctor failed: ${formatError(error)}`);
+          process.exit(1);
+        },
+      );
+    });
+}

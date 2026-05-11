@@ -111,6 +111,7 @@ nas-tools fix-unsplit-cue <folder_path> [options]
 
 **Options:**
 
+- `--dry-run` - Preview pairs without splitting files
 - `-i, --ignore-failed` - Skip directories that contain an empty \_\_temp_split folder
 - `-y, --yes` - Assume "yes" to all confirmations
 
@@ -140,6 +141,39 @@ nas-tools move-completed [options]
 
 ```bash
 nas-tools move-completed --dry-run --interactive
+```
+
+### doctor
+
+Report ADM/Entware paths, app prerequisites, and tool availability.
+
+```bash
+nas-tools doctor [--json]
+```
+
+### downloads triage
+
+Inspect completed/incomplete download folders for stale work, junk files, and large music-pack import candidates.
+
+```bash
+nas-tools downloads triage [--json] [--stale-days 14]
+```
+
+### music-audit
+
+Audit the FLAC library for CUE/audio pairs, empty folders, Apple metadata junk, and likely alphabet-bucket mistakes.
+
+```bash
+nas-tools music-audit [--json] [--root /volume1/Public/FLAC]
+```
+
+### nas clean
+
+Find safe cleanup candidates. Defaults to dry-run; deletion requires both `--no-dry-run` and `--yes`.
+
+```bash
+nas-tools nas clean [--json] [--root /volume1/Download]
+nas-tools nas clean --no-dry-run --yes
 ```
 
 ## Development
