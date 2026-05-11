@@ -1,7 +1,7 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 # CUE/Audio splitting and cleanup functions
-# 
+#
 # Functions available:
 # - split_cue_audio: Split a single CUE/Audio pair (FLAC or WAV) with optional cleanup
 # - cleanup_temp_split: Cleanup function for temporary split directories
@@ -18,6 +18,26 @@ validate_cue_input() {
     return 1
   fi
   return 0
+}
+
+setup_utf8_locale() {
+  if [ -z "${LANG:-}" ]; then
+    export LANG=C.UTF-8
+  fi
+
+  if [ -z "${LC_ALL:-}" ]; then
+    export LC_ALL="$LANG"
+  fi
+}
+
+print_dependency_install_hint() {
+  if command -v opkg >/dev/null 2>&1; then
+    echo "Install with: opkg install flac cuetools shntool"
+  elif command -v apt >/dev/null 2>&1; then
+    echo "Install with: sudo apt install flac cuetools shntool"
+  else
+    echo "Install flac, cuetools, and shntool with your NAS package manager."
+  fi
 }
 
 # Setup working directory and file paths
@@ -38,21 +58,25 @@ setup_environment() {
 
 # Find audio file (FLAC or WAV) in directory
 find_audio_file() {
-  local audio_file
-  
+  local audio_files
+
   # Look for FLAC first, then WAV
-  audio_file="$(ls | grep -iE '\.flac$' | head -n1)"
-  if [ -f "$audio_file" ]; then
-    echo "$audio_file"
+  shopt -s nullglob nocaseglob
+  audio_files=(*.flac)
+  if [ "${#audio_files[@]}" -gt 0 ] && [ -f "${audio_files[0]}" ]; then
+    echo "${audio_files[0]}"
+    shopt -u nullglob nocaseglob
     return 0
   fi
-  
-  audio_file="$(ls | grep -iE '\.wav$' | head -n1)"
-  if [ -f "$audio_file" ]; then
-    echo "$audio_file"
+
+  audio_files=(*.wav)
+  if [ "${#audio_files[@]}" -gt 0 ] && [ -f "${audio_files[0]}" ]; then
+    echo "${audio_files[0]}"
+    shopt -u nullglob nocaseglob
     return 0
   fi
-  
+
+  shopt -u nullglob nocaseglob
   echo "❌ No FLAC or WAV file found in $(pwd)"
   return 1
 }
@@ -72,20 +96,23 @@ get_audio_format() {
 # Check if required tools are available
 check_dependencies() {
   if ! command -v flac >/dev/null 2>&1; then
-    echo "❌ 'flac' encoder not found. Please run: opkg install flac"
+    echo "❌ 'flac' encoder not found."
+    print_dependency_install_hint
     return 1
   fi
-  
+
   if ! command -v cuebreakpoints >/dev/null 2>&1; then
-    echo "❌ 'cuebreakpoints' not found. Please install cuetools"
+    echo "❌ 'cuebreakpoints' not found."
+    print_dependency_install_hint
     return 1
   fi
-  
+
   if ! command -v shnsplit >/dev/null 2>&1; then
-    echo "❌ 'shnsplit' not found. Please install shntool"
+    echo "❌ 'shnsplit' not found."
+    print_dependency_install_hint
     return 1
   fi
-  
+
   return 0
 }
 
@@ -96,12 +123,10 @@ split_audio_file() {
   local out_dir="$3"
   local audio_format="$4"
   
-  # Set UTF-8 locale to handle non-ASCII characters in filenames
-  export LANG=en_US.UTF-8
-  export LC_ALL=en_US.UTF-8
-  
+  setup_utf8_locale
+
   echo "🔄 Splitting '$audio_file' using '$cue_file'..."
-  cuebreakpoints "$cue_file" | shnsplit -f "$cue_file" -o "$audio_format" -t "%n. %t" -d "$out_dir" "$audio_file"
+  (set -o pipefail; cuebreakpoints "$cue_file" | shnsplit -f "$cue_file" -o "$audio_format" -t "%n. %t" -d "$out_dir" "$audio_file")
 }
 
 # Tag the split files with metadata
@@ -113,8 +138,107 @@ tag_split_files() {
     echo "🏷️ Tagging split tracks..."
     cuetag "$cue_file" "$out_dir"/*.flac "$out_dir"/*.wav
   else
-    echo "⚠️ cuetag not found, skipping metadata tagging."
+    tag_split_flacs_with_metaflac "$cue_file" "$out_dir"
   fi
+}
+
+cue_field() {
+  local cue_file="$1"
+  local track_no="$2"
+  local field="$3"
+
+  awk -v track_no="$track_no" -v field="$field" '
+    function unquote(value) {
+      sub(/^[[:space:]]*"*/, "", value)
+      sub(/"*$/, "", value)
+      return value
+    }
+    /^[[:space:]]*TRACK[[:space:]]+[0-9]+/ {
+      current = $2 + 0
+      next
+    }
+    current == track_no && $1 == field {
+      value = $0
+      sub("^[[:space:]]*" field "[[:space:]]+", "", value)
+      print unquote(value)
+      exit
+    }
+  ' "$cue_file"
+}
+
+cue_album_field() {
+  local cue_file="$1"
+  local field="$2"
+
+  awk -v field="$field" '
+    function unquote(value) {
+      sub(/^[[:space:]]*"*/, "", value)
+      sub(/"*$/, "", value)
+      return value
+    }
+    /^[[:space:]]*TRACK[[:space:]]+[0-9]+/ {
+      exit
+    }
+    $1 == field {
+      value = $0
+      sub("^[[:space:]]*" field "[[:space:]]+", "", value)
+      print unquote(value)
+      exit
+    }
+  ' "$cue_file"
+}
+
+tag_split_flacs_with_metaflac() {
+  local cue_file="$1"
+  local out_dir="$2"
+
+  if ! command -v metaflac >/dev/null 2>&1; then
+    echo "⚠️ cuetag/metaflac not found, skipping metadata tagging."
+    return 0
+  fi
+
+  shopt -s nullglob
+  local flac_files=("$out_dir"/*.flac)
+  shopt -u nullglob
+
+  if [ "${#flac_files[@]}" -eq 0 ]; then
+    echo "⚠️ No split FLAC files found for metaflac tagging."
+    return 0
+  fi
+
+  local album_title
+  local album_artist
+  album_title="$(cue_album_field "$cue_file" TITLE)"
+  album_artist="$(cue_album_field "$cue_file" PERFORMER)"
+
+  echo "🏷️ Tagging split FLAC tracks with metaflac..."
+  for flac_file in "${flac_files[@]}"; do
+    local file_name
+    local track_no
+    local track_title
+    local track_artist
+
+    file_name="$(basename "$flac_file")"
+    track_no="${file_name%%.*}"
+
+    if ! [[ "$track_no" =~ ^[0-9]+$ ]]; then
+      echo "⚠️ Cannot infer track number from $file_name, skipping."
+      continue
+    fi
+
+    track_title="$(cue_field "$cue_file" "$track_no" TITLE)"
+    track_artist="$(cue_field "$cue_file" "$track_no" PERFORMER)"
+    if [ -z "$track_artist" ]; then
+      track_artist="$album_artist"
+    fi
+
+    metaflac --remove-tag=TITLE --remove-tag=ARTIST --remove-tag=ALBUM --remove-tag=ALBUMARTIST --remove-tag=TRACKNUMBER "$flac_file"
+    [ -n "$track_title" ] && metaflac --set-tag="TITLE=$track_title" "$flac_file"
+    [ -n "$track_artist" ] && metaflac --set-tag="ARTIST=$track_artist" "$flac_file"
+    [ -n "$album_title" ] && metaflac --set-tag="ALBUM=$album_title" "$flac_file"
+    [ -n "$album_artist" ] && metaflac --set-tag="ALBUMARTIST=$album_artist" "$flac_file"
+    metaflac --set-tag="TRACKNUMBER=$track_no" "$flac_file"
+  done
 }
 
 # Cleanup after successful split - moves split files to original location and removes temp directory
@@ -140,28 +264,37 @@ cleanup_temp_split() {
   # Set temp directory path
   temp_dir="$directory/__temp_split"
   
+  if [ ! -d "$temp_dir" ]; then
+    echo "❌ Temporary split directory not found: $temp_dir"
+    return 1
+  fi
+
+  shopt -s nullglob
+  local split_files=("$temp_dir"/*.flac "$temp_dir"/*.wav "$temp_dir"/*.cue)
+  shopt -u nullglob
+
+  if [ "${#split_files[@]}" -eq 0 ]; then
+    echo "❌ No split files found in $temp_dir; refusing to delete originals."
+    return 1
+  fi
+
   echo "🧹 Cleaning up temporary files..."
-  
+
   # Move split audio files to the original directory
-  if [ -d "$temp_dir" ]; then
-    for split_audio_file in "$temp_dir"/*.flac "$temp_dir"/*.wav; do
-      if [ -f "$split_audio_file" ]; then
-        mv "$split_audio_file" "$directory/"
-        echo "📁 Moved $(basename "$split_audio_file") to original directory"
-      fi
-    done
-  fi
-  
-  # Move split CUE files to the original directory
-  if [ -d "$temp_dir" ]; then
-    for split_cue_file in "$temp_dir"/*.cue; do
-      if [ -f "$split_cue_file" ]; then
-        mv "$split_cue_file" "$directory/"
-        echo "📁 Moved $(basename "$split_cue_file") to original directory"
-      fi
-    done
-  fi
-  
+  for split_file in "${split_files[@]}"; do
+    if [ -e "$directory/$(basename "$split_file")" ]; then
+      echo "❌ Destination already exists: $directory/$(basename "$split_file")"
+      echo "❌ Refusing to overwrite or delete originals."
+      return 1
+    fi
+
+    mv "$split_file" "$directory/" || {
+      echo "❌ Failed moving $(basename "$split_file"); refusing to delete originals."
+      return 1
+    }
+    echo "📁 Moved $(basename "$split_file") to original directory"
+  done
+
   # Remove the original cue and audio files
   if [ -f "$cue_path" ]; then
     rm "$cue_path"
@@ -184,10 +317,8 @@ cleanup_temp_split() {
 
 # Main function - orchestrates the entire process
 split_cue_audio() {
-  # Set UTF-8 locale at the start to handle non-ASCII characters
-  export LANG=en_US.UTF-8
-  export LC_ALL=en_US.UTF-8
-  
+  setup_utf8_locale
+
   # Validate input
   if ! validate_cue_input "$1"; then
     return 1
@@ -222,14 +353,19 @@ split_cue_audio() {
   
   # Create output directory
   local out_dir="__temp_split"
+  if [ -d "$out_dir" ] && [ "$(find "$out_dir" -mindepth 1 -maxdepth 1 | head -n1)" ]; then
+    echo "❌ Existing non-empty $out_dir found; refusing to overwrite previous split output."
+    return 1
+  fi
+
   mkdir -p "$out_dir"
-  
+
   # Split the file
-  split_audio_file "$cue_file" "$audio_file" "$out_dir" "$audio_format"
-  
+  split_audio_file "$cue_file" "$audio_file" "$out_dir" "$audio_format" || return 1
+
   # Tag the files
   tag_split_files "$cue_file" "$out_dir"
-  
+
   echo "✅ Done. Split tracks are in: $out_dir"
 }
 

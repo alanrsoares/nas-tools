@@ -340,7 +340,10 @@ function createBackup(
       await ensureDirectory(backupDir);
 
       const { cp } = await import("fs/promises");
-      await cp(sourcePath, backupPath, { recursive: true });
+      await cp(sourcePath, backupPath, {
+        recursive: true,
+        preserveTimestamps: true,
+      });
       logSuccess(`✓ Backup: ${getBasename(sourcePath)}`);
     })(),
   ).orElse((error) => {

@@ -119,7 +119,25 @@ export async function moveFile(
   source: string,
   destination: string,
 ): Promise<void> {
-  await fs.rename(source, destination);
+  try {
+    await fs.rename(source, destination);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "EXDEV"
+    ) {
+      await fs.cp(source, destination, {
+        recursive: true,
+        preserveTimestamps: true,
+      });
+      await fs.rm(source, { recursive: true, force: true });
+      return;
+    }
+
+    throw error;
+  }
 }
 
 // Validation utilities
