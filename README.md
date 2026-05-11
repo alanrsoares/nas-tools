@@ -183,6 +183,15 @@ Classify `__temp_split` leftovers before retrying or cleaning failed splits.
 nas-tools cue temp-split triage [--json] [--root /volume1/Public/FLAC] [--max-depth 4] [--limit 25] [--include-files]
 ```
 
+### cue temp-split clean
+
+Remove only empty `__temp_split` directories. Defaults to dry-run; deletion requires both `--no-dry-run` and `--yes`.
+
+```bash
+nas-tools cue temp-split clean [--json] [--root /volume1/Public/FLAC]
+nas-tools cue temp-split clean --no-dry-run --yes
+```
+
 ### nas clean
 
 Find safe cleanup candidates. Defaults to dry-run; deletion requires both `--no-dry-run` and `--yes`.

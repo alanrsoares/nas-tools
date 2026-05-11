@@ -1,5 +1,5 @@
 import { constants, type Dirent } from "node:fs";
-import { access, readdir } from "node:fs/promises";
+import { access, readdir, rmdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { Command } from "commander";
 import { ResultAsync } from "neverthrow";
@@ -24,7 +24,13 @@ const optionsSchema = z.object({
   root: z.string().optional().default(NAS_PATHS.flac),
 });
 
+const cleanOptionsSchema = optionsSchema.extend({
+  dryRun: z.boolean().optional().default(true),
+  yes: z.boolean().optional().default(false),
+});
+
 type CommandOptions = z.infer<typeof optionsSchema>;
+type CleanOptions = z.infer<typeof cleanOptionsSchema>;
 
 type CueStatus =
   | "ready"
@@ -119,6 +125,30 @@ interface TempSplitTriageReport {
     reportedGroups: number;
   };
   groups: ReportedTempSplitGroup[];
+  findings: Finding[];
+}
+
+interface TempSplitCleanResult {
+  directory: string;
+  tempDirectory: string;
+  status: "would_delete" | "deleted" | "skipped" | "failed";
+  message: string;
+}
+
+interface TempSplitCleanReport {
+  title: string;
+  root: string;
+  dryRun: boolean;
+  stats: {
+    scanned: number;
+    candidates: number;
+    wouldDelete: number;
+    deleted: number;
+    skipped: number;
+    failed: number;
+    reportedResults: number;
+  };
+  results: TempSplitCleanResult[];
   findings: Finding[];
 }
 
@@ -693,6 +723,181 @@ function buildTempSplitReport(
   };
 }
 
+function emptyTempSplitCleanReport(
+  root: string,
+  dryRun: boolean,
+): TempSplitCleanReport {
+  return {
+    title: "CUE temp-split clean",
+    root,
+    dryRun,
+    stats: {
+      scanned: 0,
+      candidates: 0,
+      wouldDelete: 0,
+      deleted: 0,
+      skipped: 0,
+      failed: 0,
+      reportedResults: 0,
+    },
+    results: [],
+    findings: [
+      {
+        severity: "error",
+        message: "Music library root missing.",
+        path: root,
+      },
+    ],
+  };
+}
+
+function canDeleteTempSplits(options: CleanOptions): boolean {
+  return !options.dryRun && options.yes;
+}
+
+function tempSplitCleanCandidate(group: TempSplitGroup): boolean {
+  return group.status === "empty_stale" && group.safeCleanupCandidate;
+}
+
+function cleanFindingSeverity(
+  result: TempSplitCleanResult,
+): Finding["severity"] {
+  return match(result.status)
+    .with("failed", () => "error" as const)
+    .with("skipped", () => "warn" as const)
+    .otherwise(() => "info" as const);
+}
+
+function cleanResultFinding(result: TempSplitCleanResult): Finding {
+  return {
+    severity: cleanFindingSeverity(result),
+    message: `${result.status}: ${result.message}`,
+    path: result.tempDirectory,
+  };
+}
+
+function cleanResultForDryRun(group: TempSplitGroup): TempSplitCleanResult {
+  return {
+    directory: group.directory,
+    tempDirectory: group.tempDirectory,
+    status: "would_delete",
+    message: "Dry-run: empty __temp_split would be removed.",
+  };
+}
+
+function cleanResultForSkipped(group: TempSplitGroup): TempSplitCleanResult {
+  return {
+    directory: group.directory,
+    tempDirectory: group.tempDirectory,
+    status: "skipped",
+    message: `Recheck changed status to ${group.status}; not deleting.`,
+  };
+}
+
+async function classifyExistingTempSplit(
+  group: TempSplitGroup,
+): Promise<TempSplitGroup> {
+  const entries = await readDirents(group.tempDirectory);
+
+  return classifyTempSplit({
+    directory: group.directory,
+    tempDirectory: group.tempDirectory,
+    entries,
+  });
+}
+
+async function removeEmptyTempSplit(
+  group: TempSplitGroup,
+): Promise<TempSplitCleanResult> {
+  const rechecked = await classifyExistingTempSplit(group);
+  if (!tempSplitCleanCandidate(rechecked)) {
+    return cleanResultForSkipped(rechecked);
+  }
+
+  return await safeAsync(
+    () => rmdir(rechecked.tempDirectory),
+    `remove ${rechecked.tempDirectory}`,
+  )
+    .map(
+      (): TempSplitCleanResult => ({
+        directory: rechecked.directory,
+        tempDirectory: rechecked.tempDirectory,
+        status: "deleted",
+        message: "Removed empty __temp_split.",
+      }),
+    )
+    .unwrapOr({
+      directory: rechecked.directory,
+      tempDirectory: rechecked.tempDirectory,
+      status: "failed",
+      message: "Failed to remove empty __temp_split.",
+    });
+}
+
+async function cleanTempSplitCandidate(
+  group: TempSplitGroup,
+  options: CleanOptions,
+): Promise<TempSplitCleanResult> {
+  if (!canDeleteTempSplits(options)) {
+    return cleanResultForDryRun(group);
+  }
+
+  return await removeEmptyTempSplit(group);
+}
+
+async function cleanTempSplitCandidates(
+  groups: TempSplitGroup[],
+  options: CleanOptions,
+): Promise<TempSplitCleanResult[]> {
+  const candidates = groups.filter(tempSplitCleanCandidate);
+
+  return await candidates.reduce(
+    async (resultsPromise, group) => {
+      const results = await resultsPromise;
+      const result = await cleanTempSplitCandidate(group, options);
+
+      return [...results, result];
+    },
+    Promise.resolve([] as TempSplitCleanResult[]),
+  );
+}
+
+function countCleanStatus(
+  results: TempSplitCleanResult[],
+  status: TempSplitCleanResult["status"],
+): number {
+  return results.filter((result) => result.status === status).length;
+}
+
+function buildTempSplitCleanReport(input: {
+  root: string;
+  dryRun: boolean;
+  scanned: number;
+  candidates: number;
+  results: TempSplitCleanResult[];
+  limit: number;
+}): TempSplitCleanReport {
+  const reportedResults =
+    input.limit === 0 ? input.results : input.results.slice(0, input.limit);
+
+  return {
+    title: "CUE temp-split clean",
+    root: input.root,
+    dryRun: input.dryRun,
+    stats: {
+      scanned: input.scanned,
+      candidates: input.candidates,
+      wouldDelete: countCleanStatus(input.results, "would_delete"),
+      deleted: countCleanStatus(input.results, "deleted"),
+      skipped: countCleanStatus(input.results, "skipped"),
+      failed: countCleanStatus(input.results, "failed"),
+      reportedResults: reportedResults.length,
+    },
+    results: reportedResults,
+    findings: reportedResults.map(cleanResultFinding),
+  };
+}
+
 function runCueTriage(
   options: CommandOptions,
 ): ResultAsync<void, ReturnType<typeof fail>> {
@@ -747,6 +952,43 @@ function runTempSplitTriage(
   );
 }
 
+function runTempSplitClean(
+  options: CleanOptions,
+): ResultAsync<void, ReturnType<typeof fail>> {
+  return ResultAsync.fromSafePromise(
+    (async () => {
+      if (!(await pathExists(options.root))) {
+        printReport(
+          emptyTempSplitCleanReport(options.root, options.dryRun),
+          options.json,
+        );
+        return;
+      }
+
+      const groups = await scanTempSplitDirectories(
+        options.root,
+        options.maxDepth,
+      );
+      const candidates = groups.filter(tempSplitCleanCandidate);
+      const results = await cleanTempSplitCandidates(groups, options);
+      const report = buildTempSplitCleanReport({
+        root: options.root,
+        dryRun: options.dryRun,
+        scanned: groups.length,
+        candidates: candidates.length,
+        results,
+        limit: options.limit,
+      });
+
+      printReport(report, options.json);
+
+      if (report.stats.failed > 0) {
+        process.exitCode = 1;
+      }
+    })(),
+  );
+}
+
 async function handleCueTriage(
   options: Record<string, unknown>,
 ): Promise<void> {
@@ -783,8 +1025,29 @@ async function handleTempSplitTriage(
   );
 }
 
+async function handleTempSplitClean(
+  options: Record<string, unknown>,
+): Promise<void> {
+  const result = await parseWith(
+    cleanOptionsSchema,
+    options,
+    "Invalid cue temp-split clean options",
+  ).asyncAndThen(runTempSplitClean);
+
+  result.match(
+    () => undefined,
+    (error) => {
+      logError(`CUE temp-split clean failed: ${formatError(error)}`);
+      process.exit(1);
+    },
+  );
+}
+
 export default function cueCommand(program: Command): void {
   const cue = program.command("cue").description("CUE sheet workflows");
+  const tempSplit = cue
+    .command("temp-split")
+    .description("Inspect __temp_split leftovers");
 
   cue
     .command("triage")
@@ -796,9 +1059,7 @@ export default function cueCommand(program: Command): void {
     .option("--json", "Print JSON report", false)
     .action(handleCueTriage);
 
-  cue
-    .command("temp-split")
-    .description("Inspect __temp_split leftovers")
+  tempSplit
     .command("triage")
     .description("Classify __temp_split directories before cleanup")
     .option("--root <path>", "Music library root", NAS_PATHS.flac)
@@ -807,4 +1068,20 @@ export default function cueCommand(program: Command): void {
     .option("--include-files", "Include temp file lists in groups", false)
     .option("--json", "Print JSON report", false)
     .action(handleTempSplitTriage);
+
+  tempSplit
+    .command("clean")
+    .description("Remove empty __temp_split directories")
+    .option("--root <path>", "Music library root", NAS_PATHS.flac)
+    .option("--max-depth <number>", "Maximum directory walk depth", "4")
+    .option(
+      "--limit <number>",
+      "Detailed results to include; 0 means all",
+      "25",
+    )
+    .option("--dry-run", "Preview deletions", true)
+    .option("--no-dry-run", "Allow deletion when combined with --yes")
+    .option("--yes", "Confirm deletion when combined with --no-dry-run", false)
+    .option("--json", "Print JSON report", false)
+    .action(handleTempSplitClean);
 }
