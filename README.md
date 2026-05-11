@@ -167,6 +167,14 @@ Audit the FLAC library for CUE/audio pairs, empty folders, Apple metadata junk, 
 nas-tools music-audit [--json] [--root /volume1/Public/FLAC]
 ```
 
+### cue triage
+
+Classify CUE/audio directories before splitting.
+
+```bash
+nas-tools cue triage [--json] [--root /volume1/Public/FLAC] [--max-depth 4] [--limit 25] [--include-files]
+```
+
 ### nas clean
 
 Find safe cleanup candidates. Defaults to dry-run; deletion requires both `--no-dry-run` and `--yes`.
