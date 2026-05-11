@@ -61,8 +61,16 @@ function isWavFile(file: string): boolean {
   return file.toLowerCase().endsWith(FILE_EXTENSIONS.WAV);
 }
 
+function isMetadataJunkFile(file: string): boolean {
+  return file === ".DS_Store" || file.startsWith("._");
+}
+
+function isProcessableCueFile(file: string): boolean {
+  return !isMetadataJunkFile(file) && isCueFile(file);
+}
+
 function isAudioFile(file: string): boolean {
-  return isFlacFile(file) || isWavFile(file);
+  return !isMetadataJunkFile(file) && (isFlacFile(file) || isWavFile(file));
 }
 
 function getBashFunctionsPath(): ResultAsync<string, ReturnType<typeof fail>> {
@@ -142,7 +150,7 @@ function findCueAudioPairsInDirectory(
       ResultAsync.fromSafePromise(
         (async () => {
           const foundPairs: CueAudioPair[] = [];
-          const cueFiles = files.filter(isCueFile);
+          const cueFiles = files.filter(isProcessableCueFile);
           const audioFiles = files.filter(isAudioFile);
 
           if (options.ignoreFailed && files.includes("__temp_split")) {
