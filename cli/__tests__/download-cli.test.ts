@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 describe("download CLI integration", () => {
   let tempDir: string;
-  const cliPath = join(process.cwd(), "dist", "cli");
+  const cliPath = join(process.cwd(), "dist", "cli", "index.js");
 
   beforeAll(async () => {
     // Create a temporary directory for testing

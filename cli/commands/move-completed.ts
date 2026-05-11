@@ -1,9 +1,12 @@
 import * as path from "node:path";
 import { Command } from "commander";
 import { parseFile } from "music-metadata";
+import { err, ok, ResultAsync } from "neverthrow";
+import { Maybe } from "true-myth";
+import { match } from "ts-pattern";
 import { z } from "zod";
 
-import invariant from "../lib/invariant.js";
+import { fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
 import {
   confirm,
   displaySummary,
@@ -85,46 +88,63 @@ async function promptForArtistName(
 }
 
 // Scan for album folders in the source directory
-async function scanAlbumFolders(sourceDir: string): Promise<AlbumFolder[]> {
-  const albumFolders: AlbumFolder[] = [];
+function scanAlbumFolders(
+  sourceDir: string,
+): ResultAsync<AlbumFolder[], ReturnType<typeof fail>> {
+  return safeAsync(
+    () => readDirectoryWithTypes(sourceDir),
+    `Error scanning source directory ${sourceDir}`,
+  ).andThen((entries) =>
+    ResultAsync.fromSafePromise(
+      entries
+        .filter((dirent) => dirent.isDirectory())
+        .map((dirent) => joinPath(sourceDir, dirent.name))
+        .reduce(
+          async (foldersPromise, dir) => {
+            const folders = await foldersPromise;
+            const files = await readDirectory(dir).catch(() => []);
+            const musicFiles = files.filter(isMusicFile);
 
-  try {
-    const entries = await readDirectoryWithTypes(sourceDir);
-    const directories = entries
-      .filter((dirent) => dirent.isDirectory())
-      .map((dirent) => joinPath(sourceDir, dirent.name));
-
-    for (const dir of directories) {
-      const files = await readDirectory(dir).catch(() => []);
-      const musicFiles = files.filter(isMusicFile);
-
-      if (!musicFiles.length) {
-        continue;
-      }
-
-      albumFolders.push({
-        path: dir,
-        name: getBasename(dir),
-        musicFiles,
-      });
-    }
-  } catch (error) {
-    logError(`Error scanning source directory: ${error}`);
-  }
-
-  return albumFolders;
+            return musicFiles.length
+              ? [
+                  ...folders,
+                  {
+                    path: dir,
+                    name: getBasename(dir),
+                    musicFiles,
+                  },
+                ]
+              : folders;
+          },
+          Promise.resolve([] as AlbumFolder[]),
+        ),
+    ),
+  );
 }
 
 // Infer artist name from music files metadata
-async function inferArtistName(
+function inferArtistName(
   albumFolder: AlbumFolder,
-): Promise<string | null> {
-  return (
-    albumFolder.musicFiles.find(async (file) => {
-      const filePath = joinPath(albumFolder.path, file);
-      const metadata = await parseFile(filePath);
-      return Boolean(metadata.common.artist);
-    }) ?? null
+): ResultAsync<Maybe<string>, ReturnType<typeof fail>> {
+  return ResultAsync.fromSafePromise(
+    albumFolder.musicFiles.reduce(
+      async (artistPromise, file) => {
+        const current = await artistPromise;
+        if (current.isJust) {
+          return current;
+        }
+
+        const filePath = joinPath(albumFolder.path, file);
+        const metadata = await safeAsync(
+          () => parseFile(filePath),
+          `Could not read metadata for ${file}`,
+        ).unwrapOr(undefined);
+        const artist = metadata?.common.artist?.trim();
+
+        return artist ? Maybe.just(artist) : Maybe.nothing<string>();
+      },
+      Promise.resolve(Maybe.nothing<string>() as Maybe<string>),
+    ),
   );
 }
 
@@ -144,57 +164,59 @@ function getTargetDirectory(artistName: string, targetDir: string): string {
 }
 
 // Check if artist directory already exists
-async function checkArtistExists(artistPath: string): Promise<boolean> {
-  if (await exists(artistPath)) {
-    return true;
-  }
-
-  // If not found, check for case-insensitive match in the parent directory
-  const parentDir = getDirname(artistPath);
-  const artistName = getBasename(artistPath);
-
-  try {
-    const entries = await readDirectoryWithTypes(parentDir);
-    const directories = entries
-      .filter((dirent) => dirent.isDirectory())
-      .map((dirent) => dirent.name);
-
-    // Check if any directory name matches case-insensitively
-    return directories.some(
-      (dir) => dir.toLowerCase() === artistName.toLowerCase(),
-    );
-  } catch {
-    // If we can't read the parent directory, fall back to the original check
-    return false;
-  }
+function checkArtistExists(
+  artistPath: string,
+): ResultAsync<boolean, ReturnType<typeof fail>> {
+  return safeAsync(() => exists(artistPath), `Failed to access ${artistPath}`)
+    .andThen((artistExists) =>
+      artistExists
+        ? ok<boolean, ReturnType<typeof fail>>(true)
+        : safeAsync(
+            () => readDirectoryWithTypes(getDirname(artistPath)),
+            `Failed to inspect artists under ${getDirname(artistPath)}`,
+          ).map((entries) =>
+            entries
+              .filter((dirent) => dirent.isDirectory())
+              .map((dirent) => dirent.name)
+              .some(
+                (dir) =>
+                  dir.toLowerCase() === getBasename(artistPath).toLowerCase(),
+              ),
+          ),
+    )
+    .orElse(() => ok(false));
 }
 
 // Handle naming conflicts
-async function resolveNamingConflict(
+function resolveNamingConflict(
   targetPath: string,
   options: CommandOptions,
-): Promise<string> {
+): ResultAsync<string, ReturnType<typeof fail>> {
   if (options.dryRun) {
-    return targetPath;
+    return ResultAsync.fromSafePromise(Promise.resolve(targetPath));
   }
 
-  let counter = 1;
-  let newPath = targetPath;
+  return ResultAsync.fromSafePromise(
+    (async () => {
+      let counter = 1;
+      let newPath = targetPath;
 
-  while (await exists(newPath)) {
-    const dir = path.dirname(targetPath);
-    const base = path.basename(targetPath);
-    const ext = path.extname(base);
-    const name = path.basename(base, ext);
-    newPath = path.join(dir, `${name} (${counter})${ext}`);
-    counter++;
-  }
+      while (await exists(newPath)) {
+        const dir = path.dirname(targetPath);
+        const base = path.basename(targetPath);
+        const ext = path.extname(base);
+        const name = path.basename(base, ext);
+        newPath = path.join(dir, `${name} (${counter})${ext}`);
+        counter++;
+      }
 
-  if (counter > 1) {
-    logWarning(`⚠️  Album already exists, using: ${getBasename(newPath)}`);
-  }
+      if (counter > 1) {
+        logWarning(`⚠️  Album already exists, using: ${getBasename(newPath)}`);
+      }
 
-  return newPath;
+      return newPath;
+    })(),
+  );
 }
 
 // Generate suggestions for artist name
@@ -223,44 +245,60 @@ function generateArtistSuggestions(folderName: string): string[] {
 }
 
 // Process album folders and determine move operations
-async function processAlbumFolders(
+function processAlbumFolders(
   albumFolders: AlbumFolder[],
   options: CommandOptions,
-): Promise<MoveOperation[]> {
-  const moveOperations: MoveOperation[] = [];
+): ResultAsync<MoveOperation[], ReturnType<typeof fail>> {
+  return ResultAsync.fromSafePromise(
+    albumFolders.reduce(
+      async (operationsPromise, albumFolder) => {
+        const moveOperations = await operationsPromise;
+        const inferredArtist = await inferArtistName(albumFolder).unwrapOr(
+          Maybe.nothing<string>(),
+        );
 
-  for (const albumFolder of albumFolders) {
-    // Infer artist name
-    let artistName = await inferArtistName(albumFolder);
+        const artistName = await match(options.interactive)
+          .when(
+            () => inferredArtist.isJust,
+            () => Promise.resolve(inferredArtist.unwrapOr("")),
+          )
+          .with(true, () =>
+            promptForArtistName(
+              albumFolder.name,
+              generateArtistSuggestions(albumFolder.name),
+            ),
+          )
+          .otherwise(() => {
+            logWarning(
+              `⚠️  Could not infer artist name for: ${albumFolder.name}`,
+            );
+            return Promise.resolve(undefined);
+          });
 
-    if (!artistName) {
-      if (options.interactive) {
-        const suggestions = generateArtistSuggestions(albumFolder.name);
-        artistName = await promptForArtistName(albumFolder.name, suggestions);
-      } else {
-        logWarning(`⚠️  Could not infer artist name for: ${albumFolder.name}`);
-        continue;
-      }
-    }
+        if (!artistName) {
+          return moveOperations;
+        }
 
-    // Determine target path
-    const targetPath = getTargetDirectory(artistName, options.targetDir);
-    const isNewArtist = !(await checkArtistExists(targetPath));
+        const targetPath = getTargetDirectory(artistName, options.targetDir);
+        const isNewArtist =
+          !(await checkArtistExists(targetPath).unwrapOr(false));
+        const operation = {
+          sourcePath: albumFolder.path,
+          targetPath: joinPath(targetPath, albumFolder.name),
+          artistName,
+          albumName: albumFolder.name,
+          isNewArtist,
+        };
 
-    moveOperations.push({
-      sourcePath: albumFolder.path,
-      targetPath: joinPath(targetPath, albumFolder.name),
-      artistName,
-      albumName: albumFolder.name,
-      isNewArtist,
-    });
+        logInfo(
+          `${albumFolder.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`,
+        );
 
-    logInfo(
-      `${albumFolder.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`,
-    );
-  }
-
-  return moveOperations;
+        return [...moveOperations, operation];
+      },
+      Promise.resolve([] as MoveOperation[]),
+    ),
+  );
 }
 
 // Display summary and get user confirmation
@@ -286,141 +324,175 @@ async function confirmProcessing(
 }
 
 // Create backup of source folder
-async function createBackup(
+function createBackup(
   sourcePath: string,
   backupDir: string,
-): Promise<void> {
+): ResultAsync<void, ReturnType<typeof fail>> {
   const backupPath = joinPath(backupDir, getBasename(sourcePath));
 
-  try {
-    // Check if source still exists before attempting backup
-    if (!(await exists(sourcePath))) {
-      logWarning(`⚠️  Source no longer exists: ${getBasename(sourcePath)}`);
-      return;
-    }
+  return ResultAsync.fromSafePromise(
+    (async () => {
+      if (!(await exists(sourcePath))) {
+        logWarning(`⚠️  Source no longer exists: ${getBasename(sourcePath)}`);
+        return;
+      }
 
-    await ensureDirectory(backupDir);
+      await ensureDirectory(backupDir);
 
-    // Use fs.cp for better reliability than shell cp
-    const { cp } = await import("fs/promises");
-    await cp(sourcePath, backupPath, { recursive: true });
-    logSuccess(`✓ Backup: ${getBasename(sourcePath)}`);
-  } catch (error) {
-    logWarning(`⚠️  Backup failed for ${getBasename(sourcePath)}: ${error}`);
-    // Don't throw - continue with move operation
-  }
+      const { cp } = await import("fs/promises");
+      await cp(sourcePath, backupPath, { recursive: true });
+      logSuccess(`✓ Backup: ${getBasename(sourcePath)}`);
+    })(),
+  ).orElse((error) => {
+    logWarning(
+      `⚠️  Backup failed for ${getBasename(sourcePath)}: ${formatError(error)}`,
+    );
+    return ok(undefined);
+  });
 }
 
 // Move album folder to target location
-async function moveAlbumFolder(
+function moveAlbumFolder(
   operation: MoveOperation,
   options: CommandOptions,
-): Promise<boolean> {
+): ResultAsync<boolean, ReturnType<typeof fail>> {
   const { sourcePath, targetPath, albumName } = operation;
 
-  try {
-    // Check if source still exists before attempting move
-    if (!(await exists(sourcePath))) {
-      logWarning(`⚠️  Source no longer exists: ${albumName}`);
-      return false;
-    }
-
-    logProgress(`Moving: ${albumName}`);
-
-    // Resolve naming conflicts
-    const finalTargetPath = await resolveNamingConflict(targetPath, options);
-
-    // Create target directory
-    await ensureDirectory(getDirname(finalTargetPath));
-
-    // Move the folder
-    await moveFile(sourcePath, finalTargetPath);
-
-    logSuccess(`✓ Moved: ${albumName}`);
-    return true;
-  } catch (error) {
-    logError(`❌ Failed to move ${albumName}: ${error}`);
-    return false;
-  }
+  return safeAsync(() => exists(sourcePath), `Failed to access ${sourcePath}`)
+    .andThen((sourceExists) =>
+      sourceExists
+        ? ok<undefined, ReturnType<typeof fail>>(undefined)
+        : err(fail(`Source no longer exists: ${albumName}`)),
+    )
+    .map(() => logProgress(`Moving: ${albumName}`))
+    .andThen(() => resolveNamingConflict(targetPath, options))
+    .andThen((finalTargetPath) =>
+      safeAsync(
+        () => ensureDirectory(getDirname(finalTargetPath)),
+        `Failed to create target parent for ${albumName}`,
+      ).map(() => finalTargetPath),
+    )
+    .andThen((finalTargetPath) =>
+      safeAsync(
+        () => moveFile(sourcePath, finalTargetPath),
+        `Failed to move ${albumName}`,
+      ),
+    )
+    .map(() => {
+      logSuccess(`✓ Moved: ${albumName}`);
+      return true;
+    })
+    .orElse((error) => {
+      logError(`❌ ${formatError(error)}`);
+      return ok(false);
+    });
 }
 
-async function run(options: CommandOptions) {
-  // Validate directories
-  const sourceExists = await exists(options.sourceDir);
-  invariant(
-    sourceExists,
-    `❌ Source directory '${options.sourceDir}' does not exist or is not accessible`,
+function validateRequiredDirectory(
+  dirPath: string,
+  label: string,
+): ResultAsync<void, ReturnType<typeof fail>> {
+  return safeAsync(
+    () => exists(dirPath),
+    `Failed to access ${label} directory`,
+  ).andThen((exists) =>
+    exists
+      ? ok<void, ReturnType<typeof fail>>(undefined)
+      : err(
+          fail(
+            `${label} directory '${dirPath}' does not exist or is not accessible`,
+          ),
+        ),
   );
+}
 
-  const targetExists = await exists(options.targetDir);
-  invariant(
-    targetExists,
-    `❌ Target directory '${options.targetDir}' does not exist or is not accessible`,
-  );
+function processMoveOperations(
+  moveOperations: MoveOperation[],
+  options: CommandOptions,
+): ResultAsync<
+  { successCount: number; failureCount: number },
+  ReturnType<typeof fail>
+> {
+  return ResultAsync.fromSafePromise(
+    moveOperations.reduce(
+      async (summaryPromise, operation) => {
+        const summary = await summaryPromise;
 
-  logInfo(`Scanning '${options.sourceDir}' for album folders...`);
+        if (!options.dryRun) {
+          await createBackup(operation.sourcePath, options.backupDir);
+        }
 
-  const albumFolders = await scanAlbumFolders(options.sourceDir);
+        const success = options.dryRun
+          ? true
+          : await moveAlbumFolder(operation, options).unwrapOr(false);
 
-  if (albumFolders.length === 0) {
-    logInfo("✨ No album folders found.");
-    return;
-  }
+        if (success) {
+          return { ...summary, successCount: summary.successCount + 1 };
+        }
 
-  logInfo(`📂 Found ${albumFolders.length} album folders`);
-
-  const moveOperations = await processAlbumFolders(albumFolders, options);
-
-  if (moveOperations.length === 0) {
-    logInfo("⚠️  No valid albums to process.");
-    return;
-  }
-
-  const proceed = await confirmProcessing(moveOperations, options);
-
-  if (!proceed) {
-    logInfo("❌ Operation cancelled.");
-    return;
-  }
-
-  logProgress("🔄 Processing albums...");
-
-  // Process albums serially
-  let successCount = 0;
-  let failureCount = 0;
-
-  for (const operation of moveOperations) {
-    try {
-      // Create backup if not in dry-run mode
-      if (!options.dryRun) {
-        await createBackup(operation.sourcePath, options.backupDir);
-      }
-
-      // Move the folder
-      const success = options.dryRun
-        ? true
-        : await moveAlbumFolder(operation, options);
-
-      if (success) {
-        successCount++;
-      } else {
-        failureCount++;
-        // Continue processing other albums instead of stopping
         logWarning(`⚠️  Skipping ${operation.albumName} due to failure`);
-      }
-    } catch (error) {
-      logError(`❌ Error processing ${operation.albumName}: ${error}`);
-      failureCount++;
-      // Continue processing other albums instead of stopping
-      logWarning(`⚠️  Skipping ${operation.albumName} due to error`);
-    }
-  }
+        return { ...summary, failureCount: summary.failureCount + 1 };
+      },
+      Promise.resolve({ successCount: 0, failureCount: 0 }),
+    ),
+  );
+}
 
-  displaySummary(successCount, failureCount, moveOperations.length);
+function run(
+  options: CommandOptions,
+): ResultAsync<void, ReturnType<typeof fail>> {
+  return validateRequiredDirectory(options.sourceDir, "Source")
+    .andThen(() => validateRequiredDirectory(options.targetDir, "Target"))
+    .map(() => logInfo(`Scanning '${options.sourceDir}' for album folders...`))
+    .andThen(() => scanAlbumFolders(options.sourceDir))
+    .andThen((albumFolders) =>
+      match(albumFolders)
+        .with([], () => {
+          logInfo("✨ No album folders found.");
+          return ok<AlbumFolder[], ReturnType<typeof fail>>([]);
+        })
+        .otherwise((folders) => {
+          logInfo(`📂 Found ${folders.length} album folders`);
+          return ok<AlbumFolder[], ReturnType<typeof fail>>(folders);
+        }),
+    )
+    .andThen((albumFolders) =>
+      albumFolders.length === 0
+        ? ok<MoveOperation[], ReturnType<typeof fail>>([])
+        : processAlbumFolders(albumFolders, options),
+    )
+    .andThen((moveOperations) =>
+      moveOperations.length === 0
+        ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(
+            Maybe.nothing<MoveOperation[]>(),
+          )
+        : safeAsync(
+            () => confirmProcessing(moveOperations, options),
+            "Failed to confirm processing",
+          ).map((proceed) =>
+            proceed
+              ? Maybe.just(moveOperations)
+              : Maybe.nothing<MoveOperation[]>(),
+          ),
+    )
+    .andThen((maybeOperations) =>
+      maybeOperations.isNothing
+        ? ok<void, ReturnType<typeof fail>>(undefined)
+        : processMoveOperations(maybeOperations.value, options).map(
+            ({ successCount, failureCount }) => {
+              logProgress("🔄 Processing albums...");
+              displaySummary(
+                successCount,
+                failureCount,
+                maybeOperations.value.length,
+              );
 
-  if (failureCount > 0) {
-    process.exit(1);
-  }
+              if (failureCount > 0) {
+                process.exitCode = 1;
+              }
+            },
+          ),
+    );
 }
 
 export default function moveCompletedCommand(program: Command): void {
@@ -447,11 +519,18 @@ export default function moveCompletedCommand(program: Command): void {
       false,
     )
     .action(async (options: Record<string, unknown>) => {
-      try {
-        await run(optionsSchema.parse(options));
-      } catch (error) {
-        logError(`Script failed: ${error}`);
-        process.exit(1);
-      }
+      const result = await parseWith(
+        optionsSchema,
+        options,
+        "Invalid move-completed options",
+      ).asyncAndThen(run);
+
+      result.match(
+        () => undefined,
+        (error) => {
+          logError(`Script failed: ${formatError(error)}`);
+          process.exit(1);
+        },
+      );
     });
 }

@@ -1,9 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { Command } from "commander";
 import got, { type Headers, type Response } from "got";
+import { err, ok, Result, ResultAsync } from "neverthrow";
 import { Maybe } from "true-myth";
+import { match } from "ts-pattern";
 import { z } from "zod";
+
+import { fail, formatError, parseWith, safe, safeAsync } from "../lib/fp.js";
 
 const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
@@ -14,8 +18,8 @@ const optionsSchema = z.object({
   cookie: z.string().optional(),
   dest: z.string(),
   ua: z.string(),
-  retries: z.string().transform((val) => parseInt(val, 10)),
-  timeout: z.string().transform((val) => parseInt(val, 10)),
+  retries: z.coerce.number().int().min(0),
+  timeout: z.coerce.number().int().positive(),
 });
 
 type CommandOptions = z.infer<typeof optionsSchema>;
@@ -23,35 +27,65 @@ type CommandOptions = z.infer<typeof optionsSchema>;
 const RFC5987_RE = /filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i;
 const RFC5987_RE_2 = /filename\s*=\s*("?)([^";]+)\1/i;
 
-function filenameFromHeaders(url: string, headers: Headers): string {
-  const fallbackName = basename(new URL(url).pathname) || "download.bin";
+const decodeFilename = (value: string): string =>
+  safe(() => decodeURIComponent(value), "Failed to decode filename").unwrapOr(
+    value,
+  );
+
+function sanitizeFilename(filename: string, fallbackName: string): string {
+  const sanitized = basename(filename.replace(/\\/g, "/")).trim();
+  return sanitized && sanitized !== "." && sanitized !== ".."
+    ? sanitized
+    : fallbackName;
+}
+
+function filenameFromHeaders(
+  url: string,
+  headers: Headers,
+): Result<string, ReturnType<typeof fail>> {
+  const fallbackName = sanitizeFilename(
+    decodeFilename(new URL(url).pathname),
+    "download.bin",
+  );
 
   const cd = headers["content-disposition"];
   if (!cd) {
-    return fallbackName;
+    return ok(fallbackName);
   }
 
   const cdStr = Maybe.of(Array.isArray(cd) ? cd[0] : cd);
   if (cdStr.isNothing) {
-    return fallbackName;
+    return ok(fallbackName);
   }
 
-  // Try RFC 5987 (filename*=UTF-8'')
   const star = Maybe.of(cdStr.value.match(RFC5987_RE)?.[1]);
   if (star.isJust) {
-    return decodeURIComponent(star.value.replace(/^["']|["']$/g, "").trim());
+    return ok(
+      sanitizeFilename(
+        decodeFilename(star.value.replace(/^["']|["']$/g, "").trim()),
+        fallbackName,
+      ),
+    );
   }
 
-  // Fallback: filename="..."
   const plain = Maybe.of(cdStr.value.match(RFC5987_RE_2)?.[2]);
 
-  return plain.mapOr(fallbackName, (p) => {
-    try {
-      return decodeURIComponent(p);
-    } catch {
-      return p;
-    }
-  });
+  return ok(
+    plain.mapOr(fallbackName, (p) =>
+      sanitizeFilename(decodeFilename(p), fallbackName),
+    ),
+  );
+}
+
+function validateResponse(
+  res: Response,
+): Result<Response, ReturnType<typeof fail>> {
+  return match(res.statusCode)
+    .when(
+      (status) => status >= 200 && status < 300,
+      () => ok(res),
+    )
+    .otherwise(() => err(fail(`HTTP ${res.statusCode} ${res.statusMessage}`)));
 }
 
 async function fetchOnce(
@@ -69,9 +103,7 @@ async function fetchOnce(
   });
 }
 
-async function run(url: string, options: CommandOptions): Promise<void> {
-  await mkdir(options.dest, { recursive: true });
-
+function buildHeaders(options: CommandOptions): Record<string, string> {
   const headers: Record<string, string> = {
     "User-Agent": options.ua,
     Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -82,37 +114,55 @@ async function run(url: string, options: CommandOptions): Promise<void> {
   if (options.referer) headers["Referer"] = options.referer;
   if (options.cookie) headers["Cookie"] = options.cookie;
 
+  return headers;
+}
+
+function run(
+  url: string,
+  options: CommandOptions,
+): ResultAsync<void, ReturnType<typeof fail>> {
+  const headers = buildHeaders(options);
   let attempt = 0;
 
-  while (attempt <= options.retries) {
-    try {
+  const download = (): ResultAsync<void, ReturnType<typeof fail>> => {
+    return safeAsync(async () => {
       if (attempt > 0) {
         console.log(`Retry ${attempt}/${options.retries}…`);
         await new Promise((r) => setTimeout(r, 500 * attempt)); // tiny backoff
       }
       console.log(`📥 GET ${url}`);
-      const res = await fetchOnce(url, headers, options.timeout);
+      return await fetchOnce(url, headers, options.timeout);
+    }, "Download request failed")
+      .andThen((res) => validateResponse(res))
+      .andThen((res) =>
+        filenameFromHeaders(url, res.headers).asyncAndThen((filename) => {
+          const filePath = join(options.dest, filename);
+          console.log(`→ Saving as ${filePath}`);
 
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        throw new Error(`HTTP ${res.statusCode} ${res.statusMessage}`);
-      }
+          return safeAsync(
+            () => writeFile(filePath, res.rawBody),
+            `Failed to write ${filePath}`,
+          );
+        }),
+      )
+      .orElse((error) => {
+        attempt++;
+        if (attempt > options.retries) {
+          return err(fail(`Failed after ${options.retries} retries`, error));
+        }
 
-      const filename = filenameFromHeaders(url, res.headers);
-      const filePath = `${options.dest}/${filename}`;
-      console.log(`→ Saving as ${filePath}`);
+        return download();
+      });
+  };
 
-      // Write response body directly to disk
-      await writeFile(filePath, res.rawBody);
+  return safeAsync(
+    () => mkdir(options.dest, { recursive: true }),
+    `Failed to create destination ${options.dest}`,
+  )
+    .andThen(download)
+    .map(() => {
       console.log("✅ Done");
-      return;
-    } catch (err) {
-      attempt++;
-      if (attempt > options.retries) {
-        console.error(`❌ Failed after ${options.retries} retries: ${err}`);
-        throw err;
-      }
-    }
-  }
+    });
 }
 
 export default function downloadCommand(program: Command): void {
@@ -127,11 +177,18 @@ export default function downloadCommand(program: Command): void {
     .option("--retries <number>", "Number of retries", "3")
     .option("--timeout <ms>", "Timeout in milliseconds", "30000")
     .action(async (url: string, options: Record<string, unknown>) => {
-      try {
-        await run(url, optionsSchema.parse(options));
-      } catch (error) {
-        console.error(`Download failed: ${error}`);
-        process.exit(1);
-      }
+      const result = await parseWith(
+        optionsSchema,
+        options,
+        "Invalid download options",
+      ).asyncAndThen((parsedOptions) => run(url, parsedOptions));
+
+      result.match(
+        () => undefined,
+        (error) => {
+          console.error(`Download failed: ${formatError(error)}`);
+          process.exit(1);
+        },
+      );
     });
 }

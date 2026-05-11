@@ -1,18 +1,30 @@
 import * as path from "node:path";
 import { Command } from "commander";
+import { err, ok, ResultAsync } from "neverthrow";
 import pc from "picocolors";
+import { match } from "ts-pattern";
 import { z } from "zod";
 
-import {
-  logError,
-  readDirectoryWithTypes,
-  validateDirectory,
-} from "../lib/utils.js";
+import { fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
+import { exists, logError, readDirectoryWithTypes } from "../lib/utils.js";
 
 const optionsSchema = z.object({
-  maxDepth: z
-    .string()
-    .transform((val) => (val === "Infinity" ? Infinity : parseInt(val))),
+  maxDepth: z.string().transform((val, ctx) => {
+    if (val === "Infinity") {
+      return Infinity;
+    }
+
+    const parsed = Number.parseInt(val, 10);
+    if (Number.isNaN(parsed) || parsed < 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "maxDepth must be Infinity or a non-negative integer",
+      });
+      return z.NEVER;
+    }
+
+    return parsed;
+  }),
   showHidden: z.boolean().optional().default(false),
   showFiles: z.boolean().optional().default(false),
   exclude: z.array(z.string()).optional().default([]),
@@ -86,34 +98,32 @@ function getFileColor(
 ): string {
   const name = entry.name;
 
-  if (isHidden) {
-    return colors.hidden(name);
-  }
+  return match({ entry, isHidden })
+    .with({ isHidden: true }, () => colors.hidden(name))
+    .when(
+      ({ entry }) => entry.isDirectory(),
+      () => colors.directory(name),
+    )
+    .when(
+      ({ entry }) => Boolean(entry.isSymbolicLink?.()),
+      () => colors.symlink(name),
+    )
+    .otherwise(() => {
+      const category = extensionTypes.find((type) =>
+        hasExtension(name, extensionsByCategory[type]),
+      );
 
-  if (entry.isDirectory()) {
-    return colors.directory(name);
-  }
-
-  if (entry.isSymbolicLink && entry.isSymbolicLink()) {
-    return colors.symlink(name);
-  }
-
-  for (const type of extensionTypes) {
-    if (hasExtension(name, extensionsByCategory[type])) {
-      return colors[type](name);
-    }
-  }
-
-  return colors.file(name);
+      return category ? colors[category](name) : colors.file(name);
+    });
 }
 
 // Recursively build the tree structure
-async function buildTree(
+function buildTree(
   dirPath: string,
   prefix: string = "",
   depth: number = 0,
   options: CommandOptions,
-): Promise<string[]> {
+): ResultAsync<string[], ReturnType<typeof fail>> {
   const {
     maxDepth = Infinity,
     showHidden = false,
@@ -122,12 +132,13 @@ async function buildTree(
   } = options;
 
   if (depth >= maxDepth) {
-    return [];
+    return ResultAsync.fromSafePromise(Promise.resolve([] as string[]));
   }
 
-  try {
-    const entries = await readDirectoryWithTypes(dirPath);
-
+  return safeAsync(
+    () => readDirectoryWithTypes(dirPath),
+    `Error reading directory ${dirPath}`,
+  ).andThen((entries) => {
     // Filter entries based on options
     const filteredEntries = entries.filter((entry) => {
       // Skip hidden files/folders unless showHidden is true
@@ -150,62 +161,68 @@ async function buildTree(
 
     const lines: string[] = [];
 
-    for (let i = 0; i < filteredEntries.length; i++) {
-      const entry = filteredEntries[i]!;
-      const isLast = i === filteredEntries.length - 1;
-      const isDirectory = entry.isDirectory();
+    return ResultAsync.fromSafePromise(
+      filteredEntries.reduce(async (linesPromise, entry, index) => {
+        const lines = await linesPromise;
+        const isLast = index === filteredEntries.length - 1;
+        const isDirectory = entry.isDirectory();
 
-      // Determine the prefix for this entry
-      const currentPrefix = isLast ? TREE_CHARS.LAST_BRANCH : TREE_CHARS.BRANCH;
-      const nextPrefix = isLast ? TREE_CHARS.SPACE : TREE_CHARS.VERTICAL;
+        const currentPrefix = isLast
+          ? TREE_CHARS.LAST_BRANCH
+          : TREE_CHARS.BRANCH;
+        const nextPrefix = isLast ? TREE_CHARS.SPACE : TREE_CHARS.VERTICAL;
 
-      // Add the current entry with colors
-      const icon = options.showFiles ? (isDirectory ? "📁" : "📄") : "";
-      const isHidden = entry.name.startsWith(".");
-      const coloredName = getFileColor(entry, isHidden);
-      lines.push(`${prefix}${currentPrefix}${icon} ${coloredName}`);
+        const icon = options.showFiles ? (isDirectory ? "📁" : "📄") : "";
+        const isHidden = entry.name.startsWith(".");
+        const coloredName = getFileColor(entry, isHidden);
+        lines.push(`${prefix}${currentPrefix}${icon} ${coloredName}`);
 
-      if (!isDirectory) {
-        continue;
-      }
+        if (!isDirectory) {
+          return lines;
+        }
 
-      // Recursively add children for directories
-      const childPath = path.join(dirPath, entry.name);
-      const childLines = await buildTree(
-        childPath,
-        prefix + nextPrefix,
-        depth + 1,
-        options,
-      );
+        const childPath = path.join(dirPath, entry.name);
+        const childLines = await buildTree(
+          childPath,
+          prefix + nextPrefix,
+          depth + 1,
+          options,
+        ).unwrapOr([]);
 
-      lines.push(...childLines);
-    }
-
-    return lines;
-  } catch (error) {
-    logError(`Error reading directory ${dirPath}: ${error}`);
-    return [];
-  }
+        lines.push(...childLines);
+        return lines;
+      }, Promise.resolve(lines)),
+    );
+  });
 }
 
 // Main function to generate and display the tree
-async function run(dirPath: string, options: CommandOptions): Promise<void> {
-  // Validate the directory exists
-  const isValid = await validateDirectory(dirPath);
-  if (!isValid) {
-    throw new Error(
-      `Directory '${dirPath}' does not exist or is not accessible`,
-    );
-  }
+function run(
+  dirPath: string,
+  options: CommandOptions,
+): ResultAsync<void, ReturnType<typeof fail>> {
+  return safeAsync(() => exists(dirPath), `Failed to access ${dirPath}`)
+    .andThen((isValid) =>
+      isValid
+        ? ok<void, ReturnType<typeof fail>>(undefined)
+        : ok<void, ReturnType<typeof fail>>(undefined).andThen(() =>
+            err(
+              fail(
+                `Directory '${dirPath}' does not exist or is not accessible`,
+              ),
+            ),
+          ),
+    )
+    .andThen(() => buildTree(dirPath, "", 0, options))
+    .map((treeLines) => {
+      console.log(`📁 ${pc.blue(dirPath)}`);
 
-  console.log(`📁 ${pc.blue(dirPath)}`);
-  const treeLines = await buildTree(dirPath, "", 0, options);
-
-  if (treeLines.length === 0) {
-    console.log("   (empty directory)");
-  } else {
-    treeLines.forEach((line) => console.log(line));
-  }
+      if (treeLines.length === 0) {
+        console.log("   (empty directory)");
+      } else {
+        treeLines.forEach((line) => console.log(line));
+      }
+    });
 }
 
 export default function dirTreeCommand(program: Command): void {
@@ -221,11 +238,18 @@ export default function dirTreeCommand(program: Command): void {
       "Exclude files/directories matching patterns",
     )
     .action(async (path: string, options: Record<string, unknown>) => {
-      try {
-        await run(path, optionsSchema.parse(options));
-      } catch (error) {
-        logError(`Failed to generate tree: ${error}`);
-        process.exit(1);
-      }
+      const result = await parseWith(
+        optionsSchema,
+        options,
+        "Invalid dir-tree options",
+      ).asyncAndThen((parsedOptions) => run(path, parsedOptions));
+
+      result.match(
+        () => undefined,
+        (error) => {
+          logError(`Failed to generate tree: ${formatError(error)}`);
+          process.exit(1);
+        },
+      );
     });
 }

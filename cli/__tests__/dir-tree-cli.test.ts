@@ -37,9 +37,12 @@ const MOCK_FOLDERS = new Set(
   ),
 );
 
+const normalizeTestDir = (output: string): string =>
+  output.replaceAll(join(process.cwd(), "test-dir-tree"), "<test-dir-tree>");
+
 describe("dir-tree CLI integration", () => {
   const testDir = join(process.cwd(), "test-dir-tree");
-  const cliPath = join(process.cwd(), "dist", "cli");
+  const cliPath = join(process.cwd(), "dist", "cli", "index.js");
 
   beforeAll(async () => {
     // Create a deterministic test directory structure
@@ -76,8 +79,8 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output matches expected structure
-    expect(result.text()).toMatchInlineSnapshot(`
-      "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
+    expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
+      "📁 <test-dir-tree>
       ├──  folder1
       └──  folder2
           └──  subfolder
@@ -92,8 +95,8 @@ describe("dir-tree CLI integration", () => {
     expect(result1.exitCode).toBe(0);
 
     // Verify the output contains files
-    expect(result1.text()).toMatchInlineSnapshot(`
-      "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
+    expect(normalizeTestDir(result1.text())).toMatchInlineSnapshot(`
+      "📁 <test-dir-tree>
       ├── 📄 file1.txt
       ├── 📄 file2.txt
       ├── 📁 folder1
@@ -120,8 +123,8 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output contains hidden content
-    expect(result.text()).toMatchInlineSnapshot(`
-      "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
+    expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
+      "📁 <test-dir-tree>
       ├──  .hidden
       ├──  folder1
       └──  folder2
@@ -138,8 +141,8 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output respects max-depth
-    expect(result.text()).toMatchInlineSnapshot(`
-      "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
+    expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
+      "📁 <test-dir-tree>
       ├──  folder1
       └──  folder2
       "
@@ -155,8 +158,8 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Verify the output excludes specified patterns
-    expect(result.text()).toMatchInlineSnapshot(`
-      "📁 /Users/alanrsoares/dev/nas-tools/test-dir-tree
+    expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
+      "📁 <test-dir-tree>
       └──  folder2
           └──  subfolder
       "
@@ -184,9 +187,8 @@ describe("dir-tree CLI integration", () => {
     const nonExistentPath = join(testDir, "non-existent-folder");
     await $`node ${cliPath} dir-tree ${nonExistentPath}`.catch((x) => {
       expect(x.exitCode).toBe(1);
-      expect(x.stderr.toString()).toMatchInlineSnapshot(`
-        "✗ Directory '/Users/alanrsoares/dev/nas-tools/test-dir-tree/non-existent-folder' does not exist or is not accessible
-        ✗ Failed to generate tree: Error: Directory '/Users/alanrsoares/dev/nas-tools/test-dir-tree/non-existent-folder' does not exist or is not accessible
+      expect(normalizeTestDir(x.stderr.toString())).toMatchInlineSnapshot(`
+        "✗ Failed to generate tree: Directory '<test-dir-tree>/non-existent-folder' does not exist or is not accessible
         "
       `);
     });
