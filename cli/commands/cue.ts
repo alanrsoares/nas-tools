@@ -32,6 +32,12 @@ type CueStatus =
   | "orphan_cue"
   | "already_split_or_false_positive";
 
+type TempSplitStatus =
+  | "empty_stale"
+  | "has_split_tracks"
+  | "has_cue_or_original"
+  | "suspicious_mixed";
+
 interface ToolStatus {
   name: string;
   available: boolean;
@@ -63,6 +69,25 @@ interface DirectoryScan {
 type ReportedCueGroup = Omit<CueGroup, "cueFiles" | "audioFiles"> &
   Partial<Pick<CueGroup, "cueFiles" | "audioFiles">>;
 
+interface TempSplitGroup {
+  directory: string;
+  tempDirectory: string;
+  status: TempSplitStatus;
+  safeCleanupCandidate: boolean;
+  fileCount: number;
+  directoryCount: number;
+  cueFiles: string[];
+  audioFiles: string[];
+  otherFiles: string[];
+  action: string;
+}
+
+type ReportedTempSplitGroup = Omit<
+  TempSplitGroup,
+  "cueFiles" | "audioFiles" | "otherFiles"
+> &
+  Partial<Pick<TempSplitGroup, "cueFiles" | "audioFiles" | "otherFiles">>;
+
 interface CueTriageReport {
   title: string;
   root: string;
@@ -78,6 +103,22 @@ interface CueTriageReport {
     reportedGroups: number;
   };
   groups: ReportedCueGroup[];
+  findings: Finding[];
+}
+
+interface TempSplitTriageReport {
+  title: string;
+  root: string;
+  stats: {
+    tempSplitDirs: number;
+    emptyStale: number;
+    hasSplitTracks: number;
+    hasCueOrOriginal: number;
+    suspiciousMixed: number;
+    safeCleanupCandidates: number;
+    reportedGroups: number;
+  };
+  groups: ReportedTempSplitGroup[];
   findings: Finding[];
 }
 
@@ -126,6 +167,21 @@ const isAlreadySplitGroup = (group: CueGroup): boolean =>
   group.status === "already_split_or_false_positive";
 
 const hasRisks = (group: CueGroup): boolean => group.risks.length > 0;
+
+const isEmptyStaleTempSplit = (group: TempSplitGroup): boolean =>
+  group.status === "empty_stale";
+
+const hasSplitTracksTempSplit = (group: TempSplitGroup): boolean =>
+  group.status === "has_split_tracks";
+
+const hasCueOrOriginalTempSplit = (group: TempSplitGroup): boolean =>
+  group.status === "has_cue_or_original";
+
+const isSuspiciousMixedTempSplit = (group: TempSplitGroup): boolean =>
+  group.status === "suspicious_mixed";
+
+const isSafeCleanupCandidate = (group: TempSplitGroup): boolean =>
+  group.safeCleanupCandidate;
 
 function matchingAudio(cueFile: string, audioFiles: string[]): Maybe<string> {
   return Maybe.of(
@@ -260,6 +316,10 @@ async function readDirents(directory: string): Promise<Dirent[]> {
   ).unwrapOr([]);
 }
 
+function childDirectoryPath(parent: string, entry: Dirent): string {
+  return join(parent, entry.name);
+}
+
 async function scanCueDirectories(
   directory: string,
   maxDepth: number,
@@ -278,7 +338,7 @@ async function scanCueDirectories(
     async (scansPromise, entry) => {
       const scans = await scansPromise;
       const childScans = await scanCueDirectories(
-        `${directory}/${entry.name}`,
+        childDirectoryPath(directory, entry),
         maxDepth,
         depth + 1,
       );
@@ -289,6 +349,149 @@ async function scanCueDirectories(
   );
 
   return [...current, ...nested];
+}
+
+function tempSplitEntry(entries: Dirent[]): Maybe<Dirent> {
+  return Maybe.of(
+    entries.find(
+      (entry) => entry.isDirectory() && entry.name === "__temp_split",
+    ),
+  );
+}
+
+function visibleEntryNames(
+  entries: Dirent[],
+  predicate: (entry: Dirent) => boolean,
+): string[] {
+  return entries
+    .filter((entry) => !isAppleDoubleName(entry.name))
+    .filter(predicate)
+    .map((entry) => entry.name)
+    .sort();
+}
+
+function classifyTempSplit(input: {
+  directory: string;
+  tempDirectory: string;
+  entries: Dirent[];
+}): TempSplitGroup {
+  const cueFiles = visibleEntryNames(
+    input.entries,
+    (entry) => entry.isFile() && isCueName(entry.name),
+  );
+  const audioFiles = visibleEntryNames(
+    input.entries,
+    (entry) => entry.isFile() && isSplitAudioName(entry.name),
+  );
+  const otherFiles = visibleEntryNames(
+    input.entries,
+    (entry) =>
+      entry.isFile() && !isCueName(entry.name) && !isSplitAudioName(entry.name),
+  );
+  const directoryCount = input.entries.filter(isVisibleDirectory).length;
+  const fileCount = cueFiles.length + audioFiles.length + otherFiles.length;
+  const hasOnlyTrackLikeAudio =
+    audioFiles.length > 0 &&
+    cueFiles.length === 0 &&
+    otherFiles.length === 0 &&
+    directoryCount === 0 &&
+    audioFiles.every(isTrackLikeAudioName);
+
+  const status: TempSplitStatus = match({
+    cueCount: cueFiles.length,
+    directoryCount,
+    fileCount,
+    hasOnlyTrackLikeAudio,
+    otherCount: otherFiles.length,
+  })
+    .with({ fileCount: 0, directoryCount: 0 }, () => "empty_stale" as const)
+    .with(
+      { cueCount: 0, otherCount: 0, hasOnlyTrackLikeAudio: true },
+      () => "has_split_tracks" as const,
+    )
+    .with(
+      { directoryCount: 0, otherCount: 0 },
+      () => "has_cue_or_original" as const,
+    )
+    .otherwise(() => "suspicious_mixed" as const);
+  const safeCleanupCandidate = status === "empty_stale";
+
+  return {
+    directory: input.directory,
+    tempDirectory: input.tempDirectory,
+    status,
+    safeCleanupCandidate,
+    fileCount,
+    directoryCount,
+    cueFiles,
+    audioFiles,
+    otherFiles,
+    action: tempSplitAction(status),
+  };
+}
+
+function tempSplitAction(status: TempSplitStatus): string {
+  return match(status)
+    .with("empty_stale", () => "Safe cleanup candidate after dry-run review.")
+    .with(
+      "has_split_tracks",
+      () => "Inspect or recover split tracks before cleanup.",
+    )
+    .with(
+      "has_cue_or_original",
+      () => "Inspect original/CUE leftovers before retrying.",
+    )
+    .with(
+      "suspicious_mixed",
+      () => "Manual review required; do not auto-clean.",
+    )
+    .exhaustive();
+}
+
+async function tempSplitGroup(
+  directory: string,
+  tempEntry: Dirent,
+): Promise<TempSplitGroup> {
+  const tempDirectory = childDirectoryPath(directory, tempEntry);
+  const entries = await readDirents(tempDirectory);
+
+  return classifyTempSplit({ directory, tempDirectory, entries });
+}
+
+async function scanTempSplitDirectories(
+  directory: string,
+  maxDepth: number,
+  depth = 0,
+): Promise<TempSplitGroup[]> {
+  const entries = await readDirents(directory);
+  const current = await tempSplitEntry(entries).mapOr(
+    Promise.resolve([] as TempSplitGroup[]),
+    async (entry) => [await tempSplitGroup(directory, entry)],
+  );
+  if (depth >= maxDepth) {
+    return current;
+  }
+
+  const childDirectories = entries
+    .filter(isVisibleDirectory)
+    .filter((entry) => entry.name !== "__temp_split");
+  const nested = await childDirectories.reduce(
+    async (groupsPromise, entry) => {
+      const groups = await groupsPromise;
+      const childGroups = await scanTempSplitDirectories(
+        childDirectoryPath(directory, entry),
+        maxDepth,
+        depth + 1,
+      );
+
+      return [...groups, ...childGroups];
+    },
+    Promise.resolve([] as TempSplitGroup[]),
+  );
+
+  return [...current, ...nested].sort((a, b) =>
+    a.directory.localeCompare(b.directory),
+  );
 }
 
 function groupCueDirectories(scans: DirectoryScan[]): CueGroup[] {
@@ -400,7 +603,97 @@ function reportGroup(group: CueGroup, includeFiles: boolean): ReportedCueGroup {
   return summary;
 }
 
-function run(
+function emptyTempSplitReport(root: string): TempSplitTriageReport {
+  return {
+    title: "CUE temp-split triage",
+    root,
+    stats: {
+      tempSplitDirs: 0,
+      emptyStale: 0,
+      hasSplitTracks: 0,
+      hasCueOrOriginal: 0,
+      suspiciousMixed: 0,
+      safeCleanupCandidates: 0,
+      reportedGroups: 0,
+    },
+    groups: [],
+    findings: [
+      {
+        severity: "error",
+        message: "Music library root missing.",
+        path: root,
+      },
+    ],
+  };
+}
+
+function tempSplitSeverity(status: TempSplitStatus): Finding["severity"] {
+  return match(status)
+    .with("empty_stale", () => "info" as const)
+    .with("has_split_tracks", () => "warn" as const)
+    .with("has_cue_or_original", () => "warn" as const)
+    .with("suspicious_mixed", () => "error" as const)
+    .exhaustive();
+}
+
+function reportTempSplitGroup(
+  group: TempSplitGroup,
+  includeFiles: boolean,
+): ReportedTempSplitGroup {
+  if (includeFiles) {
+    return group;
+  }
+
+  const {
+    cueFiles: _cueFiles,
+    audioFiles: _audioFiles,
+    otherFiles: _otherFiles,
+    ...summary
+  } = group;
+  return summary;
+}
+
+function buildTempSplitFindings(
+  groups: TempSplitGroup[],
+  limit: number,
+): Finding[] {
+  const reportedGroups = limit === 0 ? groups : groups.slice(0, limit);
+
+  return reportedGroups.map((group) => ({
+    severity: tempSplitSeverity(group.status),
+    message: `${group.status}: ${group.action}`,
+    path: group.tempDirectory,
+  }));
+}
+
+function buildTempSplitReport(
+  root: string,
+  groups: TempSplitGroup[],
+  limit: number,
+  includeFiles: boolean,
+): TempSplitTriageReport {
+  const reportedGroups = limit === 0 ? groups : groups.slice(0, limit);
+
+  return {
+    title: "CUE temp-split triage",
+    root,
+    stats: {
+      tempSplitDirs: groups.length,
+      emptyStale: groups.filter(isEmptyStaleTempSplit).length,
+      hasSplitTracks: groups.filter(hasSplitTracksTempSplit).length,
+      hasCueOrOriginal: groups.filter(hasCueOrOriginalTempSplit).length,
+      suspiciousMixed: groups.filter(isSuspiciousMixedTempSplit).length,
+      safeCleanupCandidates: groups.filter(isSafeCleanupCandidate).length,
+      reportedGroups: reportedGroups.length,
+    },
+    groups: reportedGroups.map((group) =>
+      reportTempSplitGroup(group, includeFiles),
+    ),
+    findings: buildTempSplitFindings(groups, limit),
+  };
+}
+
+function runCueTriage(
   options: CommandOptions,
 ): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
@@ -428,6 +721,68 @@ function run(
   );
 }
 
+function runTempSplitTriage(
+  options: CommandOptions,
+): ResultAsync<void, ReturnType<typeof fail>> {
+  return ResultAsync.fromSafePromise(
+    (async () => {
+      if (!(await pathExists(options.root))) {
+        printReport(emptyTempSplitReport(options.root), options.json);
+        return;
+      }
+
+      const groups = await scanTempSplitDirectories(
+        options.root,
+        options.maxDepth,
+      );
+      const report = buildTempSplitReport(
+        options.root,
+        groups,
+        options.limit,
+        options.includeFiles,
+      );
+
+      printReport(report, options.json);
+    })(),
+  );
+}
+
+async function handleCueTriage(
+  options: Record<string, unknown>,
+): Promise<void> {
+  const result = await parseWith(
+    optionsSchema,
+    options,
+    "Invalid cue triage options",
+  ).asyncAndThen(runCueTriage);
+
+  result.match(
+    () => undefined,
+    (error) => {
+      logError(`CUE triage failed: ${formatError(error)}`);
+      process.exit(1);
+    },
+  );
+}
+
+async function handleTempSplitTriage(
+  options: Record<string, unknown>,
+): Promise<void> {
+  const result = await parseWith(
+    optionsSchema,
+    options,
+    "Invalid cue temp-split triage options",
+  ).asyncAndThen(runTempSplitTriage);
+
+  result.match(
+    () => undefined,
+    (error) => {
+      logError(`CUE temp-split triage failed: ${formatError(error)}`);
+      process.exit(1);
+    },
+  );
+}
+
 export default function cueCommand(program: Command): void {
   const cue = program.command("cue").description("CUE sheet workflows");
 
@@ -439,19 +794,17 @@ export default function cueCommand(program: Command): void {
     .option("--limit <number>", "Detailed groups to include; 0 means all", "25")
     .option("--include-files", "Include cue/audio file lists in groups", false)
     .option("--json", "Print JSON report", false)
-    .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
-        optionsSchema,
-        options,
-        "Invalid cue triage options",
-      ).asyncAndThen(run);
+    .action(handleCueTriage);
 
-      result.match(
-        () => undefined,
-        (error) => {
-          logError(`CUE triage failed: ${formatError(error)}`);
-          process.exit(1);
-        },
-      );
-    });
+  cue
+    .command("temp-split")
+    .description("Inspect __temp_split leftovers")
+    .command("triage")
+    .description("Classify __temp_split directories before cleanup")
+    .option("--root <path>", "Music library root", NAS_PATHS.flac)
+    .option("--max-depth <number>", "Maximum directory walk depth", "4")
+    .option("--limit <number>", "Detailed groups to include; 0 means all", "25")
+    .option("--include-files", "Include temp file lists in groups", false)
+    .option("--json", "Print JSON report", false)
+    .action(handleTempSplitTriage);
 }

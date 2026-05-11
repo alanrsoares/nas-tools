@@ -175,6 +175,14 @@ Classify CUE/audio directories before splitting.
 nas-tools cue triage [--json] [--root /volume1/Public/FLAC] [--max-depth 4] [--limit 25] [--include-files]
 ```
 
+### cue temp-split triage
+
+Classify `__temp_split` leftovers before retrying or cleaning failed splits.
+
+```bash
+nas-tools cue temp-split triage [--json] [--root /volume1/Public/FLAC] [--max-depth 4] [--limit 25] [--include-files]
+```
+
 ### nas clean
 
 Find safe cleanup candidates. Defaults to dry-run; deletion requires both `--no-dry-run` and `--yes`.
