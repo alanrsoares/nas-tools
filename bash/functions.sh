@@ -57,27 +57,70 @@ setup_environment() {
 }
 
 # Find audio file (FLAC or WAV) in directory
-find_audio_file() {
-  local audio_files
+# Prefer the cue basename when provided, because many album folders also
+# contain already-split track files.
+is_metadata_junk_file() {
+  case "$1" in
+    ._*) return 0 ;;
+    .DS_Store) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
-  # Look for FLAC first, then WAV
+find_audio_file() {
+  local cue_basename="${1:-}"
+  local audio_files
+  local candidate
+
+  if [ -n "$cue_basename" ]; then
+    for candidate in "$cue_basename".flac "$cue_basename".wav "$cue_basename".wv; do
+      if [ -f "$candidate" ] && ! is_metadata_junk_file "$candidate"; then
+        echo "$candidate"
+        return 0
+      fi
+    done
+  fi
+
+  # Look for FLAC first, then WAV, then WV
   shopt -s nullglob nocaseglob
   audio_files=(*.flac)
-  if [ "${#audio_files[@]}" -gt 0 ] && [ -f "${audio_files[0]}" ]; then
-    echo "${audio_files[0]}"
-    shopt -u nullglob nocaseglob
-    return 0
-  fi
+  for candidate in "${audio_files[@]}"; do
+    if [ -f "$candidate" ] && ! is_metadata_junk_file "$candidate"; then
+      if [ -n "$cue_basename" ] && [[ "$candidate" == [0-9]*.* ]]; then
+        continue
+      fi
+      echo "$candidate"
+      shopt -u nullglob nocaseglob
+      return 0
+    fi
+  done
 
   audio_files=(*.wav)
-  if [ "${#audio_files[@]}" -gt 0 ] && [ -f "${audio_files[0]}" ]; then
-    echo "${audio_files[0]}"
-    shopt -u nullglob nocaseglob
-    return 0
-  fi
+  for candidate in "${audio_files[@]}"; do
+    if [ -f "$candidate" ] && ! is_metadata_junk_file "$candidate"; then
+      if [ -n "$cue_basename" ] && [[ "$candidate" == [0-9]*.* ]]; then
+        continue
+      fi
+      echo "$candidate"
+      shopt -u nullglob nocaseglob
+      return 0
+    fi
+  done
+
+  audio_files=(*.wv)
+  for candidate in "${audio_files[@]}"; do
+    if [ -f "$candidate" ] && ! is_metadata_junk_file "$candidate"; then
+      if [ -n "$cue_basename" ] && [[ "$candidate" == [0-9]*.* ]]; then
+        continue
+      fi
+      echo "$candidate"
+      shopt -u nullglob nocaseglob
+      return 0
+    fi
+  done
 
   shopt -u nullglob nocaseglob
-  echo "❌ No FLAC or WAV file found in $(pwd)"
+  echo "❌ No FLAC, WAV or WV file found in $(pwd)"
   return 1
 }
 
@@ -88,6 +131,8 @@ get_audio_format() {
     echo "flac"
   elif [[ "$audio_file" =~ \.wav$ ]]; then
     echo "wav"
+  elif [[ "$audio_file" =~ \.wv$ ]]; then
+    echo "wv"
   else
     echo "unknown"
   fi
@@ -118,6 +163,7 @@ check_dependencies() {
 
 # Split the audio file using cue sheet
 split_audio_file() {
+  set +e
   local cue_file="$1"
   local audio_file="$2"
   local out_dir="$3"
@@ -126,7 +172,107 @@ split_audio_file() {
   setup_utf8_locale
 
   echo "🔄 Splitting '$audio_file' using '$cue_file'..."
-  (set -o pipefail; cuebreakpoints "$cue_file" | shnsplit -f "$cue_file" -o "$audio_format" -t "%n. %t" -d "$out_dir" "$audio_file")
+
+  cuebreakpoints "$cue_file" | shnsplit -f "$cue_file" -o "$audio_format" -t "%n. %t" -d "$out_dir" "$audio_file"
+  local split_status=$?
+
+  if [ $split_status -ne 0 ]; then
+    echo "❌ shnsplit failed with exit code $split_status."
+    return $split_status
+  fi
+
+  # Even if shnsplit returned 0, check if it actually created any tracks.
+  # Some versions of shntool return 0 even when the encoder fails immediately.
+  shopt -s nullglob
+  local split_files=("$out_dir"/*."$audio_format")
+  shopt -u nullglob
+  
+  if [ ${#split_files[@]} -eq 0 ]; then
+    echo "❌ shnsplit finished but no split tracks were found in $out_dir."
+    return 1
+  fi
+
+  return 0
+}
+
+sanitize_split_track_name() {
+  local track_name="$1"
+
+  track_name="${track_name//$'\r'/}"
+  track_name="${track_name//$'\n'/}"
+  track_name="${track_name//\"/}"
+  track_name="${track_name//\//-}"
+  track_name="${track_name//\\/-}"
+  track_name="$(printf '%s' "$track_name" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+
+  printf '%s' "$track_name"
+}
+
+split_audio_file_with_ffmpeg() {
+  local cue_file="$1"
+  local audio_file="$2"
+  local out_dir="$3"
+  local split_points
+  local track_count
+  local duration
+  local track_no
+  local start
+  local end
+  local track_title
+  local safe_title
+  local output_file
+
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    echo "❌ 'ffmpeg' not found for split fallback."
+    return 1
+  fi
+
+  if ! command -v ffprobe >/dev/null 2>&1; then
+    echo "❌ 'ffprobe' not found for split fallback."
+    return 1
+  fi
+
+  mapfile -t split_points < <(cuebreakpoints "$cue_file")
+  duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$audio_file" 2>/dev/null)"
+
+  if [ -z "$duration" ]; then
+    echo "❌ Could not determine source duration for $audio_file."
+    return 1
+  fi
+
+  track_count=$(( ${#split_points[@]} + 1 ))
+  start="0"
+
+  echo "🔄 Splitting with ffmpeg ($track_count tracks)..."
+  for ((track_no = 1; track_no <= track_count; track_no++)); do
+    if [ "$track_no" -le "${#split_points[@]}" ]; then
+      local raw_end="${split_points[$((track_no - 1))]}"
+      # Convert MM:SS.FF to seconds (FF is 1/75th of a second)
+      end=$(echo "$raw_end" | awk -F'[:.]' '{ 
+        if (NF==3) print $1*60 + $2 + $3/75; 
+        else if (NF==2) print $1 + $2/75; 
+        else print $0 
+      }')
+    else
+      end="$duration"
+    fi
+
+    track_title="$(cue_field "$cue_file" "$track_no" TITLE)"
+    if [ -z "$track_title" ]; then
+      track_title="Track $track_no"
+    fi
+
+    safe_title="$(sanitize_split_track_name "$track_title")"
+    output_file="$(printf '%02d. %s.flac' "$track_no" "$safe_title")"
+
+    echo "  ✂️ Track $track_no: $output_file [$start -> $end]"
+    if ! ffmpeg -v error -y -ss "$start" -to "$end" -i "$audio_file" -c:a flac "$out_dir/$output_file" >/dev/null 2>&1; then
+      echo "❌ Failed cutting track $track_no with ffmpeg."
+      return 1
+    fi
+
+    start="$end"
+  done
 }
 
 # Tag the split files with metadata
@@ -134,9 +280,18 @@ tag_split_files() {
   local cue_file="$1"
   local out_dir="$2"
   
+  shopt -s nullglob
+  local split_files=("$out_dir"/*.flac "$out_dir"/*.wav)
+  shopt -u nullglob
+  
+  if [ ${#split_files[@]} -eq 0 ]; then
+    echo "⚠️ No split files found for tagging in $out_dir"
+    return 0
+  fi
+
   if command -v cuetag >/dev/null 2>&1; then
     echo "🏷️ Tagging split tracks..."
-    cuetag "$cue_file" "$out_dir"/*.flac "$out_dir"/*.wav
+    cuetag "$cue_file" "${split_files[@]}"
   else
     tag_split_flacs_with_metaflac "$cue_file" "$out_dir"
   fi
@@ -149,6 +304,7 @@ cue_field() {
 
   awk -v track_no="$track_no" -v field="$field" '
     function unquote(value) {
+      gsub(/\r/, "", value)
       sub(/^[[:space:]]*"*/, "", value)
       sub(/"*$/, "", value)
       return value
@@ -172,6 +328,7 @@ cue_album_field() {
 
   awk -v field="$field" '
     function unquote(value) {
+      gsub(/\r/, "", value)
       sub(/^[[:space:]]*"*/, "", value)
       sub(/"*$/, "", value)
       return value
@@ -241,21 +398,52 @@ tag_split_flacs_with_metaflac() {
   done
 }
 
+audio_files_match() {
+  local left="$1"
+  local right="$2"
+
+  if [ ! -f "$left" ] || [ ! -f "$right" ]; then
+    return 1
+  fi
+
+  if cmp -s "$left" "$right"; then
+    return 0
+  fi
+
+  if [[ "$left" =~ \.flac$ ]] && [[ "$right" =~ \.flac$ ]]; then
+    if ! command -v md5sum >/dev/null 2>&1; then
+      return 1
+    fi
+
+    local left_audio_hash
+    local right_audio_hash
+    left_audio_hash="$(flac -d --silent --stdout "$left" 2>/dev/null | md5sum | awk '{print $1}')" || return 1
+    right_audio_hash="$(flac -d --silent --stdout "$right" 2>/dev/null | md5sum | awk '{print $1}')" || return 1
+
+    [ "$left_audio_hash" = "$right_audio_hash" ]
+    return $?
+  fi
+
+  return 1
+}
+
 # Cleanup after successful split - moves split files to original location and removes temp directory
 cleanup_temp_split() {
   local cue_path="$1"
   local directory
   local cue_file
+  local basename
   local audio_file
   local temp_dir
   
   # Extract directory and filename from cue path
   directory="$(dirname "$cue_path")"
   cue_file="$(basename "$cue_path")"
+  basename="${cue_file%.*}"
   
   # Find corresponding audio file
   cd "$directory" || return 1
-  audio_file="$(find_audio_file)"
+  audio_file="$(find_audio_file "$basename")"
   if [ $? -ne 0 ]; then
     echo "❌ Could not find corresponding audio file for $cue_file"
     return 1
@@ -282,13 +470,22 @@ cleanup_temp_split() {
 
   # Move split audio files to the original directory
   for split_file in "${split_files[@]}"; do
-    if [ -e "$directory/$(basename "$split_file")" ]; then
-      echo "❌ Destination already exists: $directory/$(basename "$split_file")"
+    local destination
+    destination="$directory/$(basename "$split_file")"
+
+    if [ -e "$destination" ]; then
+      if audio_files_match "$split_file" "$destination"; then
+        rm "$split_file"
+        echo "✅ Verified existing file: $(basename "$split_file")"
+        continue
+      fi
+
+      echo "❌ Destination already exists and differs: $destination"
       echo "❌ Refusing to overwrite or delete originals."
       return 1
     fi
 
-    mv "$split_file" "$directory/" || {
+    mv "$split_file" "$destination" || {
       echo "❌ Failed moving $(basename "$split_file"); refusing to delete originals."
       return 1
     }
@@ -317,6 +514,11 @@ cleanup_temp_split() {
 
 # Main function - orchestrates the entire process
 split_cue_audio() {
+  # Save current set -e state
+  local errexit_state
+  errexit_state="$(set +o | grep errexit)"
+  set +e
+  
   setup_utf8_locale
 
   # Validate input
@@ -337,7 +539,7 @@ split_cue_audio() {
   
   # Find audio file
   local audio_file
-  audio_file="$(find_audio_file)"
+  audio_file="$(find_audio_file "$basename")"
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -345,7 +547,7 @@ split_cue_audio() {
   # Get audio format
   local audio_format
   audio_format="$(get_audio_format "$audio_file")"
-  
+
   # Check dependencies
   if ! check_dependencies; then
     return 1
@@ -354,19 +556,39 @@ split_cue_audio() {
   # Create output directory
   local out_dir="__temp_split"
   if [ -d "$out_dir" ] && [ "$(find "$out_dir" -mindepth 1 -maxdepth 1 | head -n1)" ]; then
-    echo "❌ Existing non-empty $out_dir found; refusing to overwrite previous split output."
-    return 1
+    echo "⚠️ Clearing stale $out_dir before splitting."
+    rm -rf "$out_dir" || return 1
   fi
 
   mkdir -p "$out_dir"
 
   # Split the file
-  split_audio_file "$cue_file" "$audio_file" "$out_dir" "$audio_format" || return 1
+  local split_result=0
+  split_audio_file "$cue_file" "$audio_file" "$out_dir" "$audio_format" || split_result=$?
+
+  if [ $split_result -ne 0 ]; then
+    if [ "$audio_format" != "flac" ] && [ "$audio_format" != "wv" ]; then
+      echo "❌ Splitting failed."
+      return 1
+    fi
+
+    echo "⚠️ $audio_format split failed; retrying via ffmpeg fallback."
+    rm -rf "$out_dir"
+    mkdir -p "$out_dir"
+
+    if ! split_audio_file_with_ffmpeg "$cue_file" "$audio_file" "$out_dir"; then
+      echo "❌ ffmpeg fallback also failed."
+      return 1
+    fi
+  fi
 
   # Tag the files
   tag_split_files "$cue_file" "$out_dir"
 
   echo "✅ Done. Split tracks are in: $out_dir"
+  
+  # Restore set -e if it was active
+  eval "$errexit_state"
 }
 
 # Legacy function name for backward compatibility

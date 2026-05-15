@@ -159,12 +159,12 @@ const isAppleDoubleName = (name: string): boolean => name.startsWith("._");
 const isCueName = (name: string): boolean =>
   !isAppleDoubleName(name) && /\.cue$/i.test(name);
 const isSplitAudioName = (name: string): boolean =>
-  !isAppleDoubleName(name) && /\.(flac|wav)$/i.test(name);
+  !isAppleDoubleName(name) && /\.(flac|wav|wv)$/i.test(name);
 const baseName = (name: string): string =>
-  name.replace(/\.(cue|flac|wav)$/i, "").toLowerCase();
+  name.replace(/\.(cue|flac|wav|wv)$/i, "").toLowerCase();
 
 const isTrackLikeAudioName = (name: string): boolean =>
-  /^\d{1,3}(\.| - |-|_)/.test(name) && isSplitAudioName(name);
+  /^\d{1,3}(\.| - |-|_| )/.test(name) && isSplitAudioName(name);
 
 const hasMultiDiscSignal = (group: Pick<CueGroup, "pairs" | "cueFiles">) =>
   group.pairs.length > 1 ||

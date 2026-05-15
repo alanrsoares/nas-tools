@@ -15,6 +15,8 @@ import {
   getBasename,
   isCueFile,
   isFlacFile,
+  isWavFile,
+  isWvFile,
   joinPath,
   logDirectory,
   logError,
@@ -36,13 +38,13 @@ const BASH_FUNCTIONS_CANDIDATES = [
 ].filter((path): path is string => Boolean(path));
 
 // Types
-interface CueAudioPair {
+export interface CueAudioPair {
   directory: string;
   cueFile: string;
   audioFile: string;
 }
 
-interface ProcessingSummary {
+export interface ProcessingSummary {
   successCount: number;
   failureCount: number;
 }
@@ -53,13 +55,9 @@ const optionsSchema = z.object({
   yes: z.boolean(),
 });
 
-type CommandOptions = z.infer<typeof optionsSchema>;
+export type CommandOptions = z.infer<typeof optionsSchema>;
 
 // Utility functions
-
-function isWavFile(file: string): boolean {
-  return file.toLowerCase().endsWith(FILE_EXTENSIONS.WAV);
-}
 
 function isMetadataJunkFile(file: string): boolean {
   return file === ".DS_Store" || file.startsWith("._");
@@ -70,10 +68,13 @@ function isProcessableCueFile(file: string): boolean {
 }
 
 function isAudioFile(file: string): boolean {
-  return !isMetadataJunkFile(file) && (isFlacFile(file) || isWavFile(file));
+  return (
+    !isMetadataJunkFile(file) &&
+    (isFlacFile(file) || isWavFile(file) || isWvFile(file))
+  );
 }
 
-function getBashFunctionsPath(): ResultAsync<string, ReturnType<typeof fail>> {
+export function getBashFunctionsPath(): ResultAsync<string, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     BASH_FUNCTIONS_CANDIDATES.reduce(
       async (foundPathPromise, candidate) => {
@@ -98,7 +99,7 @@ function getBashFunctionsPath(): ResultAsync<string, ReturnType<typeof fail>> {
 }
 
 // Scan for matching .cue and audio files that are not split (recursive)
-function scanCueAudioPairs(
+export function scanCueAudioPairs(
   searchPath: string,
   options: CommandOptions,
 ): ResultAsync<CueAudioPair[], ReturnType<typeof fail>> {
@@ -169,9 +170,15 @@ function findCueAudioPairsInDirectory(
                 .when(isWavFile, (file) =>
                   getBasename(file, FILE_EXTENSIONS.WAV),
                 )
+                .when(isWvFile, (file) =>
+                  getBasename(file, FILE_EXTENSIONS.WV),
+                )
                 .otherwise(() => "");
 
-              if (cueBasename !== audioBasename) {
+              const cueBasenameLower = cueBasename.toLowerCase();
+              const audioBasenameLower = audioBasename.toLowerCase();
+
+              if (cueBasenameLower !== audioBasenameLower) {
                 continue;
               }
 
@@ -234,6 +241,7 @@ function processCueAudioPair(
 
   return safeAsync(async () => {
     logProgress(`Processing: ${cueFile}`);
+    logInfo(`Using bash functions from: ${bashFunctionsPath}`);
 
     await $`cd ${directory} && source ${bashFunctionsPath} && split_cue_audio ${cueFile}`;
 
@@ -253,7 +261,7 @@ function processCueAudioPair(
   });
 }
 
-function processPairs(
+export function processPairs(
   pairs: CueAudioPair[],
   ask: (q: string) => Promise<boolean>,
   bashFunctionsPath: string,

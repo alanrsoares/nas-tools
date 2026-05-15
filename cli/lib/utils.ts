@@ -13,6 +13,11 @@ export const FILE_EXTENSIONS = {
   M4A: ".m4a",
   WAV: ".wav",
   OGG: ".ogg",
+  WV: ".wv",
+  M4B: ".m4b",
+  MKV: ".mkv",
+  MP4: ".mp4",
+  AVI: ".avi",
 } as const;
 
 export const MUSIC_EXTENSIONS = [
@@ -21,7 +26,17 @@ export const MUSIC_EXTENSIONS = [
   FILE_EXTENSIONS.M4A,
   FILE_EXTENSIONS.WAV,
   FILE_EXTENSIONS.OGG,
+  FILE_EXTENSIONS.WV,
 ] as const;
+
+export const MOVIE_EXTENSIONS = [
+  FILE_EXTENSIONS.MKV,
+  FILE_EXTENSIONS.MP4,
+  FILE_EXTENSIONS.AVI,
+] as const;
+
+export const TV_PATTERN =
+  /[sS]\d{1,2}[eE]\d{1,2}|[sS]\d{1,2}\s|[eE]\d{1,2}\s/i;
 
 // File system utilities
 export const exists = async (path: string): Promise<boolean> =>
@@ -48,8 +63,29 @@ export const isMusicFile = (file: string): boolean =>
 export const isFlacFile = (file: string): boolean =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.FLAC);
 
+export const isWavFile = (file: string): boolean =>
+  file.toLowerCase().endsWith(FILE_EXTENSIONS.WAV);
+
+export const isWvFile = (file: string): boolean =>
+  file.toLowerCase().endsWith(FILE_EXTENSIONS.WV);
+
 export const isCueFile = (file: string): boolean =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
+
+export const isTvFile = (file: string): boolean => TV_PATTERN.test(file);
+
+export const isMovieFile = (file: string): boolean =>
+  MOVIE_EXTENSIONS.some((ext) => file.toLowerCase().endsWith(ext));
+
+export const isAudiobookFile = (file: string, pathName?: string): boolean => {
+  if (file.toLowerCase().endsWith(FILE_EXTENSIONS.M4B)) {
+    return true;
+  }
+  if (pathName && pathName.toLowerCase().includes("audiobook")) {
+    return true;
+  }
+  return false;
+};
 
 // Path manipulation utilities
 export const getBasename = (file: string, ext?: string): string =>
