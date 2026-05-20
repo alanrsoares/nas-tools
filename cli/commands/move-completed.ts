@@ -27,7 +27,6 @@ import {
   logWarning,
   moveFile,
   promptForInput,
-  readDirectory,
   readDirectoryWithTypes,
 } from "../lib/utils.js";
 import {
@@ -138,8 +137,34 @@ function detectMediaType(
   return undefined;
 }
 
+async function collectRelativeFiles(
+  rootDir: string,
+  currentDir = rootDir,
+): Promise<string[]> {
+  const entries = await readDirectoryWithTypes(currentDir).catch(() => []);
+
+  return await entries.reduce(
+    async (filesPromise, entry) => {
+      const files = await filesPromise;
+      const entryPath = joinPath(currentDir, entry.name);
+
+      if (entry.isDirectory()) {
+        const childFiles = await collectRelativeFiles(rootDir, entryPath);
+        return [...files, ...childFiles];
+      }
+
+      if (!entry.isFile()) {
+        return files;
+      }
+
+      return [...files, path.relative(rootDir, entryPath)];
+    },
+    Promise.resolve([] as string[]),
+  );
+}
+
 // Scan for media items in the source directory
-function scanMediaItems(
+export function scanMediaItems(
   sourceDir: string,
 ): ResultAsync<MediaItem[], ReturnType<typeof fail>> {
   return safeAsync(
@@ -153,7 +178,7 @@ function scanMediaItems(
         .reduce(
           async (itemsPromise, dir) => {
             const items = await itemsPromise;
-            const files = await readDirectory(dir).catch(() => []);
+            const files = await collectRelativeFiles(dir);
             const type = detectMediaType(getBasename(dir), files, dir);
 
             if (!type) {
