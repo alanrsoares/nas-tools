@@ -569,11 +569,30 @@ split_cue_audio() {
   local audio_format
   audio_format="$(get_audio_format "$audio_file")"
 
+  # Pre-convert WV to FLAC via ffmpeg if wvunpack is unavailable
+  local wv_converted=""
+  if [ "$audio_format" = "wv" ] && ! command -v wvunpack >/dev/null 2>&1; then
+    if ! command -v ffmpeg >/dev/null 2>&1; then
+      echo "❌ Neither wvunpack nor ffmpeg found; cannot split WV files."
+      return 1
+    fi
+    local flac_audio="${audio_file%.wv}.flac"
+    echo "⚠️ wvunpack not found; converting WV → FLAC via ffmpeg..."
+    if ! ffmpeg -v error -y -i "$audio_file" -c:a flac "$flac_audio"; then
+      echo "❌ WV → FLAC conversion failed."
+      return 1
+    fi
+    echo "✅ Converted: $(basename "$flac_audio")"
+    wv_converted="$flac_audio"
+    audio_file="$flac_audio"
+    audio_format="flac"
+  fi
+
   # Check dependencies
   if ! check_dependencies; then
     return 1
   fi
-  
+
   # Create output directory
   local out_dir="__temp_split"
   if [ -d "$out_dir" ] && [ "$(find "$out_dir" -mindepth 1 -maxdepth 1 | head -n1)" ]; then
@@ -601,6 +620,11 @@ split_cue_audio() {
       echo "❌ ffmpeg fallback also failed."
       return 1
     fi
+  fi
+
+  # Remove intermediate WV→FLAC conversion file if one was created
+  if [ -n "$wv_converted" ] && [ -f "$wv_converted" ]; then
+    rm -f "$wv_converted"
   fi
 
   # Tag the files
