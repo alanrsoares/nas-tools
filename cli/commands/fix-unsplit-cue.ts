@@ -387,7 +387,7 @@ export default function fixUnsplitCueCommand(program: Command): void {
   program
     .command("fix-unsplit-cue")
     .description(
-      "Scan for unsplit CUE/Audio pairs (FLAC/WAV) and split them using bash functions",
+      "Scan for unsplit CUE/Audio pairs (FLAC/WAV/WV) and split them using bash functions",
     )
     .argument("<folder_path>", "Root folder to scan recursively")
     .option("--dry-run", "Preview pairs without splitting files", false)

@@ -208,6 +208,7 @@ sanitize_split_track_name() {
   printf '%s' "$track_name"
 }
 
+# Fallback splitter via ffmpeg — always outputs FLAC regardless of input format
 split_audio_file_with_ffmpeg() {
   local cue_file="$1"
   local audio_file="$2"
@@ -281,7 +282,7 @@ tag_split_files() {
   local out_dir="$2"
   
   shopt -s nullglob
-  local split_files=("$out_dir"/*.flac "$out_dir"/*.wav)
+  local split_files=("$out_dir"/*.flac "$out_dir"/*.wav "$out_dir"/*.wv)
   shopt -u nullglob
   
   if [ ${#split_files[@]} -eq 0 ]; then
@@ -607,7 +608,7 @@ split_cue_audio() {
   split_audio_file "$cue_file" "$audio_file" "$out_dir" "$audio_format" || split_result=$?
 
   if [ $split_result -ne 0 ]; then
-    if [ "$audio_format" != "flac" ] && [ "$audio_format" != "wv" ]; then
+    if [ "$audio_format" != "flac" ] && [ "$audio_format" != "wav" ]; then
       echo "❌ Splitting failed."
       return 1
     fi
