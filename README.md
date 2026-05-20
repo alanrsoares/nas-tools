@@ -172,6 +172,15 @@ nas-tools downloads clean-transmission --no-dry-run --yes
 
 Use `TRANSMISSION_RPC_PASSWORD` or `--password` for authenticated RPC.
 
+### plex scan-music
+
+Trigger a Plex music library refresh. The command discovers the music section from `/library/sections` unless `--section-id` is supplied. It uses `PLEX_TOKEN`, `--token`, or the token in Plex `Preferences.xml`.
+
+```bash
+nas-tools plex scan-music
+nas-tools plex scan-music --dry-run --json
+```
+
 ### music-audit
 
 Audit the FLAC library for CUE/audio pairs, empty folders, Apple metadata junk, and likely alphabet-bucket mistakes.

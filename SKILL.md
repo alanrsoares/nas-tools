@@ -13,6 +13,8 @@ Use this repo as the source of truth for NAS automation. The CLI is Bun + TypeSc
 - `nas-tools downloads triage --json`: inspect complete/incomplete Transmission folders for stale work, junk, and import candidates.
 - `nas-tools downloads clean-transmission --dry-run --json`: list completed Transmission torrent records whose files are no longer in the complete folder.
 - `nas-tools downloads clean-transmission --no-dry-run --yes`: remove those torrent records from Transmission with local-data deletion disabled.
+- `nas-tools plex scan-music`: trigger a Plex refresh for the music library section.
+- `nas-tools plex scan-music --dry-run --json`: preview the selected Plex music section without triggering a scan.
 - `nas-tools music-audit --json`: audit FLAC library structure and import hygiene.
 - `nas-tools cue triage --json`: classify CUE/audio folders before splitting.
 - `nas-tools cue temp-split clean --no-dry-run --yes`: remove only safe empty `__temp_split` leftovers.
