@@ -16,8 +16,8 @@ import {
   getDirname,
   isAudiobookFile,
   isCueFile,
-  isMusicFile,
   isMovieFile,
+  isMusicFile,
   isTvFile,
   joinPath,
   logError,
@@ -202,29 +202,74 @@ export function scanMediaItems(
   );
 }
 
-// Infer artist name from music files metadata
+function sanitizeArtistName(artistName: string): Maybe<string> {
+  const sanitized = artistName
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[\\/]+/g, " ")
+    .replace(/[:*?"<>|]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[. ]+$/g, "");
+
+  return sanitized ? Maybe.just(sanitized) : Maybe.nothing<string>();
+}
+
+function stripReleaseTags(name: string): string {
+  return name
+    .replace(
+      /\s*[\[({][^\])}]*?(?:flac|mp3|m4a|24bit|16[./-]?44|vinyl|web|cd|discography|pmedia|h33t|japan|eu|uk)[^\])}]*?[\])}]/gi,
+      "",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function inferArtistNameFromFolder(folderName: string): Maybe<string> {
+  const cleaned = stripReleaseTags(folderName);
+  const patterns = [
+    /^(.+?)\s+-\s+\d{4}\s+-\s+.+$/i,
+    /^(.+?)\s+-\s+.+$/i,
+    /^(.+?)\s+_\s+.+$/i,
+    /^(.+?)\s+\/\s+.+$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+    if (match?.[1]) {
+      return sanitizeArtistName(match[1]);
+    }
+  }
+
+  return sanitizeArtistName(cleaned);
+}
+
+// Infer artist name from music files metadata, falling back to release folder.
 function inferArtistName(
   mediaItem: MediaItem,
 ): ResultAsync<Maybe<string>, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
-    mediaItem.musicFiles.reduce(
-      async (artistPromise, file) => {
-        const current = await artistPromise;
-        if (current.isJust) {
-          return current;
-        }
+    mediaItem.musicFiles
+      .reduce(
+        async (artistPromise, file) => {
+          const current = await artistPromise;
+          if (current.isJust) {
+            return current;
+          }
 
-        const filePath = joinPath(mediaItem.path, file);
-        const metadata = await safeAsync(
-          () => parseFile(filePath),
-          `Could not read metadata for ${file}`,
-        ).unwrapOr(undefined);
-        const artist = metadata?.common.artist?.trim();
+          const filePath = joinPath(mediaItem.path, file);
+          const metadata = await safeAsync(
+            () => parseFile(filePath),
+            `Could not read metadata for ${file}`,
+          ).unwrapOr(undefined);
+          const artist = metadata?.common.artist?.trim();
 
-        return artist ? Maybe.just(artist) : Maybe.nothing<string>();
-      },
-      Promise.resolve(Maybe.nothing<string>() as Maybe<string>),
-    ),
+          return artist ? sanitizeArtistName(artist) : Maybe.nothing<string>();
+        },
+        Promise.resolve(Maybe.nothing<string>() as Maybe<string>),
+      )
+      .then((artist) =>
+        artist.isJust ? artist : inferArtistNameFromFolder(mediaItem.name),
+      ),
   );
 }
 
@@ -435,39 +480,53 @@ async function confirmProcessing(
   return await confirm("Proceed with moving these items?");
 }
 
-// Create backup of source folder
+// Create backup of source folder. A failed backup must block the move.
 function createBackup(
   sourcePath: string,
   backupDir: string,
-): ResultAsync<void, ReturnType<typeof fail>> {
-  const backupPath = joinPath(backupDir, getBasename(sourcePath));
-
+): ResultAsync<boolean, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     (async () => {
       if (!(await exists(sourcePath))) {
         logWarning(`⚠️  Source no longer exists: ${getBasename(sourcePath)}`);
-        return;
+        return false;
       }
 
       await ensureDirectory(backupDir);
+
+      let backupPath = joinPath(backupDir, getBasename(sourcePath));
+      let counter = 1;
+      while (await exists(backupPath)) {
+        backupPath = joinPath(
+          backupDir,
+          `${getBasename(sourcePath)} (${counter})`,
+        );
+        counter++;
+      }
 
       const { cp } = await import("fs/promises");
       await cp(sourcePath, backupPath, {
         recursive: true,
         preserveTimestamps: true,
+        force: false,
+        errorOnExist: true,
       });
-      logSuccess(`✓ Backup: ${getBasename(sourcePath)}`);
+      logSuccess(`✓ Backup: ${getBasename(backupPath)}`);
+      return true;
     })(),
-  ).orElse((error) => {
-    logWarning(
-      `⚠️  Backup failed for ${getBasename(sourcePath)}: ${formatError(error)}`,
-    );
-    return ok(undefined);
-  });
+  ).orElse((error) =>
+    err(
+      fail(
+        `Backup failed for ${getBasename(sourcePath)}; refusing to move: ${formatError(error)}`,
+      ),
+    ),
+  );
 }
 
 // Post-processing: split CUE if present
-function runCueSplit(targetPath: string): ResultAsync<void, ReturnType<typeof fail>> {
+function runCueSplit(
+  targetPath: string,
+): ResultAsync<void, ReturnType<typeof fail>> {
   return scanCueAudioPairs(targetPath, {
     dryRun: false,
     ignoreFailed: true,
@@ -558,13 +617,18 @@ function processMoveOperations(
       async (summaryPromise, operation) => {
         const summary = await summaryPromise;
 
-        if (!options.dryRun) {
-          await createBackup(operation.sourcePath, options.backupDir);
-        }
+        const backupSucceeded = options.dryRun
+          ? true
+          : await createBackup(
+              operation.sourcePath,
+              options.backupDir,
+            ).unwrapOr(false);
 
         const success = options.dryRun
           ? true
-          : await moveMediaItem(operation, options).unwrapOr(false);
+          : backupSucceeded
+            ? await moveMediaItem(operation, options).unwrapOr(false)
+            : false;
 
         if (success) {
           return { ...summary, successCount: summary.successCount + 1 };

@@ -492,7 +492,29 @@ cleanup_temp_split() {
     echo "📁 Moved $(basename "$split_file") to original directory"
   done
 
-  # Remove the original cue and audio files
+  # Back up originals before deleting them.
+  local backup_dir
+  backup_dir="$directory/__original_backup"
+  mkdir -p "$backup_dir" || {
+    echo "❌ Failed creating original backup directory; refusing to delete originals."
+    return 1
+  }
+
+  if [ -f "$cue_path" ]; then
+    cp -p "$cue_path" "$backup_dir/$cue_file" || {
+      echo "❌ Failed backing up $cue_file; refusing to delete originals."
+      return 1
+    }
+  fi
+
+  if [ -f "$directory/$audio_file" ]; then
+    cp -p "$directory/$audio_file" "$backup_dir/$audio_file" || {
+      echo "❌ Failed backing up $audio_file; refusing to delete originals."
+      return 1
+    }
+  fi
+
+  # Remove the original cue and audio files only after backups exist.
   if [ -f "$cue_path" ]; then
     rm "$cue_path"
     echo "🗑️ Removed original cue file: $cue_file"
@@ -503,10 +525,9 @@ cleanup_temp_split() {
     echo "🗑️ Removed original audio file: $audio_file"
   fi
   
-  # Remove the temp directory
+  # Remove the temp directory only if it is empty after moving split files.
   if [ -d "$temp_dir" ]; then
-    rm -rf "$temp_dir"
-    echo "🗑️ Removed temporary directory: $temp_dir"
+    rmdir "$temp_dir" && echo "🗑️ Removed temporary directory: $temp_dir"
   fi
   
   echo "✅ Cleanup completed successfully"

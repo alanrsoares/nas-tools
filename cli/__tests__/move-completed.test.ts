@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
-import { scanMediaItems } from "../commands/move-completed.js";
+import {
+  inferArtistNameFromFolder,
+  scanMediaItems,
+} from "../commands/move-completed.js";
 
 describe("move-completed media scanning", () => {
   let tempDir: string;
@@ -39,5 +42,29 @@ describe("move-completed media scanning", () => {
     expect(items[0]?.musicFiles).toEqual([
       join("Albums", "1972 - Close To The Edge", "01 - Close To The Edge.flac"),
     ]);
+  });
+});
+
+describe("move-completed artist inference", () => {
+  it("sanitizes control characters from inferred artist names", () => {
+    const artist = inferArtistNameFromFolder(
+      "Baden Powell\u0000 - The Legendary MPS Albums [2CD] 2008 [flac]",
+    );
+
+    expect(artist.unwrapOr("missing")).toBe("Baden Powell");
+  });
+
+  it("infers artists from dated release folder names", () => {
+    const artist = inferArtistNameFromFolder(
+      "Gentle Giant - 2019 - Unburied Treasure (29CD + Blu-ray Box Set Snapper Music)",
+    );
+
+    expect(artist.unwrapOr("missing")).toBe("Gentle Giant");
+  });
+
+  it("strips common bracketed release tags from artist-only folder names", () => {
+    const artist = inferArtistNameFromFolder("The National [Vinyl]");
+
+    expect(artist.unwrapOr("missing")).toBe("The National");
   });
 });

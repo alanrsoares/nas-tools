@@ -1,4 +1,5 @@
-import { rm } from "node:fs/promises";
+import { copyFile, mkdir, rm } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 import { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
@@ -14,7 +15,11 @@ import {
 } from "../lib/report.js";
 import { logError, logInfo, logSuccess } from "../lib/utils.js";
 
+const DEFAULT_CLEAN_BACKUP_DIR =
+  "/volume1/Download/Transmission/backup/nas-clean";
+
 const cleanOptionsSchema = z.object({
+  backupDir: z.string().optional().default(DEFAULT_CLEAN_BACKUP_DIR),
   dryRun: z.boolean().optional().default(true),
   json: z.boolean().optional().default(false),
   root: z.string().optional().default("/volume1"),
@@ -32,6 +37,28 @@ interface CleanReport {
     deleted: number;
   };
   findings: Finding[];
+}
+
+async function backupCleanupCandidate(
+  root: string,
+  backupDir: string,
+  candidatePath: string,
+): Promise<string> {
+  const relativePath = relative(root, candidatePath);
+  if (relativePath.startsWith("..")) {
+    throw new Error(`Refusing to back up path outside root: ${candidatePath}`);
+  }
+
+  let backupPath = join(backupDir, relativePath);
+  let counter = 1;
+  while (await pathExists(backupPath)) {
+    backupPath = join(backupDir, `${relativePath}.${counter}`);
+    counter++;
+  }
+
+  await mkdir(dirname(backupPath), { recursive: true });
+  await copyFile(candidatePath, backupPath);
+  return backupPath;
 }
 
 const allowedRoots = [
@@ -115,11 +142,35 @@ function runClean(
 
       if (shouldDelete) {
         for (const candidate of candidates) {
+          const backupPath = await safeAsync(
+            () =>
+              backupCleanupCandidate(
+                options.root,
+                options.backupDir,
+                candidate.path,
+              ),
+            `backup ${candidate.path}`,
+          ).unwrapOr(undefined);
+
+          if (!backupPath) {
+            findings.push({
+              severity: "error",
+              message: "Backup failed; candidate was not deleted.",
+              path: candidate.path,
+            });
+            continue;
+          }
+
           await safeAsync(
             () => rm(candidate.path, { force: true }),
             `delete ${candidate.path}`,
           ).map(() => {
             deleted++;
+            findings.push({
+              severity: "info",
+              message: `Deleted after backup: ${backupPath}`,
+              path: candidate.path,
+            });
           });
         }
       }
@@ -154,6 +205,7 @@ export default function nasCommand(program: Command): void {
     .command("clean")
     .description("Find or delete safe cleanup candidates")
     .option("--root <path>", "Cleanup root", NAS_PATHS.download)
+    .option("--backup-dir <path>", "Backup directory", DEFAULT_CLEAN_BACKUP_DIR)
     .option("--dry-run", "Preview changes", true)
     .option("--no-dry-run", "Allow deletion when combined with --yes")
     .option("-y, --yes", "Confirm deletion", false)

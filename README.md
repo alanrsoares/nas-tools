@@ -143,6 +143,8 @@ nas-tools move-completed [options]
 nas-tools move-completed --dry-run --interactive
 ```
 
+Move operations refuse to mutate the source if the backup cannot be created first. Existing backup names are preserved by creating a numbered backup folder.
+
 ### doctor
 
 Report ADM/Entware paths, app prerequisites, and tool availability.
@@ -198,8 +200,10 @@ Find safe cleanup candidates. Defaults to dry-run; deletion requires both `--no-
 
 ```bash
 nas-tools nas clean [--json] [--root /volume1/Download]
-nas-tools nas clean --no-dry-run --yes
+nas-tools nas clean --no-dry-run --yes [--backup-dir /volume1/Download/Transmission/backup/nas-clean]
 ```
+
+Deletion candidates are copied to the backup directory before removal. If the backup copy fails, that candidate is skipped.
 
 ## Development
 

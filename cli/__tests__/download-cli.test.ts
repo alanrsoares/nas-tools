@@ -14,7 +14,7 @@ describe("download CLI integration", () => {
 
     // Ensure the CLI is built
     await $`bun run build`;
-  });
+  }, 30000);
 
   afterAll(async () => {
     // Clean up the temporary directory
