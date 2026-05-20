@@ -1,3 +1,4 @@
+import { join, normalize } from "node:path";
 import { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
@@ -26,6 +27,28 @@ const optionsSchema = z.object({
 
 type CommandOptions = z.infer<typeof optionsSchema>;
 
+const cleanTransmissionOptionsSchema = z.object({
+  completeDir: z.string().optional().default(NAS_PATHS.transmissionComplete),
+  dryRun: z.boolean().optional().default(true),
+  json: z.boolean().optional().default(false),
+  password: z
+    .string()
+    .optional()
+    .default(process.env["TRANSMISSION_RPC_PASSWORD"] ?? ""),
+  rpcUrl: z
+    .string()
+    .url()
+    .optional()
+    .default("http://127.0.0.1:29091/transmission/rpc"),
+  username: z
+    .string()
+    .optional()
+    .default(process.env["TRANSMISSION_RPC_USERNAME"] ?? "trsmadmin"),
+  yes: z.boolean().optional().default(false),
+});
+
+type CleanTransmissionOptions = z.infer<typeof cleanTransmissionOptionsSchema>;
+
 interface DownloadsReport {
   title: string;
   completeDir: string;
@@ -41,7 +64,156 @@ interface DownloadsReport {
   findings: Finding[];
 }
 
+export interface TransmissionFile {
+  name: string;
+  length?: number;
+}
+
+export interface TransmissionTorrent {
+  id: number;
+  name: string;
+  hashString?: string;
+  percentDone: number;
+  isFinished?: boolean;
+  doneDate?: number;
+  status?: number;
+  downloadDir: string;
+  totalSize?: number;
+  files: TransmissionFile[];
+}
+
+interface TransmissionRpcResponse<T> {
+  result: string;
+  arguments: T;
+}
+
+export interface CleanTransmissionCandidate {
+  id: number;
+  name: string;
+  hashString?: string;
+  downloadDir: string;
+  missingFiles: number;
+  totalSize: number;
+}
+
+interface CleanTransmissionReport {
+  title: string;
+  rpcUrl: string;
+  completeDir: string;
+  dryRun: boolean;
+  stats: {
+    totalTorrents: number;
+    candidates: number;
+    removed: number;
+    kept: number;
+  };
+  candidates: CleanTransmissionCandidate[];
+  findings: Finding[];
+}
+
 const dayMs = 24 * 60 * 60 * 1000;
+const transmissionContainerCompleteDir = "/downloads/complete";
+
+export function mapTransmissionPath(
+  downloadDir: string,
+  relativeName: string,
+  options: { completeDir: string },
+): string {
+  const base = downloadDir.startsWith(transmissionContainerCompleteDir)
+    ? `${options.completeDir}${downloadDir.slice(
+        transmissionContainerCompleteDir.length,
+      )}`
+    : downloadDir;
+
+  return normalize(join(base, relativeName));
+}
+
+export async function findMovedCompletedTorrents(
+  torrents: TransmissionTorrent[],
+  options: {
+    completeDir: string;
+    pathExistsFn?: (path: string) => Promise<boolean>;
+  },
+): Promise<CleanTransmissionCandidate[]> {
+  const exists = options.pathExistsFn ?? pathExists;
+  const candidates: CleanTransmissionCandidate[] = [];
+
+  for (const torrent of torrents) {
+    const isComplete = torrent.percentDone === 1 || torrent.isFinished === true;
+    if (!isComplete || torrent.files.length === 0) {
+      continue;
+    }
+
+    const paths = torrent.files.map((file) =>
+      mapTransmissionPath(torrent.downloadDir, file.name, {
+        completeDir: options.completeDir,
+      }),
+    );
+    const existing = await Promise.all(paths.map((path) => exists(path)));
+
+    if (existing.every((value) => !value)) {
+      const candidate: CleanTransmissionCandidate = {
+        id: torrent.id,
+        name: torrent.name,
+        downloadDir: torrent.downloadDir,
+        missingFiles: paths.length,
+        totalSize: torrent.totalSize ?? 0,
+      };
+      if (torrent.hashString) {
+        candidate.hashString = torrent.hashString;
+      }
+      candidates.push(candidate);
+    }
+  }
+
+  return candidates;
+}
+
+async function transmissionRpc<T>(
+  options: Pick<CleanTransmissionOptions, "password" | "rpcUrl" | "username">,
+  method: string,
+  args: Record<string, unknown> = {},
+  sessionId?: string,
+): Promise<TransmissionRpcResponse<T>> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+
+  if (options.username || options.password) {
+    headers["authorization"] = `Basic ${Buffer.from(
+      `${options.username}:${options.password}`,
+    ).toString("base64")}`;
+  }
+  if (sessionId) {
+    headers["x-transmission-session-id"] = sessionId;
+  }
+
+  const response = await fetch(options.rpcUrl, {
+    body: JSON.stringify({ method, arguments: args }),
+    headers,
+    method: "POST",
+  });
+
+  if (response.status === 409 && !sessionId) {
+    const nextSessionId = response.headers.get("x-transmission-session-id");
+    if (!nextSessionId) {
+      throw new Error("Transmission RPC requested session id but sent none");
+    }
+    return await transmissionRpc<T>(options, method, args, nextSessionId);
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Transmission RPC ${method} failed: HTTP ${response.status}`,
+    );
+  }
+
+  const data = (await response.json()) as TransmissionRpcResponse<T>;
+  if (data.result !== "success") {
+    throw new Error(`Transmission RPC ${method} failed: ${data.result}`);
+  }
+  return data;
+}
 
 function runTriage(
   options: CommandOptions,
@@ -141,6 +313,90 @@ function runTriage(
   );
 }
 
+function runCleanTransmission(
+  options: CleanTransmissionOptions,
+): ResultAsync<void, ReturnType<typeof fail>> {
+  return ResultAsync.fromPromise(
+    (async () => {
+      const fields = [
+        "id",
+        "name",
+        "hashString",
+        "percentDone",
+        "isFinished",
+        "doneDate",
+        "status",
+        "downloadDir",
+        "totalSize",
+        "files",
+      ];
+
+      const torrents = (
+        await transmissionRpc<{ torrents: TransmissionTorrent[] }>(
+          options,
+          "torrent-get",
+          { fields },
+        )
+      ).arguments.torrents;
+
+      const candidates = await findMovedCompletedTorrents(torrents, {
+        completeDir: options.completeDir,
+      });
+      const findings: Finding[] = [];
+
+      for (const candidate of candidates) {
+        findings.push({
+          severity: "info",
+          message: options.dryRun
+            ? "Would remove completed torrent record; downloaded files are already missing from complete directory."
+            : "Removed completed torrent record; local data deletion was disabled.",
+          path: `${candidate.id}: ${candidate.name}`,
+        });
+      }
+
+      if (!options.dryRun && !options.yes) {
+        findings.push({
+          severity: "warn",
+          message:
+            "Removal requested without --yes; no torrent records were removed.",
+        });
+      }
+
+      let removed = 0;
+      if (!options.dryRun && options.yes && candidates.length > 0) {
+        await transmissionRpc<Record<string, never>>(
+          options,
+          "torrent-remove",
+          {
+            ids: candidates.map((candidate) => candidate.id),
+            "delete-local-data": false,
+          },
+        );
+        removed = candidates.length;
+      }
+
+      printReport(
+        {
+          title: "Transmission completed torrent cleanup",
+          rpcUrl: options.rpcUrl,
+          completeDir: options.completeDir,
+          dryRun: options.dryRun,
+          stats: {
+            totalTorrents: torrents.length,
+            candidates: candidates.length,
+            removed,
+            kept: torrents.length - candidates.length,
+          },
+          candidates,
+          findings,
+        } satisfies CleanTransmissionReport,
+        options.json,
+      );
+    })(),
+    (cause) => fail("Transmission cleanup failed", cause),
+  );
+}
+
 export default function downloadsCommand(program: Command): void {
   const downloads = program
     .command("downloads")
@@ -172,6 +428,51 @@ export default function downloadsCommand(program: Command): void {
         () => undefined,
         (error) => {
           logError(`Downloads triage failed: ${formatError(error)}`);
+          process.exit(1);
+        },
+      );
+    });
+
+  downloads
+    .command("clean-transmission")
+    .description(
+      "Remove completed Transmission torrent records whose files were already moved",
+    )
+    .option(
+      "--complete-dir <path>",
+      "Host completed downloads directory",
+      NAS_PATHS.transmissionComplete,
+    )
+    .option(
+      "--rpc-url <url>",
+      "Transmission RPC endpoint",
+      "http://127.0.0.1:29091/transmission/rpc",
+    )
+    .option(
+      "--username <name>",
+      "Transmission RPC username",
+      process.env["TRANSMISSION_RPC_USERNAME"] ?? "trsmadmin",
+    )
+    .option(
+      "--password <password>",
+      "Transmission RPC password; defaults to TRANSMISSION_RPC_PASSWORD",
+      process.env["TRANSMISSION_RPC_PASSWORD"] ?? "",
+    )
+    .option("--dry-run", "Preview removals without changing Transmission", true)
+    .option("--no-dry-run", "Remove matching torrent records")
+    .option("--yes", "Confirm removal when --no-dry-run is set", false)
+    .option("--json", "Print JSON report", false)
+    .action(async (options: Record<string, unknown>) => {
+      const result = await parseWith(
+        cleanTransmissionOptionsSchema,
+        options,
+        "Invalid Transmission cleanup options",
+      ).asyncAndThen(runCleanTransmission);
+
+      result.match(
+        () => undefined,
+        (error) => {
+          logError(`Transmission cleanup failed: ${formatError(error)}`);
           process.exit(1);
         },
       );

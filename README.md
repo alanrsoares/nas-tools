@@ -161,6 +161,17 @@ Inspect completed/incomplete download folders for stale work, junk files, and la
 nas-tools downloads triage [--json] [--stale-days 14]
 ```
 
+### downloads clean-transmission
+
+Remove completed Transmission torrent records whose files have already been moved out of the complete folder. Defaults to dry-run. Removal requires `--no-dry-run --yes` and never deletes local data from Transmission.
+
+```bash
+nas-tools downloads clean-transmission --dry-run --json
+nas-tools downloads clean-transmission --no-dry-run --yes
+```
+
+Use `TRANSMISSION_RPC_PASSWORD` or `--password` for authenticated RPC.
+
 ### music-audit
 
 Audit the FLAC library for CUE/audio pairs, empty folders, Apple metadata junk, and likely alphabet-bucket mistakes.
