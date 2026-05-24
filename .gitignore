@@ -2,3 +2,4 @@ node_modules/
 dist/
 __temp_split/
 test-dir-tree/
+.env.local
