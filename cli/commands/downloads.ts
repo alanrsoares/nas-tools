@@ -203,8 +203,17 @@ async function transmissionRpc<T>(
   }
 
   if (!response.ok) {
+    const body = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      const authHint = options.password
+        ? "check TRANSMISSION_RPC_USERNAME/TRANSMISSION_RPC_PASSWORD"
+        : "missing TRANSMISSION_RPC_PASSWORD";
+      throw new Error(
+        `Transmission RPC ${method} auth failed: HTTP ${response.status}; ${authHint}`,
+      );
+    }
     throw new Error(
-      `Transmission RPC ${method} failed: HTTP ${response.status}`,
+      `Transmission RPC ${method} failed: HTTP ${response.status} - ${body}`,
     );
   }
 
@@ -393,7 +402,10 @@ function runCleanTransmission(
         options.json,
       );
     })(),
-    (cause) => fail("Transmission cleanup failed", cause),
+    (cause) => {
+      const msg = cause instanceof Error ? cause.message : String(cause);
+      return fail(`Transmission cleanup failed: ${msg}`, cause);
+    },
   );
 }
 
@@ -472,7 +484,7 @@ export default function downloadsCommand(program: Command): void {
       result.match(
         () => undefined,
         (error) => {
-          logError(`Transmission cleanup failed: ${formatError(error)}`);
+          logError(formatError(error));
           process.exit(1);
         },
       );

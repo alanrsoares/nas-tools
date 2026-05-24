@@ -4,6 +4,9 @@ import { extname, join } from "node:path";
 import { Command } from "commander";
 
 import pkg from "../package.json" with { type: "json" };
+import { loadNasToolsEnv } from "./lib/config.js";
+
+loadNasToolsEnv();
 
 const program = new Command();
 
