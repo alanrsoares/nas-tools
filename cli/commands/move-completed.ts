@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { parseFile } from "music-metadata";
 import { err, ok, ResultAsync } from "neverthrow";
 import { Maybe } from "true-myth";
@@ -29,11 +29,7 @@ import {
   promptForInput,
   readDirectoryWithTypes,
 } from "../lib/utils.js";
-import {
-  getBashFunctionsPath,
-  processPairs,
-  scanCueAudioPairs,
-} from "./fix-unsplit-cue.js";
+import { getBashFunctionsPath, processPairs, scanCueAudioPairs } from "./fix-unsplit-cue.js";
 
 // Constants
 const DEFAULT_SOURCE_DIR = "/volmain/Download/Transmission/complete/";
@@ -90,10 +86,7 @@ type CommandOptions = z.infer<typeof optionsSchema>;
 
 // Utility functions
 
-async function promptForArtistName(
-  folderName: string,
-  suggestions: string[],
-): Promise<string> {
+async function promptForArtistName(folderName: string, suggestions: string[]): Promise<string> {
   return await promptForInput(
     `Could not infer artist name for folder: ${folderName}`,
     suggestions[0] || "",
@@ -107,11 +100,7 @@ async function promptForArtistName(
 }
 
 // Detect the media type of a directory based on its contents
-function detectMediaType(
-  dirName: string,
-  files: string[],
-  path: string,
-): MediaType | undefined {
+function detectMediaType(dirName: string, files: string[], path: string): MediaType | undefined {
   // Priority: TV > Audiobook > Music > Movie
 
   // 1. TV Check
@@ -137,10 +126,7 @@ function detectMediaType(
   return undefined;
 }
 
-async function collectRelativeFiles(
-  rootDir: string,
-  currentDir = rootDir,
-): Promise<string[]> {
+async function collectRelativeFiles(rootDir: string, currentDir = rootDir): Promise<string[]> {
   const entries = await readDirectoryWithTypes(currentDir).catch(() => []);
 
   return await entries.reduce(
@@ -204,6 +190,7 @@ export function scanMediaItems(
 
 function sanitizeArtistName(artistName: string): Maybe<string> {
   const sanitized = artistName
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional control char range sanitization
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/[\\/]+/g, " ")
     .replace(/[:*?"<>|]+/g, "")
@@ -217,7 +204,7 @@ function sanitizeArtistName(artistName: string): Maybe<string> {
 function stripReleaseTags(name: string): string {
   return name
     .replace(
-      /\s*[\[({][^\])}]*?(?:flac|mp3|m4a|24bit|16[./-]?44|vinyl|web|cd|discography|pmedia|h33t|japan|eu|uk)[^\])}]*?[\])}]/gi,
+      /\s*[[({][^\])}]*?(?:flac|mp3|m4a|24bit|16[./-]?44|vinyl|web|cd|discography|pmedia|h33t|japan|eu|uk)[^\])}]*?[\])}]/gi,
       "",
     )
     .replace(/\s+/g, " ")
@@ -267,9 +254,7 @@ function inferArtistName(
         },
         Promise.resolve(Maybe.nothing<string>() as Maybe<string>),
       )
-      .then((artist) =>
-        artist.isJust ? artist : inferArtistNameFromFolder(mediaItem.name),
-      ),
+      .then((artist) => (artist.isJust ? artist : inferArtistNameFromFolder(mediaItem.name))),
   );
 }
 
@@ -289,9 +274,7 @@ function getTargetDirectory(artistName: string, targetDir: string): string {
 }
 
 // Check if artist directory already exists
-function checkArtistExists(
-  artistPath: string,
-): ResultAsync<boolean, ReturnType<typeof fail>> {
+function checkArtistExists(artistPath: string): ResultAsync<boolean, ReturnType<typeof fail>> {
   return safeAsync(() => exists(artistPath), `Failed to access ${artistPath}`)
     .andThen((artistExists) =>
       artistExists
@@ -303,10 +286,7 @@ function checkArtistExists(
             entries
               .filter((dirent) => dirent.isDirectory())
               .map((dirent) => dirent.name)
-              .some(
-                (dir) =>
-                  dir.toLowerCase() === getBasename(artistPath).toLowerCase(),
-              ),
+              .some((dir) => dir.toLowerCase() === getBasename(artistPath).toLowerCase()),
           ),
     )
     .orElse(() => ok(false));
@@ -352,15 +332,11 @@ function generateArtistSuggestions(folderName: string): string[] {
   suggestions.push(folderName);
 
   // Add common patterns
-  const patterns = [
-    /^(.+?)\s*-\s*(.+?)$/i,
-    /^(.+?)\s*\/\s*(.+?)$/i,
-    /^(.+?)\s*_\s*(.+?)$/i,
-  ];
+  const patterns = [/^(.+?)\s*-\s*(.+?)$/i, /^(.+?)\s*\/\s*(.+?)$/i, /^(.+?)\s*_\s*(.+?)$/i];
 
   for (const pattern of patterns) {
     const match = folderName.match(pattern);
-    if (match && match[1]) {
+    if (match?.[1]) {
       suggestions.push(match[1].trim());
     }
   }
@@ -381,21 +357,14 @@ function processMediaItems(
 
         // Routing logic based on media type
         if (item.type === "music") {
-          const inferredArtist = await inferArtistName(item).unwrapOr(
-            Maybe.nothing<string>(),
-          );
+          const inferredArtist = await inferArtistName(item).unwrapOr(Maybe.nothing<string>());
 
           const artistName = await match(options.interactive)
             .when(
               () => inferredArtist.isJust,
               () => Promise.resolve(inferredArtist.unwrapOr("")),
             )
-            .with(true, () =>
-              promptForArtistName(
-                item.name,
-                generateArtistSuggestions(item.name),
-              ),
-            )
+            .with(true, () => promptForArtistName(item.name, generateArtistSuggestions(item.name)))
             .otherwise(() => {
               logWarning(`⚠️  Could not infer artist name for: ${item.name}`);
               return Promise.resolve(undefined);
@@ -406,8 +375,7 @@ function processMediaItems(
           }
 
           const artistDir = getTargetDirectory(artistName, options.targetDir);
-          const isNewArtist =
-            !(await checkArtistExists(artistDir).unwrapOr(false));
+          const isNewArtist = !(await checkArtistExists(artistDir).unwrapOr(false));
           const operation: MoveOperation = {
             sourcePath: item.path,
             targetPath: joinPath(artistDir, item.name),
@@ -417,9 +385,7 @@ function processMediaItems(
             isNewArtist,
           };
 
-          logInfo(
-            `[Music] ${item.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`,
-          );
+          logInfo(`[Music] ${item.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`);
           return [...moveOperations, operation];
         }
 
@@ -497,14 +463,11 @@ function createBackup(
       let backupPath = joinPath(backupDir, getBasename(sourcePath));
       let counter = 1;
       while (await exists(backupPath)) {
-        backupPath = joinPath(
-          backupDir,
-          `${getBasename(sourcePath)} (${counter})`,
-        );
+        backupPath = joinPath(backupDir, `${getBasename(sourcePath)} (${counter})`);
         counter++;
       }
 
-      const { cp } = await import("fs/promises");
+      const { cp } = await import("node:fs/promises");
       await cp(sourcePath, backupPath, {
         recursive: true,
         preserveTimestamps: true,
@@ -516,17 +479,13 @@ function createBackup(
     })(),
   ).orElse((error) =>
     err(
-      fail(
-        `Backup failed for ${getBasename(sourcePath)}; refusing to move: ${formatError(error)}`,
-      ),
+      fail(`Backup failed for ${getBasename(sourcePath)}; refusing to move: ${formatError(error)}`),
     ),
   );
 }
 
 // Post-processing: split CUE if present
-function runCueSplit(
-  targetPath: string,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function runCueSplit(targetPath: string): ResultAsync<void, ReturnType<typeof fail>> {
   return scanCueAudioPairs(targetPath, {
     dryRun: false,
     ignoreFailed: true,
@@ -566,10 +525,9 @@ function moveMediaItem(
       ).map(() => finalTargetPath),
     )
     .andThen((finalTargetPath) =>
-      safeAsync(
-        () => moveFile(sourcePath, finalTargetPath),
-        `Failed to move ${albumName}`,
-      ).map(() => finalTargetPath),
+      safeAsync(() => moveFile(sourcePath, finalTargetPath), `Failed to move ${albumName}`).map(
+        () => finalTargetPath,
+      ),
     )
     .andThen((finalTargetPath) => {
       logSuccess(`✓ Moved: ${albumName}`);
@@ -591,27 +549,18 @@ function validateRequiredDirectory(
   dirPath: string,
   label: string,
 ): ResultAsync<void, ReturnType<typeof fail>> {
-  return safeAsync(
-    () => exists(dirPath),
-    `Failed to access ${label} directory`,
-  ).andThen((exists) =>
-    exists
-      ? ok<void, ReturnType<typeof fail>>(undefined)
-      : err(
-          fail(
-            `${label} directory '${dirPath}' does not exist or is not accessible`,
-          ),
-        ),
+  return safeAsync(() => exists(dirPath), `Failed to access ${label} directory`).andThen(
+    (exists) =>
+      exists
+        ? ok<void, ReturnType<typeof fail>>(undefined)
+        : err(fail(`${label} directory '${dirPath}' does not exist or is not accessible`)),
   );
 }
 
 function processMoveOperations(
   moveOperations: MoveOperation[],
   options: CommandOptions,
-): ResultAsync<
-  { successCount: number; failureCount: number },
-  ReturnType<typeof fail>
-> {
+): ResultAsync<{ successCount: number; failureCount: number }, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     moveOperations.reduce(
       async (summaryPromise, operation) => {
@@ -619,10 +568,7 @@ function processMoveOperations(
 
         const backupSucceeded = options.dryRun
           ? true
-          : await createBackup(
-              operation.sourcePath,
-              options.backupDir,
-            ).unwrapOr(false);
+          : await createBackup(operation.sourcePath, options.backupDir).unwrapOr(false);
 
         const success = options.dryRun
           ? true
@@ -642,16 +588,12 @@ function processMoveOperations(
   );
 }
 
-function run(
-  options: CommandOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return validateRequiredDirectory(options.sourceDir, "Source")
     .andThen(() => validateRequiredDirectory(options.targetDir, "Music Target"))
     .andThen(() => validateRequiredDirectory(options.tvDir, "TV Target"))
     .andThen(() => validateRequiredDirectory(options.movieDir, "Movie Target"))
-    .andThen(() =>
-      validateRequiredDirectory(options.audiobookDir, "Audiobook Target"),
-    )
+    .andThen(() => validateRequiredDirectory(options.audiobookDir, "Audiobook Target"))
     .map(() => logInfo(`Scanning '${options.sourceDir}' for media items...`))
     .andThen(() => scanMediaItems(options.sourceDir))
     .andThen((mediaItems) =>
@@ -672,33 +614,24 @@ function run(
     )
     .andThen((moveOperations) =>
       moveOperations.length === 0
-        ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(
-            Maybe.nothing<MoveOperation[]>(),
-          )
+        ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(Maybe.nothing<MoveOperation[]>())
         : options.yes
-          ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(
-              Maybe.just(moveOperations),
-            )
+          ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(Maybe.just(moveOperations))
           : safeAsync(
               () => confirmProcessing(moveOperations, options),
               "Failed to confirm processing",
             ).map((proceed) =>
-              proceed
-                ? Maybe.just(moveOperations)
-                : Maybe.nothing<MoveOperation[]>(),
+              proceed ? Maybe.just(moveOperations) : Maybe.nothing<MoveOperation[]>(),
             ),
     )
     .andThen((maybeOperations) =>
       maybeOperations.isNothing
         ? ok<void, ReturnType<typeof fail>>(undefined)
-        : processMoveOperations(maybeOperations.value, options).map(
+        : // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+          processMoveOperations(maybeOperations.value, options).map(
             ({ successCount, failureCount }) => {
               logProgress("🔄 Processing items...");
-              displaySummary(
-                successCount,
-                failureCount,
-                maybeOperations.value.length,
-              );
+              displaySummary(successCount, failureCount, maybeOperations.value.length);
 
               if (failureCount > 0) {
                 process.exitCode = 1;
@@ -714,35 +647,15 @@ export default function moveCompletedCommand(program: Command): void {
     .description(
       "Monitor Transmission download completion directory and organize completed downloads into the library structure",
     )
-    .option(
-      "-s, --source-dir <path>",
-      "Source directory to monitor",
-      DEFAULT_SOURCE_DIR,
-    )
-    .option(
-      "-t, --target-dir <path>",
-      "Target music library directory",
-      DEFAULT_TARGET_DIR,
-    )
+    .option("-s, --source-dir <path>", "Source directory to monitor", DEFAULT_SOURCE_DIR)
+    .option("-t, --target-dir <path>", "Target music library directory", DEFAULT_TARGET_DIR)
     .option("--tv-dir <path>", "Target TV library directory", DEFAULT_TV_DIR)
-    .option(
-      "--movie-dir <path>",
-      "Target movie library directory",
-      DEFAULT_MOVIE_DIR,
-    )
-    .option(
-      "--audiobook-dir <path>",
-      "Target audiobook library directory",
-      DEFAULT_AUDIOBOOK_DIR,
-    )
+    .option("--movie-dir <path>", "Target movie library directory", DEFAULT_MOVIE_DIR)
+    .option("--audiobook-dir <path>", "Target audiobook library directory", DEFAULT_AUDIOBOOK_DIR)
     .option("-b, --backup-dir <path>", "Backup directory", DEFAULT_BACKUP_DIR)
     .option("--dry-run", "Preview changes without making them", false)
     .option("-y, --yes", "Assume yes to all confirmations", false)
-    .option(
-      "-i, --interactive",
-      "Prompt for artist name when inference fails",
-      false,
-    )
+    .option("-i, --interactive", "Prompt for artist name when inference fails", false)
     .action(async (options: Record<string, unknown>) => {
       const result = await parseWith(
         optionsSchema,

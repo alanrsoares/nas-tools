@@ -1,26 +1,24 @@
 import { join, normalize } from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { fail, formatError, parseWith, type AppError } from "../lib/fp.js";
+import { env } from "../lib/env.js";
+import { type AppError, fail, formatError, parseWith } from "../lib/fp.js";
 import {
+  type Finding,
   isAppleJunk,
   isMusicName,
   NAS_PATHS,
   pathExists,
   printReport,
   walk,
-  type Finding,
 } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
 const optionsSchema = z.object({
   completeDir: z.string().optional().default(NAS_PATHS.transmissionComplete),
-  incompleteDir: z
-    .string()
-    .optional()
-    .default(NAS_PATHS.transmissionIncomplete),
+  incompleteDir: z.string().optional().default(NAS_PATHS.transmissionIncomplete),
   json: z.boolean().optional().default(false),
   staleDays: z.coerce.number().int().positive().optional().default(14),
 });
@@ -31,19 +29,9 @@ const cleanTransmissionOptionsSchema = z.object({
   completeDir: z.string().optional().default(NAS_PATHS.transmissionComplete),
   dryRun: z.boolean().optional().default(true),
   json: z.boolean().optional().default(false),
-  password: z
-    .string()
-    .optional()
-    .default(process.env["TRANSMISSION_RPC_PASSWORD"] ?? ""),
-  rpcUrl: z
-    .string()
-    .url()
-    .optional()
-    .default("http://127.0.0.1:29091/transmission/rpc"),
-  username: z
-    .string()
-    .optional()
-    .default(process.env["TRANSMISSION_RPC_USERNAME"] ?? "trsmadmin"),
+  password: z.string().optional().default(env.TRANSMISSION_RPC_PASSWORD),
+  rpcUrl: z.string().url().optional().default("http://127.0.0.1:29091/transmission/rpc"),
+  username: z.string().optional().default(env.TRANSMISSION_RPC_USERNAME),
   yes: z.boolean().optional().default(false),
 });
 
@@ -112,28 +100,16 @@ interface CleanTransmissionReport {
 }
 
 const addTorrentOptionsSchema = z.object({
-  rpcUrl: z
-    .string()
-    .url()
-    .optional()
-    .default("http://127.0.0.1:29091/transmission/rpc"),
-  username: z
-    .string()
-    .optional()
-    .default(process.env["TRANSMISSION_RPC_USERNAME"] ?? "trsmadmin"),
-  password: z
-    .string()
-    .optional()
-    .default(process.env["TRANSMISSION_RPC_PASSWORD"] ?? ""),
+  rpcUrl: z.string().url().optional().default("http://127.0.0.1:29091/transmission/rpc"),
+  username: z.string().optional().default(env.TRANSMISSION_RPC_USERNAME),
+  password: z.string().optional().default(env.TRANSMISSION_RPC_PASSWORD),
   torrent: z.string(),
   paused: z.boolean().optional().default(false),
 });
 
 type AddTorrentOptions = z.infer<typeof addTorrentOptionsSchema>;
 
-function runAddTorrent(
-  options: AddTorrentOptions,
-): ResultAsync<void, AppError> {
+function runAddTorrent(options: AddTorrentOptions): ResultAsync<void, AppError> {
   return ResultAsync.fromPromise(
     (async () => {
       const isMagnet = options.torrent.startsWith("magnet:");
@@ -142,10 +118,10 @@ function runAddTorrent(
       };
 
       if (isMagnet) {
-        args["filename"] = options.torrent;
+        args.filename = options.torrent;
       } else {
         // Assume it's a file path or URL
-        args["filename"] = options.torrent;
+        args.filename = options.torrent;
       }
 
       const response = await transmissionRpc<{
@@ -179,9 +155,7 @@ export function mapTransmissionPath(
   options: { completeDir: string },
 ): string {
   const base = downloadDir.startsWith(transmissionContainerCompleteDir)
-    ? `${options.completeDir}${downloadDir.slice(
-        transmissionContainerCompleteDir.length,
-      )}`
+    ? `${options.completeDir}${downloadDir.slice(transmissionContainerCompleteDir.length)}`
     : downloadDir;
 
   return normalize(join(base, relativeName));
@@ -239,7 +213,7 @@ async function transmissionRpc<T>(
   };
 
   if (options.username || options.password) {
-    headers["authorization"] = `Basic ${Buffer.from(
+    headers.authorization = `Basic ${Buffer.from(
       `${options.username}:${options.password}`,
     ).toString("base64")}`;
   }
@@ -271,9 +245,7 @@ async function transmissionRpc<T>(
         `Transmission RPC ${method} auth failed: HTTP ${response.status}; ${authHint}`,
       );
     }
-    throw new Error(
-      `Transmission RPC ${method} failed: HTTP ${response.status} - ${body}`,
-    );
+    throw new Error(`Transmission RPC ${method} failed: HTTP ${response.status} - ${body}`);
   }
 
   const data = (await response.json()) as TransmissionRpcResponse<T>;
@@ -283,9 +255,7 @@ async function transmissionRpc<T>(
   return data;
 }
 
-function runTriage(
-  options: CommandOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function runTriage(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     (async () => {
       const findings: Finding[] = [];
@@ -313,21 +283,15 @@ function runTriage(
       const now = Date.now();
       const staleCutoff = now - options.staleDays * dayMs;
 
-      const completeFolders = completeEntries.filter(
-        (entry) => entry.isDirectory,
-      );
-      const incompleteFolders = incompleteEntries.filter(
-        (entry) => entry.isDirectory,
-      );
+      const completeFolders = completeEntries.filter((entry) => entry.isDirectory);
+      const incompleteFolders = incompleteEntries.filter((entry) => entry.isDirectory);
       const musicFiles = completeEntries.filter(
         (entry) => !entry.isDirectory && isMusicName(entry.name),
       );
-      const junkFiles = [...completeEntries, ...incompleteEntries].filter(
-        (entry) => isAppleJunk(entry.name),
+      const junkFiles = [...completeEntries, ...incompleteEntries].filter((entry) =>
+        isAppleJunk(entry.name),
       );
-      const staleIncomplete = incompleteFolders.filter(
-        (entry) => entry.mtimeMs < staleCutoff,
-      );
+      const staleIncomplete = incompleteFolders.filter((entry) => entry.mtimeMs < staleCutoff);
 
       for (const entry of junkFiles.slice(0, 50)) {
         findings.push({
@@ -400,11 +364,9 @@ function runCleanTransmission(
       ];
 
       const torrents = (
-        await transmissionRpc<{ torrents: TransmissionTorrent[] }>(
-          options,
-          "torrent-get",
-          { fields },
-        )
+        await transmissionRpc<{ torrents: TransmissionTorrent[] }>(options, "torrent-get", {
+          fields,
+        })
       ).arguments.torrents;
 
       const candidates = await findMovedCompletedTorrents(torrents, {
@@ -425,21 +387,16 @@ function runCleanTransmission(
       if (!options.dryRun && !options.yes) {
         findings.push({
           severity: "warn",
-          message:
-            "Removal requested without --yes; no torrent records were removed.",
+          message: "Removal requested without --yes; no torrent records were removed.",
         });
       }
 
       let removed = 0;
       if (!options.dryRun && options.yes && candidates.length > 0) {
-        await transmissionRpc<Record<string, never>>(
-          options,
-          "torrent-remove",
-          {
-            ids: candidates.map((candidate) => candidate.id),
-            "delete-local-data": false,
-          },
-        );
+        await transmissionRpc<Record<string, never>>(options, "torrent-remove", {
+          ids: candidates.map((candidate) => candidate.id),
+          "delete-local-data": false,
+        });
         removed = candidates.length;
       }
 
@@ -469,9 +426,7 @@ function runCleanTransmission(
 }
 
 export default function downloadsCommand(program: Command): void {
-  const downloads = program
-    .command("downloads")
-    .description("Inspect NAS download workflows");
+  const downloads = program.command("downloads").description("Inspect NAS download workflows");
 
   downloads
     .command("triage")
@@ -506,9 +461,7 @@ export default function downloadsCommand(program: Command): void {
 
   downloads
     .command("clean-transmission")
-    .description(
-      "Remove completed Transmission torrent records whose files were already moved",
-    )
+    .description("Remove completed Transmission torrent records whose files were already moved")
     .option(
       "--complete-dir <path>",
       "Host completed downloads directory",
@@ -519,15 +472,11 @@ export default function downloadsCommand(program: Command): void {
       "Transmission RPC endpoint",
       "http://127.0.0.1:29091/transmission/rpc",
     )
-    .option(
-      "--username <name>",
-      "Transmission RPC username",
-      process.env["TRANSMISSION_RPC_USERNAME"] ?? "trsmadmin",
-    )
+    .option("--username <name>", "Transmission RPC username", env.TRANSMISSION_RPC_USERNAME)
     .option(
       "--password <password>",
       "Transmission RPC password; defaults to TRANSMISSION_RPC_PASSWORD",
-      process.env["TRANSMISSION_RPC_PASSWORD"] ?? "",
+      env.TRANSMISSION_RPC_PASSWORD,
     )
     .option("--dry-run", "Preview removals without changing Transmission", true)
     .option("--no-dry-run", "Remove matching torrent records")
@@ -558,15 +507,11 @@ export default function downloadsCommand(program: Command): void {
       "Transmission RPC endpoint",
       "http://127.0.0.1:29091/transmission/rpc",
     )
-    .option(
-      "--username <name>",
-      "Transmission RPC username",
-      process.env["TRANSMISSION_RPC_USERNAME"] ?? "trsmadmin",
-    )
+    .option("--username <name>", "Transmission RPC username", env.TRANSMISSION_RPC_USERNAME)
     .option(
       "--password <password>",
       "Transmission RPC password; defaults to TRANSMISSION_RPC_PASSWORD",
-      process.env["TRANSMISSION_RPC_PASSWORD"] ?? "",
+      env.TRANSMISSION_RPC_PASSWORD,
     )
     .option("--paused", "Add torrent in paused state", false)
     .action(async (torrent: string, options: Record<string, unknown>) => {

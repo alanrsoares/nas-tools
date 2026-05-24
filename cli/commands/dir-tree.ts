@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { err, ok, ResultAsync } from "neverthrow";
 import pc from "picocolors";
 import { match } from "ts-pattern";
@@ -59,26 +59,14 @@ type FileCategory = keyof typeof colors;
 const hasExtension = (name: string, extensions: string[]): boolean =>
   extensions.some((ext) => name.toLowerCase().endsWith(ext));
 
-type ColoredCategory = Exclude<
-  FileCategory,
-  "hidden" | "file" | "directory" | "symlink"
->;
+type ColoredCategory = Exclude<FileCategory, "hidden" | "file" | "directory" | "symlink">;
 
 const extensionsByCategory = {
   archive: [".zip", ".tar", ".gz", ".bz2", ".xz", ".rar", ".7z", ".tgz"],
   audio: [".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a", ".wma"],
   executable: [".exe", ".sh", ".bat", ".cmd", ".com", ".app"],
   image: [".jpg", ".jpeg", ".png", ".gif", ".bmp"],
-  special: [
-    ".json",
-    ".xml",
-    ".yaml",
-    ".yml",
-    ".toml",
-    ".ini",
-    ".conf",
-    ".config",
-  ],
+  special: [".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".conf", ".config"],
   video: [".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v"],
 } as const satisfies Record<ColoredCategory, string[]>;
 
@@ -124,12 +112,7 @@ function buildTree(
   depth: number = 0,
   options: CommandOptions,
 ): ResultAsync<string[], ReturnType<typeof fail>> {
-  const {
-    maxDepth = Infinity,
-    showHidden = false,
-    showFiles = true,
-    exclude = [],
-  } = options;
+  const { maxDepth = Infinity, showHidden = false, showFiles = true, exclude = [] } = options;
 
   if (depth >= maxDepth) {
     return ResultAsync.fromSafePromise(Promise.resolve([] as string[]));
@@ -167,9 +150,7 @@ function buildTree(
         const isLast = index === filteredEntries.length - 1;
         const isDirectory = entry.isDirectory();
 
-        const currentPrefix = isLast
-          ? TREE_CHARS.LAST_BRANCH
-          : TREE_CHARS.BRANCH;
+        const currentPrefix = isLast ? TREE_CHARS.LAST_BRANCH : TREE_CHARS.BRANCH;
         const nextPrefix = isLast ? TREE_CHARS.SPACE : TREE_CHARS.VERTICAL;
 
         const icon = options.showFiles ? (isDirectory ? "📁" : "📄") : "";
@@ -197,32 +178,30 @@ function buildTree(
 }
 
 // Main function to generate and display the tree
-function run(
-  dirPath: string,
-  options: CommandOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
-  return safeAsync(() => exists(dirPath), `Failed to access ${dirPath}`)
-    .andThen((isValid) =>
-      isValid
-        ? ok<void, ReturnType<typeof fail>>(undefined)
-        : ok<void, ReturnType<typeof fail>>(undefined).andThen(() =>
-            err(
-              fail(
-                `Directory '${dirPath}' does not exist or is not accessible`,
-              ),
+function run(dirPath: string, options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
+  return (
+    safeAsync(() => exists(dirPath), `Failed to access ${dirPath}`)
+      .andThen((isValid) =>
+        isValid
+          ? ok<void, ReturnType<typeof fail>>(undefined)
+          : ok<void, ReturnType<typeof fail>>(undefined).andThen(() =>
+              err(fail(`Directory '${dirPath}' does not exist or is not accessible`)),
             ),
-          ),
-    )
-    .andThen(() => buildTree(dirPath, "", 0, options))
-    .map((treeLines) => {
-      console.log(`📁 ${pc.blue(dirPath)}`);
+      )
+      .andThen(() => buildTree(dirPath, "", 0, options))
+      // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+      .map((treeLines) => {
+        console.log(`📁 ${pc.blue(dirPath)}`);
 
-      if (treeLines.length === 0) {
-        console.log("   (empty directory)");
-      } else {
-        treeLines.forEach((line) => console.log(line));
-      }
-    });
+        if (treeLines.length === 0) {
+          console.log("   (empty directory)");
+        } else {
+          treeLines.forEach((line) => {
+            console.log(line);
+          });
+        }
+      })
+  );
 }
 
 export default function dirTreeCommand(program: Command): void {
@@ -233,10 +212,7 @@ export default function dirTreeCommand(program: Command): void {
     .option("-d, --max-depth <number>", "Maximum depth to traverse", "Infinity")
     .option("-H, --show-hidden", "Show hidden files and directories")
     .option("-f, --show-files", "Show files (default: false)")
-    .option(
-      "-e, --exclude <patterns...>",
-      "Exclude files/directories matching patterns",
-    )
+    .option("-e, --exclude <patterns...>", "Exclude files/directories matching patterns")
     .action(async (path: string, options: Record<string, unknown>) => {
       const result = await parseWith(
         optionsSchema,

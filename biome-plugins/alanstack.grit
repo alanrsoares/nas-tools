@@ -1,0 +1,14 @@
+language js
+
+// Rule: no-unsafe-json-parse-cast
+// JSON.parse output must be validated with a Zod schema, not narrowed with `as`.
+// Suppress with: biome-ignore lint: <reason>
+`$x as $T` as $node where {
+  $x <: `JSON.parse($_)`,
+  register_diagnostic(span=$node, message="Unsafe cast on JSON.parse - validate with a Zod schema instead", severity="error")
+}
+
+// NOTE: inline object type detection in TypeScript function parameters
+// (e.g. `function foo(x: { a: string })`) is not yet achievable in Biome GritQL -
+// TSTypeLiteral AST nodes do not match `{ $_ }` template syntax (JS-only).
+// Enforce via code review / alanstack-review skill until GritQL adds type-level patterns.

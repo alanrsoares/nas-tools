@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
 import got, { type Headers, type Response } from "got";
-import { err, ok, Result, ResultAsync } from "neverthrow";
+import { err, ok, type Result, type ResultAsync } from "neverthrow";
 import { Maybe } from "true-myth";
 import { match } from "ts-pattern";
 import { z } from "zod";
@@ -28,25 +28,18 @@ const RFC5987_RE = /filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i;
 const RFC5987_RE_2 = /filename\s*=\s*("?)([^";]+)\1/i;
 
 const decodeFilename = (value: string): string =>
-  safe(() => decodeURIComponent(value), "Failed to decode filename").unwrapOr(
-    value,
-  );
+  safe(() => decodeURIComponent(value), "Failed to decode filename").unwrapOr(value);
 
 function sanitizeFilename(filename: string, fallbackName: string): string {
   const sanitized = basename(filename.replace(/\\/g, "/")).trim();
-  return sanitized && sanitized !== "." && sanitized !== ".."
-    ? sanitized
-    : fallbackName;
+  return sanitized && sanitized !== "." && sanitized !== ".." ? sanitized : fallbackName;
 }
 
 function filenameFromHeaders(
   url: string,
   headers: Headers,
 ): Result<string, ReturnType<typeof fail>> {
-  const fallbackName = sanitizeFilename(
-    decodeFilename(new URL(url).pathname),
-    "download.bin",
-  );
+  const fallbackName = sanitizeFilename(decodeFilename(new URL(url).pathname), "download.bin");
 
   const cd = headers["content-disposition"];
   if (!cd) {
@@ -61,25 +54,16 @@ function filenameFromHeaders(
   const star = Maybe.of(cdStr.value.match(RFC5987_RE)?.[1]);
   if (star.isJust) {
     return ok(
-      sanitizeFilename(
-        decodeFilename(star.value.replace(/^["']|["']$/g, "").trim()),
-        fallbackName,
-      ),
+      sanitizeFilename(decodeFilename(star.value.replace(/^["']|["']$/g, "").trim()), fallbackName),
     );
   }
 
   const plain = Maybe.of(cdStr.value.match(RFC5987_RE_2)?.[2]);
 
-  return ok(
-    plain.mapOr(fallbackName, (p) =>
-      sanitizeFilename(decodeFilename(p), fallbackName),
-    ),
-  );
+  return ok(plain.mapOr(fallbackName, (p) => sanitizeFilename(decodeFilename(p), fallbackName)));
 }
 
-function validateResponse(
-  res: Response,
-): Result<Response, ReturnType<typeof fail>> {
+function validateResponse(res: Response): Result<Response, ReturnType<typeof fail>> {
   return match(res.statusCode)
     .when(
       (status) => status >= 200 && status < 300,
@@ -111,16 +95,13 @@ function buildHeaders(options: CommandOptions): Record<string, string> {
     // got handles compression automatically; sending Accept-Encoding
     // explicitly can sometimes confuse certain servers, so we omit it.
   };
-  if (options.referer) headers["Referer"] = options.referer;
-  if (options.cookie) headers["Cookie"] = options.cookie;
+  if (options.referer) headers.Referer = options.referer;
+  if (options.cookie) headers.Cookie = options.cookie;
 
   return headers;
 }
 
-function run(
-  url: string,
-  options: CommandOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function run(url: string, options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   const headers = buildHeaders(options);
   let attempt = 0;
 
@@ -139,10 +120,7 @@ function run(
           const filePath = join(options.dest, filename);
           console.log(`→ Saving as ${filePath}`);
 
-          return safeAsync(
-            () => writeFile(filePath, res.rawBody),
-            `Failed to write ${filePath}`,
-          );
+          return safeAsync(() => writeFile(filePath, res.rawBody), `Failed to write ${filePath}`);
         }),
       )
       .orElse((error) => {
@@ -155,14 +133,17 @@ function run(
       });
   };
 
-  return safeAsync(
-    () => mkdir(options.dest, { recursive: true }),
-    `Failed to create destination ${options.dest}`,
-  )
-    .andThen(download)
-    .map(() => {
-      console.log("✅ Done");
-    });
+  return (
+    safeAsync(
+      () => mkdir(options.dest, { recursive: true }),
+      `Failed to create destination ${options.dest}`,
+    )
+      .andThen(download)
+      // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+      .map(() => {
+        console.log("✅ Done");
+      })
+  );
 }
 
 export default function downloadCommand(program: Command): void {

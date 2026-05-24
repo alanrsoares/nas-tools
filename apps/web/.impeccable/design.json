@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-24T00:00:00Z",
+  "title": "Design System: NAS Tools Cockpit",
+  "extensions": {
+    "colorMeta": {
+      "midnight-teal": {
+        "role": "neutral",
+        "displayName": "Midnight Teal",
+        "canonical": "oklch(0.135 0.018 175)",
+        "tonalRamp": [
+          "oklch(0.080 0.010 175)",
+          "oklch(0.105 0.013 175)",
+          "oklch(0.135 0.018 175)",
+          "oklch(0.185 0.015 175)",
+          "oklch(0.245 0.020 175)",
+          "oklch(0.380 0.030 175)",
+          "oklch(0.530 0.040 175)",
+          "oklch(0.760 0.020 175)"
+        ]
+      },
+      "surface-teal": {
+        "role": "neutral",
+        "displayName": "Surface Teal",
+        "canonical": "oklch(0.185 0.015 175)",
+        "tonalRamp": [
+          "oklch(0.100 0.010 175)",
+          "oklch(0.135 0.013 175)",
+          "oklch(0.185 0.015 175)",
+          "oklch(0.230 0.018 175)",
+          "oklch(0.280 0.020 175)",
+          "oklch(0.400 0.025 175)",
+          "oklch(0.580 0.030 175)",
+          "oklch(0.800 0.015 175)"
+        ]
+      },
+      "cavern-teal": {
+        "role": "neutral",
+        "displayName": "Cavern Teal",
+        "canonical": "oklch(0.105 0.015 175)",
+        "tonalRamp": [
+          "oklch(0.060 0.008 175)",
+          "oklch(0.085 0.012 175)",
+          "oklch(0.105 0.015 175)",
+          "oklch(0.140 0.018 175)",
+          "oklch(0.185 0.020 175)",
+          "oklch(0.280 0.025 175)",
+          "oklch(0.450 0.035 175)",
+          "oklch(0.680 0.020 175)"
+        ]
+      },
+      "signal-teal": {
+        "role": "primary",
+        "displayName": "Signal Teal",
+        "canonical": "oklch(0.575 0.140 170)",
+        "tonalRamp": [
+          "oklch(0.200 0.060 170)",
+          "oklch(0.280 0.090 170)",
+          "oklch(0.360 0.115 170)",
+          "oklch(0.445 0.130 170)",
+          "oklch(0.520 0.138 170)",
+          "oklch(0.575 0.140 170)",
+          "oklch(0.650 0.120 170)",
+          "oklch(0.780 0.070 170)"
+        ]
+      },
+      "polar-white": {
+        "role": "neutral",
+        "displayName": "Polar White",
+        "canonical": "oklch(0.935 0.006 155)",
+        "tonalRamp": [
+          "oklch(0.200 0.010 155)",
+          "oklch(0.350 0.010 155)",
+          "oklch(0.480 0.010 155)",
+          "oklch(0.595 0.012 155)",
+          "oklch(0.720 0.010 155)",
+          "oklch(0.820 0.008 155)",
+          "oklch(0.890 0.007 155)",
+          "oklch(0.935 0.006 155)"
+        ]
+      },
+      "leaf-green": {
+        "role": "secondary",
+        "displayName": "Leaf Green",
+        "canonical": "oklch(0.680 0.130 155)",
+        "tonalRamp": [
+          "oklch(0.180 0.050 155)",
+          "oklch(0.260 0.075 155)",
+          "oklch(0.350 0.100 155)",
+          "oklch(0.440 0.120 155)",
+          "oklch(0.530 0.130 155)",
+          "oklch(0.600 0.130 155)",
+          "oklch(0.680 0.120 155)",
+          "oklch(0.790 0.080 155)"
+        ]
+      },
+      "amber-caution": {
+        "role": "tertiary",
+        "displayName": "Amber Caution",
+        "canonical": "oklch(0.730 0.130 60)",
+        "tonalRamp": [
+          "oklch(0.170 0.040 60)",
+          "oklch(0.240 0.065 60)",
+          "oklch(0.320 0.090 60)",
+          "oklch(0.410 0.110 60)",
+          "oklch(0.520 0.125 60)",
+          "oklch(0.620 0.130 60)",
+          "oklch(0.730 0.120 60)",
+          "oklch(0.860 0.070 60)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Body",
+        "purpose": "Table cells, setting values, all prose content."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Badge text, column headers, setting field names, status indicators."
+      },
+      "heading": {
+        "displayName": "Heading",
+        "purpose": "Section title in topbar. One per view."
+      }
+    },
+    "motion": [
+      {
+        "name": "standard",
+        "value": "150ms cubic-bezier(0.25, 0, 0, 1)",
+        "purpose": "Default state-change transitions: nav hover, row hover, button hover."
+      },
+      {
+        "name": "pulse-alive",
+        "value": "2s ease-in-out infinite",
+        "purpose": "Server status Activity icon when connected."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "760px",
+        "purpose": "Collapse sidebar to horizontal tab bar, stack toolbar vertically."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single primary action per workspace. Scan, Execute.",
+      "html": "<button class=\"ds-btn-primary\"><svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/></svg> Scan</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; background: oklch(0.575 0.140 170); color: oklch(0.100 0.020 175); border: none; border-radius: 6px; padding: 7px 13px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 150ms cubic-bezier(0.25,0,0,1); } .ds-btn-primary:hover { background: oklch(0.630 0.140 170); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px oklch(0.135 0.018 175), 0 0 0 4px oklch(0.575 0.140 170); } .ds-btn-primary:disabled { opacity: 0.5; cursor: wait; }"
+    },
+    {
+      "name": "Badge — Success",
+      "kind": "chip",
+      "refersTo": "badge-success",
+      "description": "Included item. Icon + text pill.",
+      "html": "<span class=\"ds-badge-success\"><svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M22 11.08V12a10 10 0 1 1-5.93-9.14'/><polyline points='22 4 12 14.01 9 11.01'/></svg> Included</span>",
+      "css": ".ds-badge-success { display: inline-flex; align-items: center; gap: 4px; background: oklch(0.200 0.060 155); color: oklch(0.680 0.130 155); border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em; }"
+    },
+    {
+      "name": "Badge — Warning",
+      "kind": "chip",
+      "refersTo": "badge-warning",
+      "description": "Needs Fix item — data quality issue, not system error.",
+      "html": "<span class=\"ds-badge-warning\"><svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z'/><line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg> Needs fix</span>",
+      "css": ".ds-badge-warning { display: inline-flex; align-items: center; gap: 4px; background: oklch(0.195 0.045 60); color: oklch(0.730 0.130 60); border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em; }"
+    },
+    {
+      "name": "Badge — Secondary",
+      "kind": "chip",
+      "refersTo": "badge-secondary",
+      "description": "Excluded or media type label. Neutral, low-emphasis.",
+      "html": "<span class=\"ds-badge-secondary\">Music</span>",
+      "css": ".ds-badge-secondary { display: inline-flex; align-items: center; background: oklch(0.230 0.018 175); color: oklch(0.750 0.012 165); border-radius: 999px; padding: 2px 8px; font-size: 11.5px; font-weight: 500; letter-spacing: 0.01em; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-default",
+      "description": "Artist name editor inside plan table rows.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Artist name\" />",
+      "css": ".ds-input { height: 34px; width: 100%; max-width: 240px; background: oklch(0.210 0.016 175); color: oklch(0.935 0.006 155); border: 1px solid oklch(0.265 0.018 175); border-radius: 6px; padding: 0 10px; font-size: 13px; transition: border-color 150ms cubic-bezier(0.25,0,0,1), box-shadow 150ms cubic-bezier(0.25,0,0,1); outline: none; } .ds-input::placeholder { color: oklch(0.595 0.012 165); } .ds-input:focus { border-color: oklch(0.575 0.140 170); box-shadow: 0 0 0 2px oklch(0.575 0.140 170 / 0.25); } .ds-input.warning { border-color: oklch(0.195 0.045 60 / 0.8); background: oklch(0.175 0.030 60); }"
+    },
+    {
+      "name": "Server Status",
+      "kind": "custom",
+      "description": "Health indicator in topbar. Pulses when connected.",
+      "html": "<span class=\"ds-status ds-status--ok\"><svg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg> Server</span>",
+      "css": "@keyframes ds-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} } .ds-status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 500; letter-spacing: 0.01em; border: 1px solid oklch(0.265 0.018 175); color: oklch(0.595 0.012 165); background: oklch(0.210 0.016 175); } .ds-status--ok { border-color: oklch(0.380 0.080 155); color: oklch(0.680 0.130 155); background: oklch(0.175 0.045 155); } .ds-status--ok svg { animation: ds-pulse 2s ease-in-out infinite; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Panel",
+    "overview": "A tool so well-calibrated that the interface disappears. Every element earns its pixel the way an aircraft instrument earns its dial: legible under pressure, unambiguous under any lighting condition, with nothing present that doesn't directly serve the pilot.\n\nThe palette is deep teal-black, descended from the existing brand without apologizing for the darkness. This is a personal NAS tool used in the evening while a download batch finishes; the ambient light is low, the user is focused, and a white dashboard would be the wrong choice for both the physical context and the psychological register.\n\nThis system explicitly rejects: generic SaaS purple gradients and hero aesthetics; Bootstrap admin panels with their blue sidebars and heavy table borders; the hacker terminal aesthetic (green-on-black, monospace everywhere, designed to look cool rather than work well).",
+    "keyCharacteristics": [
+      "Deep teal-black base with single vivid teal accent",
+      "Single typeface (Inter), tuned by weight and letter-spacing",
+      "Flat tonal layering for depth — no shadows",
+      "Motion only on state change (150ms ease-out-quart)",
+      "Information density is a feature"
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Signal Teal appears on ≤10% of any given screen. One primary button, one active nav item. Its scarcity is the point.",
+        "section": "colors"
+      },
+      {
+        "name": "The No-Zero Rule",
+        "body": "Never use oklch(0 0 0) black or oklch(1 0 0) white. All neutrals carry chroma ≥0.005 toward the teal hue family.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Numbers in data cells always use font-variant-numeric: tabular-nums.",
+        "section": "typography"
+      },
+      {
+        "name": "The One-Family Rule",
+        "body": "No second typeface. Weight, size, and letter-spacing do all the work.",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Shadow Rule",
+        "body": "No box-shadow on any resting surface. Hover states shift background color, not elevation.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use Signal Teal exclusively for primary actions, active states, and focus rings.",
+      "Do use font-variant-numeric: tabular-nums on any column containing numbers.",
+      "Do express depth through lightness increments in the teal family.",
+      "Do keep all transitions at 150ms with cubic-bezier(0.25, 0, 0, 1).",
+      "Do use Amber Caution (not Fault Red) for data quality warnings."
+    ],
+    "donts": [
+      "Don't use purple gradients, hero CTAs, or generic SaaS patterns.",
+      "Don't use Bootstrap-style heavy blue sidebars or oversized nav elements.",
+      "Don't use green-on-black or monospace-everywhere terminal aesthetics.",
+      "Don't add box-shadow to resting surfaces.",
+      "Don't use border-left or border-right as a colored accent stripe.",
+      "Don't use gradient text (background-clip: text).",
+      "Don't animate page loads or section changes."
+    ]
+  }
+}

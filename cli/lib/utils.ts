@@ -1,7 +1,7 @@
 #!/usr/bin/env zx
-import type { Dirent } from "fs";
-import * as fs from "fs/promises";
-import * as path from "path";
+import type { Dirent } from "node:fs";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import inquirer from "inquirer";
 import pc from "picocolors";
 
@@ -35,8 +35,7 @@ export const MOVIE_EXTENSIONS = [
   FILE_EXTENSIONS.AVI,
 ] as const;
 
-export const TV_PATTERN =
-  /[sS]\d{1,2}[eE]\d{1,2}|[sS]\d{1,2}\s|[eE]\d{1,2}\s/i;
+export const TV_PATTERN = /[sS]\d{1,2}[eE]\d{1,2}|[sS]\d{1,2}\s|[eE]\d{1,2}\s/i;
 
 // File system utilities
 export const exists = async (path: string): Promise<boolean> =>
@@ -52,9 +51,8 @@ export async function ensureDirectory(dirPath: string): Promise<void> {
 export const readDirectory = async (dirPath: string): Promise<string[]> =>
   await fs.readdir(dirPath);
 
-export const readDirectoryWithTypes = async (
-  dirPath: string,
-): Promise<Dirent[]> => await fs.readdir(dirPath, { withFileTypes: true });
+export const readDirectoryWithTypes = async (dirPath: string): Promise<Dirent[]> =>
+  await fs.readdir(dirPath, { withFileTypes: true });
 
 // File type checking utilities
 export const isMusicFile = (file: string): boolean =>
@@ -66,8 +64,7 @@ export const isFlacFile = (file: string): boolean =>
 export const isWavFile = (file: string): boolean =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.WAV);
 
-export const isWvFile = (file: string): boolean =>
-  file.toLowerCase().endsWith(FILE_EXTENSIONS.WV);
+export const isWvFile = (file: string): boolean => file.toLowerCase().endsWith(FILE_EXTENSIONS.WV);
 
 export const isCueFile = (file: string): boolean =>
   file.toLowerCase().endsWith(FILE_EXTENSIONS.CUE);
@@ -81,7 +78,7 @@ export const isAudiobookFile = (file: string, pathName?: string): boolean => {
   if (file.toLowerCase().endsWith(FILE_EXTENSIONS.M4B)) {
     return true;
   }
-  if (pathName && pathName.toLowerCase().includes("audiobook")) {
+  if (pathName?.toLowerCase().includes("audiobook")) {
     return true;
   }
   return false;
@@ -126,44 +123,28 @@ export async function promptForInput(
 }
 
 // Logging utilities
-export const logInfo = (message: string): void =>
-  console.log(`${pc.blue("ℹ")} ${message}`);
+export const logInfo = (message: string): void => console.log(`${pc.blue("ℹ")} ${message}`);
 
-export const logSuccess = (message: string): void =>
-  console.log(`${pc.green("✓")} ${message}`);
+export const logSuccess = (message: string): void => console.log(`${pc.green("✓")} ${message}`);
 
-export const logWarning = (message: string): void =>
-  console.log(`${pc.yellow("⚠")} ${message}`);
+export const logWarning = (message: string): void => console.log(`${pc.yellow("⚠")} ${message}`);
 
-export const logError = (message: string): void =>
-  console.error(`${pc.red("✗")} ${message}`);
+export const logError = (message: string): void => console.error(`${pc.red("✗")} ${message}`);
 
-export const logProgress = (message: string): void =>
-  console.log(`${pc.cyan("⟳")} ${message}`);
+export const logProgress = (message: string): void => console.log(`${pc.cyan("⟳")} ${message}`);
 
-export const logFile = (message: string): void =>
-  console.log(`${pc.magenta("📄")} ${message}`);
+export const logFile = (message: string): void => console.log(`${pc.magenta("📄")} ${message}`);
 
-export const logMusic = (message: string): void =>
-  console.log(`${pc.blue("♪")} ${message}`);
+export const logMusic = (message: string): void => console.log(`${pc.blue("♪")} ${message}`);
 
-export const logDirectory = (message: string): void =>
-  console.log(`${pc.cyan("📁")} ${message}`);
+export const logDirectory = (message: string): void => console.log(`${pc.cyan("📁")} ${message}`);
 
 // File operation utilities
-export async function moveFile(
-  source: string,
-  destination: string,
-): Promise<void> {
+export async function moveFile(source: string, destination: string): Promise<void> {
   try {
     await fs.rename(source, destination);
   } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "EXDEV"
-    ) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EXDEV") {
       await fs.cp(source, destination, {
         recursive: true,
         preserveTimestamps: true,
@@ -195,17 +176,11 @@ export function displaySummary(
   console.log(`\n${pc.bold(pc.blue("📊 Summary:"))}`);
 
   if (successCount > 0) {
-    console.log(
-      `${pc.green("✓")} Successfully moved: ${pc.bold(
-        successCount.toString(),
-      )} albums`,
-    );
+    console.log(`${pc.green("✓")} Successfully moved: ${pc.bold(successCount.toString())} albums`);
   }
 
   if (failureCount > 0) {
-    console.log(
-      `${pc.red("✗")} Failed: ${pc.bold(failureCount.toString())} albums`,
-    );
+    console.log(`${pc.red("✗")} Failed: ${pc.bold(failureCount.toString())} albums`);
   }
 
   if (successCount === totalCount) {

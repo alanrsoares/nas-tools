@@ -1,10 +1,11 @@
 import { dirname } from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { fail, formatError, parseWith } from "../lib/fp.js";
+import { type fail, formatError, parseWith } from "../lib/fp.js";
 import {
+  type Finding,
   isAppleJunk,
   isCueName,
   isMusicName,
@@ -13,7 +14,6 @@ import {
   printReport,
   safeReadDir,
   walk,
-  type Finding,
 } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
@@ -57,9 +57,7 @@ function normalizeArtistFolder(name: string): string {
   return name.replace(/^the\s+/i, "").trim();
 }
 
-function run(
-  options: CommandOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     (async () => {
       const findings: Finding[] = [];
@@ -125,12 +123,9 @@ function run(
       const cuePairDirs = new Set<string>();
       const cuePairs = cueFiles.filter((cue) => {
         const base = cue.name.replace(/\.cue$/i, "").toLowerCase();
-        const siblingMusic = musicFiles.filter(
-          (file) => dirname(file.path) === dirname(cue.path),
-        );
+        const siblingMusic = musicFiles.filter((file) => dirname(file.path) === dirname(cue.path));
         const hasPair = siblingMusic.some(
-          (file) =>
-            file.name.toLowerCase().replace(/\.(flac|wav)$/i, "") === base,
+          (file) => file.name.toLowerCase().replace(/\.(flac|wav)$/i, "") === base,
         );
         if (hasPair) {
           cuePairDirs.add(dirname(cue.path));

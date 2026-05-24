@@ -6,9 +6,7 @@ import {
   type TransmissionTorrent,
 } from "../commands/downloads.js";
 
-const torrent = (
-  overrides: Partial<TransmissionTorrent>,
-): TransmissionTorrent => ({
+const torrent = (overrides: Partial<TransmissionTorrent>): TransmissionTorrent => ({
   id: 1,
   name: "Album",
   percentDone: 1,

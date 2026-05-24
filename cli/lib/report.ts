@@ -38,9 +38,7 @@ export function printReport<T>(report: T, json: boolean): void {
     return;
   }
 
-  console.log(
-    pc.bold(String((report as { title?: string }).title ?? "Report")),
-  );
+  console.log(pc.bold(String((report as { title?: string }).title ?? "Report")));
   const findings = (report as { findings?: Finding[] }).findings ?? [];
 
   if (findings.length === 0) {
@@ -91,10 +89,9 @@ export async function walk(
       }
 
       const entryPath = join(dir, name);
-      const entryStat = await safeAsync(
-        () => stat(entryPath),
-        `stat ${entryPath}`,
-      ).unwrapOr(undefined);
+      const entryStat = await safeAsync(() => stat(entryPath), `stat ${entryPath}`).unwrapOr(
+        undefined,
+      );
 
       if (!entryStat) {
         continue;
@@ -119,10 +116,8 @@ export async function walk(
   return entries;
 }
 
-export const isAppleJunk = (name: string): boolean =>
-  name === ".DS_Store" || name.startsWith("._");
+export const isAppleJunk = (name: string): boolean => name === ".DS_Store" || name.startsWith("._");
 
-export const isMusicName = (name: string): boolean =>
-  /\.(flac|mp3|m4a|wav|ogg)$/i.test(name);
+export const isMusicName = (name: string): boolean => /\.(flac|mp3|m4a|wav|ogg)$/i.test(name);
 
 export const isCueName = (name: string): boolean => /\.cue$/i.test(name);

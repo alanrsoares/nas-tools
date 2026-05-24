@@ -1,30 +1,23 @@
 import { readFile } from "node:fs/promises";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
+import { env } from "../lib/env.js";
 import { fail, formatError, parseWith } from "../lib/fp.js";
-import { printReport, type Finding } from "../lib/report.js";
+import { type Finding, printReport } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
-const plexPreferencesPath =
-  "/volume1/Plex/Library/Plex Media Server/Preferences.xml";
+const plexPreferencesPath = "/volume1/Plex/Library/Plex Media Server/Preferences.xml";
 
 const scanMusicOptionsSchema = z.object({
-  baseUrl: z
-    .string()
-    .url()
-    .optional()
-    .default(process.env["PLEX_URL"] ?? "http://127.0.0.1:32400"),
+  baseUrl: z.string().url().optional().default(env.PLEX_URL),
   dryRun: z.boolean().optional().default(false),
   json: z.boolean().optional().default(false),
   preferences: z.string().optional().default(plexPreferencesPath),
   sectionId: z.string().optional(),
   sectionTitle: z.string().optional().default("Music"),
-  token: z
-    .string()
-    .optional()
-    .default(process.env["PLEX_TOKEN"] ?? ""),
+  token: z.string().optional().default(env.PLEX_TOKEN),
 });
 
 type ScanMusicOptions = z.infer<typeof scanMusicOptionsSchema>;
@@ -76,11 +69,11 @@ export function parsePlexSections(sectionsXml: string): PlexSection[] {
   const sections: PlexSection[] = [];
   for (const match of sectionsXml.matchAll(/<Directory\s+[^>]*>/g)) {
     const attributes = parseAttributes(match[0] ?? "");
-    if (attributes["key"] && attributes["title"] && attributes["type"]) {
+    if (attributes.key && attributes.title && attributes.type) {
       sections.push({
-        key: attributes["key"],
-        title: attributes["title"],
-        type: attributes["type"],
+        key: attributes.key,
+        title: attributes.title,
+        type: attributes.type,
       });
     }
   }
@@ -94,9 +87,7 @@ export function chooseMusicSection(
   const musicSections = sections.filter((section) => section.type === "artist");
   return (
     musicSections.find((section) => section.title === title) ??
-    musicSections.find(
-      (section) => section.title.toLowerCase() === title.toLowerCase(),
-    ) ??
+    musicSections.find((section) => section.title.toLowerCase() === title.toLowerCase()) ??
     musicSections[0]
   );
 }
@@ -122,13 +113,8 @@ async function resolvePlexToken(options: ScanMusicOptions): Promise<string> {
   return token;
 }
 
-async function getPlexSections(
-  options: ScanMusicOptions,
-  token: string,
-): Promise<PlexSection[]> {
-  const response = await fetch(
-    plexUrl(options.baseUrl, "/library/sections", token),
-  );
+async function getPlexSections(options: ScanMusicOptions, token: string): Promise<PlexSection[]> {
+  const response = await fetch(plexUrl(options.baseUrl, "/library/sections", token));
   if (!response.ok) {
     throw new Error(`Plex sections request failed: HTTP ${response.status}`);
   }
@@ -148,18 +134,12 @@ async function triggerPlexRefresh(
   }
 }
 
-function runScanMusic(
-  options: ScanMusicOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function runScanMusic(options: ScanMusicOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromPromise(
     (async () => {
       const token = await resolvePlexToken(options);
-      const sections = options.sectionId
-        ? []
-        : await getPlexSections(options, token);
-      const musicSections = sections.filter(
-        (section) => section.type === "artist",
-      );
+      const sections = options.sectionId ? [] : await getPlexSections(options, token);
+      const musicSections = sections.filter((section) => section.type === "artist");
       const selected = options.sectionId
         ? { key: options.sectionId }
         : chooseMusicSection(sections, options.sectionTitle);
@@ -215,11 +195,7 @@ export default function plexCommand(program: Command): void {
   plex
     .command("scan-music")
     .description("Trigger a Plex refresh for the music library section")
-    .option(
-      "--base-url <url>",
-      "Plex server base URL",
-      process.env["PLEX_URL"] ?? "http://127.0.0.1:32400",
-    )
+    .option("--base-url <url>", "Plex server base URL", env.PLEX_URL)
     .option("--token <token>", "Plex token; defaults to PLEX_TOKEN")
     .option(
       "--preferences <path>",

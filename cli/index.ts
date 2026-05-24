@@ -12,9 +12,7 @@ const program = new Command();
 
 program
   .name("nas-tools")
-  .description(
-    "NAS tools CLI for managing music files, downloads, and file operations",
-  )
+  .description("NAS tools CLI for managing music files, downloads, and file operations")
   .version(pkg.version);
 
 const VALID_EXTENSIONS = [".js", ".ts"];

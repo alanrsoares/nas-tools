@@ -1,12 +1,9 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
-import {
-  inferArtistNameFromFolder,
-  scanMediaItems,
-} from "../commands/move-completed.js";
+import { inferArtistNameFromFolder, scanMediaItems } from "../commands/move-completed.js";
 
 describe("move-completed media scanning", () => {
   let tempDir: string;
@@ -25,12 +22,7 @@ describe("move-completed media scanning", () => {
       recursive: true,
     });
     await Bun.write(
-      join(
-        releaseDir,
-        "Albums",
-        "1972 - Close To The Edge",
-        "01 - Close To The Edge.flac",
-      ),
+      join(releaseDir, "Albums", "1972 - Close To The Edge", "01 - Close To The Edge.flac"),
       "fake flac content",
     );
 

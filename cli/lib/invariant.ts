@@ -1,4 +1,4 @@
-const isProduction: boolean = process.env["NODE_ENV"] === "production";
+const isProduction: boolean = process.env.NODE_ENV === "production";
 const prefix: string = "Invariant failed";
 
 /**
@@ -17,6 +17,7 @@ const prefix: string = "Invariant failed";
  * ```
  */
 export default function invariant(
+  // biome-ignore lint/suspicious/noExplicitAny: invariant condition must accept any type
   condition: any,
   // Not providing an inline default argument for message as the result is smaller
   /**
@@ -38,8 +39,7 @@ export default function invariant(
   // When not in production we allow the message to pass through
   // *This block will be removed in production builds*
 
-  const provided: string | undefined =
-    typeof message === "function" ? message() : message;
+  const provided: string | undefined = typeof message === "function" ? message() : message;
 
   // Options:
   // 1. message provided: `${prefix}: ${provided}`

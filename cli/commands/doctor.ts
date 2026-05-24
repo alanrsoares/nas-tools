@@ -1,15 +1,10 @@
 import { access, stat } from "node:fs/promises";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { fail, formatError, parseWith } from "../lib/fp.js";
-import {
-  NAS_PATHS,
-  pathExists,
-  printReport,
-  type Finding,
-} from "../lib/report.js";
+import { type fail, formatError, parseWith } from "../lib/fp.js";
+import { type Finding, NAS_PATHS, pathExists, printReport } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
 const optionsSchema = z.object({
@@ -39,9 +34,7 @@ async function canAccess(path: string): Promise<boolean> {
     .unwrapOr(false);
 }
 
-function run(
-  options: CommandOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     (async () => {
       const checks: DoctorReport["checks"] = [];
@@ -88,8 +81,7 @@ function run(
       if (socketStat && !(await canAccess(dockerSocket))) {
         findings.push({
           severity: "info",
-          message:
-            "Docker socket exists but current user may lack daemon access.",
+          message: "Docker socket exists but current user may lack daemon access.",
           path: dockerSocket,
         });
       }
@@ -105,11 +97,9 @@ export default function doctorCommand(program: Command): void {
     .description("Report ADM NAS paths, Entware tools, and app prerequisites")
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
-        optionsSchema,
-        options,
-        "Invalid doctor options",
-      ).asyncAndThen(run);
+      const result = await parseWith(optionsSchema, options, "Invalid doctor options").asyncAndThen(
+        run,
+      );
 
       result.match(
         () => undefined,

@@ -1,16 +1,10 @@
 import { describe, expect, it } from "bun:test";
 
-import {
-  chooseMusicSection,
-  parsePlexSections,
-  parsePlexToken,
-} from "../commands/plex.js";
+import { chooseMusicSection, parsePlexSections, parsePlexToken } from "../commands/plex.js";
 
 describe("Plex command helpers", () => {
   it("parses PlexOnlineToken from Preferences.xml", () => {
-    expect(parsePlexToken('<Preferences PlexOnlineToken="abc123" />')).toBe(
-      "abc123",
-    );
+    expect(parsePlexToken('<Preferences PlexOnlineToken="abc123" />')).toBe("abc123");
   });
 
   it("parses music library sections from Plex XML", () => {

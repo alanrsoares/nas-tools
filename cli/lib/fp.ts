@@ -1,4 +1,4 @@
-import { err, ok, Result, ResultAsync } from "neverthrow";
+import { err, ok, type Result, ResultAsync } from "neverthrow";
 import { z } from "zod";
 
 export interface AppError {
@@ -6,10 +6,7 @@ export interface AppError {
   cause?: unknown;
 }
 
-export function toAppError(
-  cause: unknown,
-  message = "Operation failed",
-): AppError {
+export function toAppError(cause: unknown, message = "Operation failed"): AppError {
   if (cause instanceof Error) {
     return { message: `${message}: ${cause.message}`, cause };
   }
@@ -29,10 +26,7 @@ export function safe<T>(fn: () => T, message: string): Result<T, AppError> {
   }
 }
 
-export function safeAsync<T>(
-  fn: () => Promise<T>,
-  message: string,
-): ResultAsync<T, AppError> {
+export function safeAsync<T>(fn: () => Promise<T>, message: string): ResultAsync<T, AppError> {
   return ResultAsync.fromPromise(fn(), (cause) => toAppError(cause, message));
 }
 

@@ -1,8 +1,8 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 describe("download CLI integration", () => {
   let tempDir: string;
@@ -26,12 +26,10 @@ describe("download CLI integration", () => {
   });
 
   it("should download the Pines cover image using the CLI", async () => {
-    const testUrl =
-      "https://raw.githubusercontent.com/thedevdojo/pines/refs/heads/main/cover.jpg";
+    const testUrl = "https://raw.githubusercontent.com/thedevdojo/pines/refs/heads/main/cover.jpg";
 
     // Run the CLI command
-    const result =
-      await $`node ${cliPath} download ${testUrl} --dest ${tempDir}`;
+    const result = await $`node ${cliPath} download ${testUrl} --dest ${tempDir}`;
 
     // Verify the command executed successfully
     expect(result.exitCode).toBe(0);
@@ -60,13 +58,13 @@ describe("download CLI integration", () => {
   }, 60000); // 60 second timeout for network operations
 
   it("should handle invalid URLs gracefully via CLI", async () => {
-    const invalidUrl =
-      "https://invalid-domain-that-does-not-exist-12345.com/file.jpg";
+    const invalidUrl = "https://invalid-domain-that-does-not-exist-12345.com/file.jpg";
 
     // The CLI should exit with code 1 for errors
     try {
       await $`node ${cliPath} download ${invalidUrl} --dest ${tempDir} --retries 1 --timeout 5000`;
       throw new Error("Expected CLI to fail with invalid URL");
+      // biome-ignore lint/suspicious/noExplicitAny: zx error shape requires any
     } catch (error: any) {
       // zx throws an error when the command fails, which is expected
       expect(error.exitCode).toBe(1);
@@ -74,13 +72,11 @@ describe("download CLI integration", () => {
   }, 30000);
 
   it("should respect custom User-Agent via CLI", async () => {
-    const testUrl =
-      "https://raw.githubusercontent.com/thedevdojo/pines/refs/heads/main/cover.jpg";
+    const testUrl = "https://raw.githubusercontent.com/thedevdojo/pines/refs/heads/main/cover.jpg";
     const customUA = "Custom-Test-Agent/1.0";
 
     // Run the CLI command with custom User-Agent
-    const result =
-      await $`node ${cliPath} download ${testUrl} --dest ${tempDir} --ua ${customUA}`;
+    const result = await $`node ${cliPath} download ${testUrl} --dest ${tempDir} --ua ${customUA}`;
 
     // Verify the command executed successfully
     expect(result.exitCode).toBe(0);
@@ -103,6 +99,7 @@ describe("download CLI integration", () => {
     try {
       await $`node ${cliPath} download`;
       throw new Error("Expected CLI to fail with missing URL");
+      // biome-ignore lint/suspicious/noExplicitAny: zx error shape requires any
     } catch (error: any) {
       expect(error.exitCode).toBe(1);
     }

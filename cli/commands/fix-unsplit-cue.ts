@@ -1,11 +1,12 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { err, ok, ResultAsync } from "neverthrow";
 import { match } from "ts-pattern";
 import { z } from "zod";
 import { $ } from "zx";
 
+import { env } from "../lib/env.js";
 import { fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
 import {
   confirm as confirmPrompt,
@@ -31,7 +32,7 @@ import {
 
 const COMMANDS_DIR = dirname(fileURLToPath(import.meta.url));
 const BASH_FUNCTIONS_CANDIDATES = [
-  process.env["NAS_TOOLS_BASH_FUNCTIONS_PATH"],
+  env.NAS_TOOLS_BASH_FUNCTIONS_PATH,
   join(COMMANDS_DIR, "../../../bash/functions.sh"),
   join(COMMANDS_DIR, "../../bash/functions.sh"),
   join(process.cwd(), "bash/functions.sh"),
@@ -68,10 +69,7 @@ function isProcessableCueFile(file: string): boolean {
 }
 
 function isAudioFile(file: string): boolean {
-  return (
-    !isMetadataJunkFile(file) &&
-    (isFlacFile(file) || isWavFile(file) || isWvFile(file))
-  );
+  return !isMetadataJunkFile(file) && (isFlacFile(file) || isWavFile(file) || isWvFile(file));
 }
 
 export function getBashFunctionsPath(): ResultAsync<string, ReturnType<typeof fail>> {
@@ -109,32 +107,25 @@ export function scanCueAudioPairs(
     );
   }
 
-  return findCueAudioPairsInDirectory(searchPath, options).andThen(
-    (currentDirPairs) =>
-      safeAsync(
-        () => readDirectoryWithTypes(searchPath),
-        `Error scanning directory ${searchPath}`,
-      )
-        .andThen((entries) =>
-          ResultAsync.fromSafePromise(
-            entries
-              .filter((dirent) => dirent.isDirectory())
-              .map((dirent) => joinPath(searchPath, dirent.name))
-              .reduce(async (pairsPromise, subdir) => {
-                const pairs = await pairsPromise;
-                const subdirPairs = await scanCueAudioPairs(
-                  subdir,
-                  options,
-                ).unwrapOr([]);
+  return findCueAudioPairsInDirectory(searchPath, options).andThen((currentDirPairs) =>
+    safeAsync(() => readDirectoryWithTypes(searchPath), `Error scanning directory ${searchPath}`)
+      .andThen((entries) =>
+        ResultAsync.fromSafePromise(
+          entries
+            .filter((dirent) => dirent.isDirectory())
+            .map((dirent) => joinPath(searchPath, dirent.name))
+            .reduce(async (pairsPromise, subdir) => {
+              const pairs = await pairsPromise;
+              const subdirPairs = await scanCueAudioPairs(subdir, options).unwrapOr([]);
 
-                return [...pairs, ...subdirPairs];
-              }, Promise.resolve(currentDirPairs)),
-          ),
-        )
-        .orElse((error) => {
-          logError(formatError(error));
-          return ok(currentDirPairs);
-        }),
+              return [...pairs, ...subdirPairs];
+            }, Promise.resolve(currentDirPairs)),
+        ),
+      )
+      .orElse((error) => {
+        logError(formatError(error));
+        return ok(currentDirPairs);
+      }),
   );
 }
 
@@ -143,10 +134,7 @@ function findCueAudioPairsInDirectory(
   searchPath: string,
   options: CommandOptions,
 ): ResultAsync<CueAudioPair[], ReturnType<typeof fail>> {
-  return safeAsync(
-    () => readDirectory(searchPath),
-    `Could not read directory ${searchPath}`,
-  )
+  return safeAsync(() => readDirectory(searchPath), `Could not read directory ${searchPath}`)
     .andThen((files) =>
       ResultAsync.fromSafePromise(
         (async () => {
@@ -164,15 +152,9 @@ function findCueAudioPairsInDirectory(
 
             for (const audioFile of audioFiles) {
               const audioBasename = match(audioFile)
-                .when(isFlacFile, (file) =>
-                  getBasename(file, FILE_EXTENSIONS.FLAC),
-                )
-                .when(isWavFile, (file) =>
-                  getBasename(file, FILE_EXTENSIONS.WAV),
-                )
-                .when(isWvFile, (file) =>
-                  getBasename(file, FILE_EXTENSIONS.WV),
-                )
+                .when(isFlacFile, (file) => getBasename(file, FILE_EXTENSIONS.FLAC))
+                .when(isWavFile, (file) => getBasename(file, FILE_EXTENSIONS.WAV))
+                .when(isWvFile, (file) => getBasename(file, FILE_EXTENSIONS.WV))
                 .otherwise(() => "");
 
               const cueBasenameLower = cueBasename.toLowerCase();
@@ -287,11 +269,7 @@ export function processPairs(
           return summary;
         }
 
-        const success = await processCueAudioPair(
-          pair,
-          ask,
-          bashFunctionsPath,
-        ).unwrapOr(false);
+        const success = await processCueAudioPair(pair, ask, bashFunctionsPath).unwrapOr(false);
 
         return success
           ? { ...summary, successCount: summary.successCount + 1 }
@@ -308,79 +286,75 @@ function run(
 ): ResultAsync<void, ReturnType<typeof fail>> {
   const ask = async (q: string) => (options.yes ? true : confirmPrompt(q));
 
-  return safeAsync(() => exists(folderPath), `Failed to access ${folderPath}`)
-    .andThen((folderExists) =>
-      folderExists
-        ? ok<void, ReturnType<typeof fail>>(undefined)
-        : err(
-            fail(
-              `Directory '${folderPath}' does not exist or is not accessible`,
-            ),
+  return (
+    safeAsync(() => exists(folderPath), `Failed to access ${folderPath}`)
+      .andThen((folderExists) =>
+        folderExists
+          ? ok<void, ReturnType<typeof fail>>(undefined)
+          : err(fail(`Directory '${folderPath}' does not exist or is not accessible`)),
+      )
+      // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+      .map(() => {
+        logInfo(`Scanning '${folderPath}' for unsplit cue/audio pairs...`);
+        if (options.ignoreFailed) {
+          logInfo("Ignoring directories with empty __temp_split folders");
+        }
+      })
+      .andThen(() => scanCueAudioPairs(folderPath, options))
+      .andThen((pairs) =>
+        match(pairs)
+          .with([], () => {
+            logInfo("No unsplit cue/audio pairs found.");
+            return ok<void, ReturnType<typeof fail>>(undefined);
+          })
+          .otherwise((foundPairs) =>
+            options.dryRun
+              ? // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+                ok<void, ReturnType<typeof fail>>(displayCueAudioPairs(foundPairs)).map(() => {
+                  logInfo("Dry-run only. No files were changed.");
+                  logInfo(`Would process ${foundPairs.length} cue/audio pairs.`);
+                })
+              : safeAsync(() => confirmProcessing(foundPairs, ask), "Failed to confirm processing")
+                  .andThen((proceed) =>
+                    proceed
+                      ? getBashFunctionsPath().map((bashFunctionsPath) => ({
+                          bashFunctionsPath,
+                          pairs: foundPairs,
+                        }))
+                      : ok<
+                          { bashFunctionsPath: string; pairs: CueAudioPair[] },
+                          ReturnType<typeof fail>
+                        >({
+                          bashFunctionsPath: "",
+                          pairs: [],
+                        }),
+                  )
+                  .andThen(({ bashFunctionsPath, pairs }) => {
+                    if (pairs.length === 0) {
+                      logInfo("Operation cancelled.");
+                      return ok<void, ReturnType<typeof fail>>(undefined);
+                    }
+
+                    logProgress("Processing files...");
+
+                    // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+                    return processPairs(pairs, ask, bashFunctionsPath).map(
+                      ({ successCount, failureCount }) => {
+                        if (failureCount > 0) {
+                          logError("Stopping processing due to failure.");
+                        }
+
+                        displaySummary(successCount, failureCount, pairs.length);
+
+                        if (failureCount > 0) {
+                          process.exitCode = 1;
+                        }
+                      },
+                    );
+                  }),
           ),
-    )
-    .map(() => {
-      logInfo(`Scanning '${folderPath}' for unsplit cue/audio pairs...`);
-      if (options.ignoreFailed) {
-        logInfo("Ignoring directories with empty __temp_split folders");
-      }
-    })
-    .andThen(() => scanCueAudioPairs(folderPath, options))
-    .andThen((pairs) =>
-      match(pairs)
-        .with([], () => {
-          logInfo("No unsplit cue/audio pairs found.");
-          return ok<void, ReturnType<typeof fail>>(undefined);
-        })
-        .otherwise((foundPairs) =>
-          options.dryRun
-            ? ok<void, ReturnType<typeof fail>>(
-                displayCueAudioPairs(foundPairs),
-              ).map(() => {
-                logInfo("Dry-run only. No files were changed.");
-                logInfo(`Would process ${foundPairs.length} cue/audio pairs.`);
-              })
-            : safeAsync(
-                () => confirmProcessing(foundPairs, ask),
-                "Failed to confirm processing",
-              )
-                .andThen((proceed) =>
-                  proceed
-                    ? getBashFunctionsPath().map((bashFunctionsPath) => ({
-                        bashFunctionsPath,
-                        pairs: foundPairs,
-                      }))
-                    : ok<
-                        { bashFunctionsPath: string; pairs: CueAudioPair[] },
-                        ReturnType<typeof fail>
-                      >({
-                        bashFunctionsPath: "",
-                        pairs: [],
-                      }),
-                )
-                .andThen(({ bashFunctionsPath, pairs }) => {
-                  if (pairs.length === 0) {
-                    logInfo("Operation cancelled.");
-                    return ok<void, ReturnType<typeof fail>>(undefined);
-                  }
-
-                  logProgress("Processing files...");
-
-                  return processPairs(pairs, ask, bashFunctionsPath).map(
-                    ({ successCount, failureCount }) => {
-                      if (failureCount > 0) {
-                        logError("Stopping processing due to failure.");
-                      }
-
-                      displaySummary(successCount, failureCount, pairs.length);
-
-                      if (failureCount > 0) {
-                        process.exitCode = 1;
-                      }
-                    },
-                  );
-                }),
-        ),
-    );
+      )
+  );
 }
 
 export default function fixUnsplitCueCommand(program: Command): void {

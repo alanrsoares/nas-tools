@@ -1,7 +1,7 @@
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 const MOCK_FILES = [
   {
@@ -32,9 +32,7 @@ const MOCK_FILES = [
 
 // Create a set of mock folders derived from the mock files
 const MOCK_FOLDERS = new Set(
-  MOCK_FILES.filter((x) => x.path.length > 1).map(({ path }) =>
-    path.slice(0, -1),
-  ),
+  MOCK_FILES.filter((x) => x.path.length > 1).map(({ path }) => path.slice(0, -1)),
 );
 
 const normalizeTestDir = (output: string): string =>
@@ -151,8 +149,7 @@ describe("dir-tree CLI integration", () => {
 
   it("should exclude files/directories with --exclude option", async () => {
     // Run the CLI command with exclude option
-    const result =
-      await $`node ${cliPath} dir-tree ${testDir} --exclude folder1 file1.txt`;
+    const result = await $`node ${cliPath} dir-tree ${testDir} --exclude folder1 file1.txt`;
 
     // Verify the command executed successfully
     expect(result.exitCode).toBe(0);

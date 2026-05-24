@@ -1,19 +1,14 @@
 import { constants, type Dirent } from "node:fs";
 import { access, readdir, rmdir } from "node:fs/promises";
 import { delimiter, join } from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { Maybe } from "true-myth";
 import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
-import {
-  NAS_PATHS,
-  pathExists,
-  printReport,
-  type Finding,
-} from "../lib/report.js";
+import { type fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
+import { type Finding, NAS_PATHS, pathExists, printReport } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
 const optionsSchema = z.object({
@@ -32,11 +27,7 @@ const cleanOptionsSchema = optionsSchema.extend({
 type CommandOptions = z.infer<typeof optionsSchema>;
 type CleanOptions = z.infer<typeof cleanOptionsSchema>;
 
-type CueStatus =
-  | "ready"
-  | "blocked_temp_split"
-  | "orphan_cue"
-  | "already_split_or_false_positive";
+type CueStatus = "ready" | "blocked_temp_split" | "orphan_cue" | "already_split_or_false_positive";
 
 type TempSplitStatus =
   | "empty_stale"
@@ -88,10 +79,7 @@ interface TempSplitGroup {
   action: string;
 }
 
-type ReportedTempSplitGroup = Omit<
-  TempSplitGroup,
-  "cueFiles" | "audioFiles" | "otherFiles"
-> &
+type ReportedTempSplitGroup = Omit<TempSplitGroup, "cueFiles" | "audioFiles" | "otherFiles"> &
   Partial<Pick<TempSplitGroup, "cueFiles" | "audioFiles" | "otherFiles">>;
 
 interface CueTriageReport {
@@ -156,12 +144,10 @@ const requiredTools = ["flac", "cuebreakpoints", "shnsplit"] as const;
 const optionalTools = ["cuetag", "metaflac"] as const;
 
 const isAppleDoubleName = (name: string): boolean => name.startsWith("._");
-const isCueName = (name: string): boolean =>
-  !isAppleDoubleName(name) && /\.cue$/i.test(name);
+const isCueName = (name: string): boolean => !isAppleDoubleName(name) && /\.cue$/i.test(name);
 const isSplitAudioName = (name: string): boolean =>
   !isAppleDoubleName(name) && /\.(flac|wav|wv)$/i.test(name);
-const baseName = (name: string): string =>
-  name.replace(/\.(cue|flac|wav|wv)$/i, "").toLowerCase();
+const baseName = (name: string): string => name.replace(/\.(cue|flac|wav|wv)$/i, "").toLowerCase();
 
 const isTrackLikeAudioName = (name: string): boolean =>
   /^\d{1,3}(\.| - |-|_| )/.test(name) && isSplitAudioName(name);
@@ -176,30 +162,25 @@ const isVisibleDirectory = (entry: Dirent): boolean =>
 const isRequiredTool = (name: string): boolean =>
   requiredTools.includes(name as (typeof requiredTools)[number]);
 
-const isRequiredMissing = (tool: ToolStatus): boolean =>
-  tool.required && !tool.available;
+const isRequiredMissing = (tool: ToolStatus): boolean => tool.required && !tool.available;
 
-const isCueTagMissing = (tool: ToolStatus): boolean =>
-  tool.name === "cuetag" && !tool.available;
+const isCueTagMissing = (tool: ToolStatus): boolean => tool.name === "cuetag" && !tool.available;
 
 const isMetaFlacMissing = (tool: ToolStatus): boolean =>
   tool.name === "metaflac" && !tool.available;
 
 const isReadyGroup = (group: CueGroup): boolean => group.status === "ready";
 
-const isBlockedTempSplitGroup = (group: CueGroup): boolean =>
-  group.status === "blocked_temp_split";
+const isBlockedTempSplitGroup = (group: CueGroup): boolean => group.status === "blocked_temp_split";
 
-const isOrphanCueGroup = (group: CueGroup): boolean =>
-  group.status === "orphan_cue";
+const isOrphanCueGroup = (group: CueGroup): boolean => group.status === "orphan_cue";
 
 const isAlreadySplitGroup = (group: CueGroup): boolean =>
   group.status === "already_split_or_false_positive";
 
 const hasRisks = (group: CueGroup): boolean => group.risks.length > 0;
 
-const isEmptyStaleTempSplit = (group: TempSplitGroup): boolean =>
-  group.status === "empty_stale";
+const isEmptyStaleTempSplit = (group: TempSplitGroup): boolean => group.status === "empty_stale";
 
 const hasSplitTracksTempSplit = (group: TempSplitGroup): boolean =>
   group.status === "has_split_tracks";
@@ -210,13 +191,10 @@ const hasCueOrOriginalTempSplit = (group: TempSplitGroup): boolean =>
 const isSuspiciousMixedTempSplit = (group: TempSplitGroup): boolean =>
   group.status === "suspicious_mixed";
 
-const isSafeCleanupCandidate = (group: TempSplitGroup): boolean =>
-  group.safeCleanupCandidate;
+const isSafeCleanupCandidate = (group: TempSplitGroup): boolean => group.safeCleanupCandidate;
 
 function matchingAudio(cueFile: string, audioFiles: string[]): Maybe<string> {
-  return Maybe.of(
-    audioFiles.find((audioFile) => baseName(audioFile) === baseName(cueFile)),
-  );
+  return Maybe.of(audioFiles.find((audioFile) => baseName(audioFile) === baseName(cueFile)));
 }
 
 async function commandAvailable(name: string): Promise<boolean> {
@@ -225,7 +203,7 @@ async function commandAvailable(name: string): Promise<boolean> {
     return true;
   }
 
-  const paths = process.env["PATH"]?.split(delimiter) ?? [];
+  const paths = process.env.PATH?.split(delimiter) ?? [];
   for (const path of paths) {
     const candidate = join(path, name);
     const canExecute = await safeAsync(
@@ -272,10 +250,7 @@ function classifyGroup(input: {
     hasTempSplit: input.hasTempSplit,
     hasTrackLikeAudio: input.audioFiles.some(isTrackLikeAudioName),
   })
-    .with(
-      { hasPair: true, hasTempSplit: true },
-      () => "blocked_temp_split" as const,
-    )
+    .with({ hasPair: true, hasTempSplit: true }, () => "blocked_temp_split" as const)
     .with({ hasPair: true, hasTempSplit: false }, () => "ready" as const)
     .with(
       { hasPair: false, hasTrackLikeAudio: true },
@@ -285,14 +260,8 @@ function classifyGroup(input: {
 
   const action = match(status)
     .with("ready", () => "Run fix-unsplit-cue on this directory or parent.")
-    .with(
-      "blocked_temp_split",
-      () => "Inspect __temp_split before retrying or cleaning.",
-    )
-    .with(
-      "already_split_or_false_positive",
-      () => "Leave alone unless tracks or tags look wrong.",
-    )
+    .with("blocked_temp_split", () => "Inspect __temp_split before retrying or cleaning.")
+    .with("already_split_or_false_positive", () => "Leave alone unless tracks or tags look wrong.")
     .with("orphan_cue", () => "Find matching FLAC/WAV or remove stale CUE.")
     .exhaustive();
 
@@ -311,10 +280,7 @@ function cuePair(cue: string, audioFiles: string[]): CuePair[] {
   return matchingAudio(cue, audioFiles).mapOr([], (audio) => [{ cue, audio }]);
 }
 
-function directoryScan(
-  directory: string,
-  entries: Dirent[],
-): Maybe<DirectoryScan> {
+function directoryScan(directory: string, entries: Dirent[]): Maybe<DirectoryScan> {
   const cueFiles = entries
     .filter((entry) => entry.isFile() && isCueName(entry.name))
     .map((entry) => entry.name)
@@ -382,17 +348,10 @@ async function scanCueDirectories(
 }
 
 function tempSplitEntry(entries: Dirent[]): Maybe<Dirent> {
-  return Maybe.of(
-    entries.find(
-      (entry) => entry.isDirectory() && entry.name === "__temp_split",
-    ),
-  );
+  return Maybe.of(entries.find((entry) => entry.isDirectory() && entry.name === "__temp_split"));
 }
 
-function visibleEntryNames(
-  entries: Dirent[],
-  predicate: (entry: Dirent) => boolean,
-): string[] {
+function visibleEntryNames(entries: Dirent[], predicate: (entry: Dirent) => boolean): string[] {
   return entries
     .filter((entry) => !isAppleDoubleName(entry.name))
     .filter(predicate)
@@ -415,8 +374,7 @@ function classifyTempSplit(input: {
   );
   const otherFiles = visibleEntryNames(
     input.entries,
-    (entry) =>
-      entry.isFile() && !isCueName(entry.name) && !isSplitAudioName(entry.name),
+    (entry) => entry.isFile() && !isCueName(entry.name) && !isSplitAudioName(entry.name),
   );
   const directoryCount = input.entries.filter(isVisibleDirectory).length;
   const fileCount = cueFiles.length + audioFiles.length + otherFiles.length;
@@ -439,10 +397,7 @@ function classifyTempSplit(input: {
       { cueCount: 0, otherCount: 0, hasOnlyTrackLikeAudio: true },
       () => "has_split_tracks" as const,
     )
-    .with(
-      { directoryCount: 0, otherCount: 0 },
-      () => "has_cue_or_original" as const,
-    )
+    .with({ directoryCount: 0, otherCount: 0 }, () => "has_cue_or_original" as const)
     .otherwise(() => "suspicious_mixed" as const);
   const safeCleanupCandidate = status === "empty_stale";
 
@@ -463,25 +418,13 @@ function classifyTempSplit(input: {
 function tempSplitAction(status: TempSplitStatus): string {
   return match(status)
     .with("empty_stale", () => "Safe cleanup candidate after dry-run review.")
-    .with(
-      "has_split_tracks",
-      () => "Inspect or recover split tracks before cleanup.",
-    )
-    .with(
-      "has_cue_or_original",
-      () => "Inspect original/CUE leftovers before retrying.",
-    )
-    .with(
-      "suspicious_mixed",
-      () => "Manual review required; do not auto-clean.",
-    )
+    .with("has_split_tracks", () => "Inspect or recover split tracks before cleanup.")
+    .with("has_cue_or_original", () => "Inspect original/CUE leftovers before retrying.")
+    .with("suspicious_mixed", () => "Manual review required; do not auto-clean.")
     .exhaustive();
 }
 
-async function tempSplitGroup(
-  directory: string,
-  tempEntry: Dirent,
-): Promise<TempSplitGroup> {
+async function tempSplitGroup(directory: string, tempEntry: Dirent): Promise<TempSplitGroup> {
   const tempDirectory = childDirectoryPath(directory, tempEntry);
   const entries = await readDirents(tempDirectory);
 
@@ -519,22 +462,14 @@ async function scanTempSplitDirectories(
     Promise.resolve([] as TempSplitGroup[]),
   );
 
-  return [...current, ...nested].sort((a, b) =>
-    a.directory.localeCompare(b.directory),
-  );
+  return [...current, ...nested].sort((a, b) => a.directory.localeCompare(b.directory));
 }
 
 function groupCueDirectories(scans: DirectoryScan[]): CueGroup[] {
-  return scans
-    .map(classifyGroup)
-    .sort((a, b) => a.directory.localeCompare(b.directory));
+  return scans.map(classifyGroup).sort((a, b) => a.directory.localeCompare(b.directory));
 }
 
-function buildFindings(
-  tools: ToolStatus[],
-  groups: CueGroup[],
-  limit: number,
-): Finding[] {
+function buildFindings(tools: ToolStatus[], groups: CueGroup[], limit: number): Finding[] {
   const findings: Finding[] = [];
 
   for (const tool of tools.filter(isRequiredMissing)) {
@@ -683,10 +618,7 @@ function reportTempSplitGroup(
   return summary;
 }
 
-function buildTempSplitFindings(
-  groups: TempSplitGroup[],
-  limit: number,
-): Finding[] {
+function buildTempSplitFindings(groups: TempSplitGroup[], limit: number): Finding[] {
   const reportedGroups = limit === 0 ? groups : groups.slice(0, limit);
 
   return reportedGroups.map((group) => ({
@@ -716,17 +648,12 @@ function buildTempSplitReport(
       safeCleanupCandidates: groups.filter(isSafeCleanupCandidate).length,
       reportedGroups: reportedGroups.length,
     },
-    groups: reportedGroups.map((group) =>
-      reportTempSplitGroup(group, includeFiles),
-    ),
+    groups: reportedGroups.map((group) => reportTempSplitGroup(group, includeFiles)),
     findings: buildTempSplitFindings(groups, limit),
   };
 }
 
-function emptyTempSplitCleanReport(
-  root: string,
-  dryRun: boolean,
-): TempSplitCleanReport {
+function emptyTempSplitCleanReport(root: string, dryRun: boolean): TempSplitCleanReport {
   return {
     title: "CUE temp-split clean",
     root,
@@ -759,9 +686,7 @@ function tempSplitCleanCandidate(group: TempSplitGroup): boolean {
   return group.status === "empty_stale" && group.safeCleanupCandidate;
 }
 
-function cleanFindingSeverity(
-  result: TempSplitCleanResult,
-): Finding["severity"] {
+function cleanFindingSeverity(result: TempSplitCleanResult): Finding["severity"] {
   return match(result.status)
     .with("failed", () => "error" as const)
     .with("skipped", () => "warn" as const)
@@ -794,9 +719,7 @@ function cleanResultForSkipped(group: TempSplitGroup): TempSplitCleanResult {
   };
 }
 
-async function classifyExistingTempSplit(
-  group: TempSplitGroup,
-): Promise<TempSplitGroup> {
+async function classifyExistingTempSplit(group: TempSplitGroup): Promise<TempSplitGroup> {
   const entries = await readDirents(group.tempDirectory);
 
   return classifyTempSplit({
@@ -806,18 +729,13 @@ async function classifyExistingTempSplit(
   });
 }
 
-async function removeEmptyTempSplit(
-  group: TempSplitGroup,
-): Promise<TempSplitCleanResult> {
+async function removeEmptyTempSplit(group: TempSplitGroup): Promise<TempSplitCleanResult> {
   const rechecked = await classifyExistingTempSplit(group);
   if (!tempSplitCleanCandidate(rechecked)) {
     return cleanResultForSkipped(rechecked);
   }
 
-  return await safeAsync(
-    () => rmdir(rechecked.tempDirectory),
-    `remove ${rechecked.tempDirectory}`,
-  )
+  return await safeAsync(() => rmdir(rechecked.tempDirectory), `remove ${rechecked.tempDirectory}`)
     .map(
       (): TempSplitCleanResult => ({
         directory: rechecked.directory,
@@ -877,8 +795,7 @@ function buildTempSplitCleanReport(input: {
   results: TempSplitCleanResult[];
   limit: number;
 }): TempSplitCleanReport {
-  const reportedResults =
-    input.limit === 0 ? input.results : input.results.slice(0, input.limit);
+  const reportedResults = input.limit === 0 ? input.results : input.results.slice(0, input.limit);
 
   return {
     title: "CUE temp-split clean",
@@ -898,9 +815,7 @@ function buildTempSplitCleanReport(input: {
   };
 }
 
-function runCueTriage(
-  options: CommandOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function runCueTriage(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     (async () => {
       if (!(await pathExists(options.root))) {
@@ -913,22 +828,14 @@ function runCueTriage(
         scanCueDirectories(options.root, options.maxDepth),
       ]);
       const groups = groupCueDirectories(scans);
-      const report = buildReport(
-        options.root,
-        tools,
-        groups,
-        options.limit,
-        options.includeFiles,
-      );
+      const report = buildReport(options.root, tools, groups, options.limit, options.includeFiles);
 
       printReport(report, options.json);
     })(),
   );
 }
 
-function runTempSplitTriage(
-  options: CommandOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function runTempSplitTriage(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     (async () => {
       if (!(await pathExists(options.root))) {
@@ -936,10 +843,7 @@ function runTempSplitTriage(
         return;
       }
 
-      const groups = await scanTempSplitDirectories(
-        options.root,
-        options.maxDepth,
-      );
+      const groups = await scanTempSplitDirectories(options.root, options.maxDepth);
       const report = buildTempSplitReport(
         options.root,
         groups,
@@ -952,23 +856,15 @@ function runTempSplitTriage(
   );
 }
 
-function runTempSplitClean(
-  options: CleanOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function runTempSplitClean(options: CleanOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     (async () => {
       if (!(await pathExists(options.root))) {
-        printReport(
-          emptyTempSplitCleanReport(options.root, options.dryRun),
-          options.json,
-        );
+        printReport(emptyTempSplitCleanReport(options.root, options.dryRun), options.json);
         return;
       }
 
-      const groups = await scanTempSplitDirectories(
-        options.root,
-        options.maxDepth,
-      );
+      const groups = await scanTempSplitDirectories(options.root, options.maxDepth);
       const candidates = groups.filter(tempSplitCleanCandidate);
       const results = await cleanTempSplitCandidates(groups, options);
       const report = buildTempSplitCleanReport({
@@ -989,14 +885,10 @@ function runTempSplitClean(
   );
 }
 
-async function handleCueTriage(
-  options: Record<string, unknown>,
-): Promise<void> {
-  const result = await parseWith(
-    optionsSchema,
-    options,
-    "Invalid cue triage options",
-  ).asyncAndThen(runCueTriage);
+async function handleCueTriage(options: Record<string, unknown>): Promise<void> {
+  const result = await parseWith(optionsSchema, options, "Invalid cue triage options").asyncAndThen(
+    runCueTriage,
+  );
 
   result.match(
     () => undefined,
@@ -1007,9 +899,7 @@ async function handleCueTriage(
   );
 }
 
-async function handleTempSplitTriage(
-  options: Record<string, unknown>,
-): Promise<void> {
+async function handleTempSplitTriage(options: Record<string, unknown>): Promise<void> {
   const result = await parseWith(
     optionsSchema,
     options,
@@ -1025,9 +915,7 @@ async function handleTempSplitTriage(
   );
 }
 
-async function handleTempSplitClean(
-  options: Record<string, unknown>,
-): Promise<void> {
+async function handleTempSplitClean(options: Record<string, unknown>): Promise<void> {
   const result = await parseWith(
     cleanOptionsSchema,
     options,
@@ -1045,9 +933,7 @@ async function handleTempSplitClean(
 
 export default function cueCommand(program: Command): void {
   const cue = program.command("cue").description("CUE sheet workflows");
-  const tempSplit = cue
-    .command("temp-split")
-    .description("Inspect __temp_split leftovers");
+  const tempSplit = cue.command("temp-split").description("Inspect __temp_split leftovers");
 
   cue
     .command("triage")
@@ -1074,11 +960,7 @@ export default function cueCommand(program: Command): void {
     .description("Remove empty __temp_split directories")
     .option("--root <path>", "Music library root", NAS_PATHS.flac)
     .option("--max-depth <number>", "Maximum directory walk depth", "4")
-    .option(
-      "--limit <number>",
-      "Detailed results to include; 0 means all",
-      "25",
-    )
+    .option("--limit <number>", "Detailed results to include; 0 means all", "25")
     .option("--dry-run", "Preview deletions", true)
     .option("--no-dry-run", "Allow deletion when combined with --yes")
     .option("--yes", "Confirm deletion when combined with --no-dry-run", false)

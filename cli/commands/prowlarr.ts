@@ -1,22 +1,16 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import got from "got";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { fail, formatError, parseWith, type AppError } from "../lib/fp.js";
-import { printReport, type Finding } from "../lib/report.js";
+import { env } from "../lib/env.js";
+import { type AppError, fail, formatError, parseWith } from "../lib/fp.js";
+import { type Finding, printReport } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
 const searchOptionsSchema = z.object({
-  apiKey: z
-    .string()
-    .optional()
-    .default(process.env["PROWLARR_API_KEY"] ?? ""),
-  baseUrl: z
-    .string()
-    .url()
-    .optional()
-    .default(process.env["PROWLARR_URL"] ?? "http://127.0.0.1:29696"),
+  apiKey: z.string().optional().default(env.PROWLARR_API_KEY),
+  baseUrl: z.string().url().optional().default(env.PROWLARR_URL),
   categories: z.array(z.coerce.number()).optional().default([3040]), // Audio/Lossless
   json: z.boolean().optional().default(false),
   query: z.string(),
@@ -81,12 +75,10 @@ function runSearch(options: SearchOptions): ResultAsync<void, AppError> {
 
       if (!options.json) {
         console.log(`\n🔎 Prowlarr Search: "${options.query}"`);
-        console.log(
-          `${"Indexer".padEnd(20)} ${"Seed".padEnd(5)} ${"Size".padEnd(8)} Title`,
-        );
+        console.log(`${"Indexer".padEnd(20)} ${"Seed".padEnd(5)} ${"Size".padEnd(8)} Title`);
         console.log("-".repeat(80));
         for (const r of results.slice(0, 20)) {
-          const sizeStr = (r.size / (1024 * 1024)).toFixed(0) + "MB";
+          const sizeStr = `${(r.size / (1024 * 1024)).toFixed(0)}MB`;
           console.log(
             `${(r.indexer || "Unknown").slice(0, 19).padEnd(20)} ` +
               `${r.seeders.toString().padEnd(5)} ` +
@@ -116,19 +108,14 @@ function runSearch(options: SearchOptions): ResultAsync<void, AppError> {
 }
 
 export default function prowlarrCommand(program: Command): void {
-  const prowlarr = program
-    .command("prowlarr")
-    .description("Search Prowlarr for media");
+  const prowlarr = program.command("prowlarr").description("Search Prowlarr for media");
 
   prowlarr
     .command("search")
     .description("Search for audio lossless")
     .argument("<query>", "Search query (artist, album, etc.)")
     .option("--json", "Print JSON report", false)
-    .option(
-      "--categories <ids...>",
-      "Prowlarr category IDs (default: 3040 for Lossless Audio)",
-    )
+    .option("--categories <ids...>", "Prowlarr category IDs (default: 3040 for Lossless Audio)")
     .action(async (query: string, options: Record<string, unknown>) => {
       const result = await parseWith(searchOptionsSchema, {
         ...options,

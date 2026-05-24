@@ -1,22 +1,21 @@
 import { copyFile, mkdir, rm } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
+import { type fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
 import {
+  type Finding,
   isAppleJunk,
   NAS_PATHS,
   pathExists,
   printReport,
   walk,
-  type Finding,
 } from "../lib/report.js";
 import { logError, logInfo, logSuccess } from "../lib/utils.js";
 
-const DEFAULT_CLEAN_BACKUP_DIR =
-  "/volume1/Download/Transmission/backup/nas-clean";
+const DEFAULT_CLEAN_BACKUP_DIR = "/volume1/Download/Transmission/backup/nas-clean";
 
 const cleanOptionsSchema = z.object({
   backupDir: z.string().optional().default(DEFAULT_CLEAN_BACKUP_DIR),
@@ -70,14 +69,10 @@ const allowedRoots = [
 ] as const;
 
 function isAllowedRoot(root: string): boolean {
-  return allowedRoots.some(
-    (allowed) => root === allowed || root.startsWith(`${allowed}/`),
-  );
+  return allowedRoots.some((allowed) => root === allowed || root.startsWith(`${allowed}/`));
 }
 
-function runClean(
-  options: CleanOptions,
-): ResultAsync<void, ReturnType<typeof fail>> {
+function runClean(options: CleanOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return ResultAsync.fromSafePromise(
     (async () => {
       const findings: Finding[] = [];
@@ -118,16 +113,13 @@ function runClean(
         (entry) =>
           !entry.isDirectory &&
           (isAppleJunk(entry.name) ||
-            (entry.name.endsWith(".part") &&
-              entry.path.includes("/#Recycle/"))),
+            (entry.name.endsWith(".part") && entry.path.includes("/#Recycle/"))),
       );
 
       for (const candidate of candidates.slice(0, 100)) {
         findings.push({
           severity: "info",
-          message: options.dryRun
-            ? "Would delete cleanup candidate."
-            : "Cleanup candidate.",
+          message: options.dryRun ? "Would delete cleanup candidate." : "Cleanup candidate.",
           path: candidate.path,
         });
       }
@@ -143,12 +135,7 @@ function runClean(
       if (shouldDelete) {
         for (const candidate of candidates) {
           const backupPath = await safeAsync(
-            () =>
-              backupCleanupCandidate(
-                options.root,
-                options.backupDir,
-                candidate.path,
-              ),
+            () => backupCleanupCandidate(options.root, options.backupDir, candidate.path),
             `backup ${candidate.path}`,
           ).unwrapOr(undefined);
 
@@ -164,6 +151,7 @@ function runClean(
           await safeAsync(
             () => rm(candidate.path, { force: true }),
             `delete ${candidate.path}`,
+            // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
           ).map(() => {
             deleted++;
             findings.push({

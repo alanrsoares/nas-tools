@@ -7,7 +7,7 @@ export function loadNasToolsEnv(): void {
     join(process.cwd(), ".env"),
     resolve(import.meta.dirname, "../../.env"),
     resolve(import.meta.dirname, "../../../.env"),
-    process.env["HOME"] ? join(process.env["HOME"], "dev/nas-tools/.env") : "",
+    process.env.HOME ? join(process.env.HOME, "dev/nas-tools/.env") : "",
   ].filter((path) => path !== "");
 
   for (const path of [...new Set(candidatePaths)]) {

@@ -8,19 +8,10 @@
     "noImplicitAny": true,
     "noImplicitThis": true,
     "resolveJsonModule": true,
+    "noPropertyAccessFromIndexSignature": false,
     "noEmit": false,
-    "outDir": "./dist",
-    "downlevelIteration": true,
-    "types": ["bun"],
-    "verbatimModuleSyntax": true,
-    "useUnknownInCatchVariables": true
+    "outDir": "./dist"
   },
   "include": ["cli/**/*"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "**/__tests__/**"
-  ]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "**/__tests__/**"]
 }

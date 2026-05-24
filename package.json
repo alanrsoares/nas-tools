@@ -1,17 +1,30 @@
 {
   "name": "nas-tools",
+  "private": true,
   "version": "1.0.1",
   "description": "NAS tools CLI for managing music files, downloads, and file operations",
   "main": "dist/cli/index.js",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "bin": {
     "nas-tools": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "bun run cli",
+    "build": "tsc && bun run --filter @nas-tools/core build && bun run --filter @nas-tools/server build && bun run --filter @nas-tools/web build",
+    "dev": "bun scripts/dev.ts",
+    "dev:cli": "bun run cli",
+    "dev:server": "bun run --filter @nas-tools/server start",
+    "dev:web": "bun run --filter @nas-tools/web dev",
+    "start:web": "bun scripts/dev.ts",
+    "check": "bun run lint && bun run typecheck && bun run test",
     "test": "bun test cli",
-    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix .",
+    "format": "biome check --fix .",
     "LINK": "bun run build && bun link"
   },
   "keywords": [
@@ -38,10 +51,9 @@
     "zx": "^8.8.5"
   },
   "devDependencies": {
-    "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
+    "@biomejs/biome": "^2.4.15",
     "@tsconfig/strictest": "^2.0.8",
     "@types/bun": "^1.3.14",
-    "prettier": "^3.8.3",
     "typescript": "^5.9.3"
   }
 }
