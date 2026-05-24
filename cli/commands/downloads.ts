@@ -3,7 +3,7 @@ import { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { fail, formatError, parseWith } from "../lib/fp.js";
+import { fail, formatError, parseWith, type AppError } from "../lib/fp.js";
 import {
   isAppleJunk,
   isMusicName,
@@ -109,6 +109,65 @@ interface CleanTransmissionReport {
   };
   candidates: CleanTransmissionCandidate[];
   findings: Finding[];
+}
+
+const addTorrentOptionsSchema = z.object({
+  rpcUrl: z
+    .string()
+    .url()
+    .optional()
+    .default("http://127.0.0.1:29091/transmission/rpc"),
+  username: z
+    .string()
+    .optional()
+    .default(process.env["TRANSMISSION_RPC_USERNAME"] ?? "trsmadmin"),
+  password: z
+    .string()
+    .optional()
+    .default(process.env["TRANSMISSION_RPC_PASSWORD"] ?? ""),
+  torrent: z.string(),
+  paused: z.boolean().optional().default(false),
+});
+
+type AddTorrentOptions = z.infer<typeof addTorrentOptionsSchema>;
+
+function runAddTorrent(
+  options: AddTorrentOptions,
+): ResultAsync<void, AppError> {
+  return ResultAsync.fromPromise(
+    (async () => {
+      const isMagnet = options.torrent.startsWith("magnet:");
+      const args: Record<string, unknown> = {
+        paused: options.paused,
+      };
+
+      if (isMagnet) {
+        args["filename"] = options.torrent;
+      } else {
+        // Assume it's a file path or URL
+        args["filename"] = options.torrent;
+      }
+
+      const response = await transmissionRpc<{
+        "torrent-added"?: { id: number; name: string };
+        "torrent-duplicate"?: { id: number; name: string };
+      }>(options, "torrent-add", args);
+
+      if (response.arguments["torrent-added"]) {
+        console.log(
+          `✅ Added torrent: ${response.arguments["torrent-added"].name} (ID: ${response.arguments["torrent-added"].id})`,
+        );
+      } else if (response.arguments["torrent-duplicate"]) {
+        console.log(
+          `ℹ️ Torrent already exists: ${response.arguments["torrent-duplicate"].name} (ID: ${response.arguments["torrent-duplicate"].id})`,
+        );
+      }
+    })(),
+    (cause) => {
+      const msg = cause instanceof Error ? cause.message : String(cause);
+      return fail(`Transmission add failed: ${msg}`, cause);
+    },
+  );
 }
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -480,6 +539,41 @@ export default function downloadsCommand(program: Command): void {
         options,
         "Invalid Transmission cleanup options",
       ).asyncAndThen(runCleanTransmission);
+
+      result.match(
+        () => undefined,
+        (error) => {
+          logError(formatError(error));
+          process.exit(1);
+        },
+      );
+    });
+
+  downloads
+    .command("add")
+    .description("Add a torrent to Transmission (Magnet or URL)")
+    .argument("<torrent>", "Magnet link or torrent file URL")
+    .option(
+      "--rpc-url <url>",
+      "Transmission RPC endpoint",
+      "http://127.0.0.1:29091/transmission/rpc",
+    )
+    .option(
+      "--username <name>",
+      "Transmission RPC username",
+      process.env["TRANSMISSION_RPC_USERNAME"] ?? "trsmadmin",
+    )
+    .option(
+      "--password <password>",
+      "Transmission RPC password; defaults to TRANSMISSION_RPC_PASSWORD",
+      process.env["TRANSMISSION_RPC_PASSWORD"] ?? "",
+    )
+    .option("--paused", "Add torrent in paused state", false)
+    .action(async (torrent: string, options: Record<string, unknown>) => {
+      const result = await parseWith(addTorrentOptionsSchema, {
+        ...options,
+        torrent,
+      }).asyncAndThen(runAddTorrent);
 
       result.match(
         () => undefined,
