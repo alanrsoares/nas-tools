@@ -4,6 +4,7 @@ import type { Command } from "commander";
 import {
   findDuplicates,
   getAlbumInfo,
+  identifyAlbumCandidates,
   identifyDedupeMoves,
   scoreAlbum,
   walk,
@@ -36,48 +37,55 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
   return walk(options.root, { maxDepth: 4 })
     .mapErr((error) => ({ type: "fail", message: error.message } as const))
     .andThen((entries) => {
-      const folderPaths = [...new Set(
-        entries
-          .filter((e) => !e.isDirectory && isMusicName(e.name))
-          .map((e) => path.dirname(e.path))
-      )].filter((f) => !f.includes("_duplicates"));
+      // 1. Identify candidates cheaply using folder names and track counts
+      const candidates = identifyAlbumCandidates(entries);
+      console.log(pc.cyan(`Found ${candidates.length} albums. Identifying potential duplicates...`));
 
+      const initialGroups = findDuplicates(candidates);
+      const suspectFolders = [...new Set([...initialGroups.values()].flat().map(a => a.path))];
+
+      if (suspectFolders.length === 0) {
+        return ok([] as AlbumFolder[]);
+      }
+
+      console.log(pc.yellow(`Suspect duplicates in ${suspectFolders.length} folders. Verifying durations...`));
+
+      // 2. Perform expensive fingerprinting ONLY on suspect folders
       return ResultAsync.fromPromise((async () => {
-        console.log(pc.cyan(`Indexing ${folderPaths.length} albums...`));
-
-        const albums: AlbumFolder[] = [];
+        const verifiedAlbums: AlbumFolder[] = [];
         const batchSize = 10;
-        for (let i = 0; i < folderPaths.length; i += batchSize) {
-          const batch = folderPaths.slice(i, i + batchSize);
-          const batchTasks = batch.map((folder) =>
+        
+        for (let i = 0; i < suspectFolders.length; i += batchSize) {
+          const batch = suspectFolders.slice(i, i + batchSize);
+          const tasks = batch.map(folder => 
             getAlbumInfo(folder)
-              .map((maybeAlbum) => {
-                if (maybeAlbum.isNothing) return;
-                const album = maybeAlbum.value;
-                album.totalSize = entries
-                  .filter((e) => path.dirname(e.path) === folder && !e.isDirectory)
-                  .reduce((sum, e) => sum + e.size, 0);
-                albums.push(album);
+              .map(maybeAlbum => {
+                if (maybeAlbum.isJust) {
+                  const album = maybeAlbum.value;
+                  album.totalSize = entries
+                    .filter(e => path.dirname(e.path) === folder && !e.isDirectory)
+                    .reduce((sum, e) => sum + e.size, 0);
+                  verifiedAlbums.push(album);
+                }
               })
-              .orElse((error) => {
+              .orElse(error => {
                 logError(`Skipping album at ${folder}: ${error.message}`);
                 return ok(undefined);
-              }),
+              })
           );
-          await ResultAsync.combine(batchTasks);
-          if (i > 0 && i % 100 === 0) {
-            process.stdout.write(pc.dim(`  Processed ${i}/${folderPaths.length}...\r`));
-          }
+          
+          await ResultAsync.combine(tasks);
+          process.stdout.write(pc.dim(`  Verified ${Math.min(i + batchSize, suspectFolders.length)}/${suspectFolders.length}...\r`));
         }
-        console.log(pc.cyan(`\nAnalyzed ${albums.length} albums.`));
-        return albums;
+        console.log(pc.cyan(`\nVerification complete.`));
+        return verifiedAlbums;
       })(), (e) => ({ type: "fail", message: String(e) } as const));
     })
     .andThen((albums) => {
       const groups = findDuplicates(albums);
       
       if (groups.size === 0) {
-        console.log(pc.green("No duplicates found."));
+        console.log(pc.green("No duplicates found after duration verification."));
         return ok(undefined);
       }
 

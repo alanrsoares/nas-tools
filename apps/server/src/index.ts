@@ -356,38 +356,43 @@ export const api = new Elysia({ prefix: "/api" })
           }
           const entries = entriesResult.value;
 
-          const albumFolders = new Set<string>();
-          for (const entry of entries) {
-            if (!entry.isDirectory && entry.name.toLowerCase().endsWith(".flac")) {
-              albumFolders.add(join(entry.path, ".."));
-            }
+          // 1. Identify candidates cheaply
+          send({ type: "analyzing", message: "Identifying potential duplicates..." });
+          const candidates = identifyAlbumCandidates(entries);
+          const initialGroups = findDuplicates(candidates);
+          const suspectFolders = [...new Set([...initialGroups.values()].flat().map((a) => a.path))];
+
+          if (suspectFolders.length === 0) {
+            send({ type: "result", duplicates: [], moves: [] });
+            controller.close();
+            return;
           }
 
           send({
             type: "analyzing",
-            message: `Analyzing ${albumFolders.size} potential albums...`,
-            total: albumFolders.size,
+            message: `Verifying durations for ${suspectFolders.length} folders...`,
+            total: suspectFolders.length,
           });
 
+          // 2. Targeted verification
           const albums = [];
           let count = 0;
-          for (const folder of albumFolders) {
-            if (folder.includes("_duplicates")) {
+          const batchSize = 10;
+          for (let i = 0; i < suspectFolders.length; i += batchSize) {
+            const batch = suspectFolders.slice(i, i + batchSize);
+            const batchTasks = batch.map(async (folder) => {
+              const infoResult = await getAlbumInfo(folder);
+              if (infoResult.isOk() && infoResult.value.isJust) {
+                const info = infoResult.value.value;
+                info.totalSize = entries
+                  .filter((e) => join(e.path, "..") === folder && !e.isDirectory)
+                  .reduce((sum, e) => sum + e.size, 0);
+                albums.push(info);
+              }
               count++;
-              continue;
-            }
-            const infoResult = await getAlbumInfo(folder);
-            if (infoResult.isOk() && infoResult.value.isJust) {
-              const info = infoResult.value.value;
-              info.totalSize = entries
-                .filter((e) => join(e.path, "..") === folder && !e.isDirectory)
-                .reduce((sum, e) => sum + e.size, 0);
-              albums.push(info);
-            }
-            count++;
-            if (count % 10 === 0) {
-              send({ type: "progress", current: count, total: albumFolders.size });
-            }
+            });
+            await Promise.all(batchTasks);
+            send({ type: "progress", current: count, total: suspectFolders.length });
           }
 
           const groups = findDuplicates(albums);

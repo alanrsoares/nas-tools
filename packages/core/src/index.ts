@@ -42,6 +42,7 @@ export interface ReleaseInfo {
   artist: string;
   album: string;
   fingerprint?: string; // Track durations hash/string
+  trackCount: number;
 }
 
 export interface AlbumFolder {
@@ -86,24 +87,34 @@ export function getAlbumInfo(
 
     if (musicFiles.length === 0) return ok(Maybe.nothing<AlbumFolder>());
 
-    const metadataTasks = musicFiles.map((file) => {
-      const filePath = path.join(folderPath, file);
-      return ResultAsync.fromPromise(parseFile(filePath), (cause) =>
-        toCoreError(`Failed to parse metadata: ${filePath}`, cause),
-      );
-    });
-
-    return ResultAsync.combine(metadataTasks).map((metadatas) => {
+    return ResultAsync.fromPromise(
+      (async () => {
+        const metadatas = [];
+        for (const file of musicFiles) {
+          const filePath = path.join(folderPath, file);
+          try {
+            const metadata = await parseFile(filePath);
+            metadatas.push(metadata);
+          } catch (e) {
+            // Skip individual failed tracks
+          }
+        }
+        if (metadatas.length === 0) {
+          throw new Error(`Failed to parse any metadata in: ${folderPath}`);
+        }
+        return metadatas;
+      })(),
+      (cause) => toCoreError(`Failed to parse metadata in: ${folderPath}`, cause),
+    ).map((metadatas) => {
       const firstMetadata = metadatas[0]!;
       let artist = firstMetadata.common.artist;
       let album = firstMetadata.common.album;
       const mbid = firstMetadata.common.musicbrainz_albumid;
 
-      // Fingerprint: Sorted durations (rounded to 1 decimal place to handle small jitter)
-      const fingerprint = metadatas
-        .map((m) => (m.format.duration || 0).toFixed(1))
-        .sort()
-        .join(",");
+      // Fingerprint: Track count + Total duration rounded to nearest 30s
+      // This is robust against mastering differences while still discriminating between different releases/discs
+      const totalDuration = metadatas.reduce((sum, m) => sum + (m.format.duration || 0), 0);
+      const fingerprint = `${musicFiles.length}t-${Math.round(totalDuration / 30) * 30}s`;
 
       // Infer from path if metadata missing or generic "Unknown"
       if (isUnknown(artist) || isUnknown(album)) {
@@ -151,10 +162,11 @@ export function getAlbumInfo(
           ? discNo
             ? `${mbid}-d${discNo}`
             : mbid
-          : `${normalize(artist)}-${normalize(album)}${discNo ? `-d${discNo}` : ""}`,
+          : `${normalize(artist)}-${normalize(stripReleaseTags(album))}${discNo ? `-d${discNo}` : ""}`,
         artist,
         album,
         fingerprint,
+        trackCount: musicFiles.length,
       };
 
       return Maybe.just({
@@ -170,15 +182,89 @@ export function getAlbumInfo(
   });
 }
 
+export function getAlbumInfoLazy(
+  folderPath: string,
+  musicFilesCount: number,
+  totalSize: number,
+): AlbumFolder {
+  const folderName = path.basename(folderPath);
+  const parentDir = path.dirname(folderPath);
+  const parentName = path.basename(parentDir);
+
+  const isRange = alphabeticalRanges.some((r) => r.name === parentName);
+  const isDisc = /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(folderName);
+
+  let artist = inferArtistNameFromFolder(folderName).unwrapOr(undefined);
+  if (!artist && !isRange && parentName && parentName !== "." && parentName !== "FLAC") {
+    artist = parentName;
+  }
+
+  let album = isDisc ? `${parentName} (${folderName})` : folderName;
+
+  artist = artist?.trim() || "Unknown Artist";
+  album = album?.trim() || "Unknown Album";
+
+  // Disc number from path
+  let discNo = "";
+  const parts = folderPath.split(path.sep).reverse();
+  for (const part of parts) {
+    const m = part.match(/(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*(\d+)/i);
+    if (m?.[1]) {
+      discNo = m[1];
+      break;
+    }
+  }
+
+  return {
+    path: folderPath,
+    trackCount: musicFilesCount,
+    totalSize,
+    sampleRate: 0,
+    bitsPerSample: 0,
+    bitrate: 0,
+    release: {
+      id: `${normalize(artist)}-${normalize(stripReleaseTags(album))}${discNo ? `-d${discNo}` : ""}`,
+      artist,
+      album,
+      trackCount: musicFilesCount,
+    },
+  };
+}
+
+export function identifyAlbumCandidates(entries: WalkEntry[]): AlbumFolder[] {
+  const folderStats = new Map<string, { count: number; size: number }>();
+  for (const entry of entries) {
+    if (!entry.isDirectory && isMusicFile(entry.name)) {
+      const dir = path.dirname(entry.path);
+      const stats = folderStats.get(dir) || { count: 0, size: 0 };
+      stats.count++;
+      stats.size += entry.size;
+      folderStats.set(dir, stats);
+    }
+  }
+
+  const candidates: AlbumFolder[] = [];
+  for (const [folderPath, stats] of folderStats.entries()) {
+    if (folderPath.includes("_duplicates")) continue;
+    candidates.push(getAlbumInfoLazy(folderPath, stats.count, stats.size));
+  }
+
+  return candidates;
+}
+
 export function findDuplicates(albums: AlbumFolder[]): Map<string, AlbumFolder[]> {
   const groups = new Map<string, AlbumFolder[]>();
   for (const album of albums) {
-    // Never dedupe unknown releases
     if (isUnknown(album.release.artist) && isUnknown(album.release.album)) {
       continue;
     }
-    // Group by Release ID AND Track Fingerprint
-    const groupId = `${album.release.id}::${album.release.fingerprint || "no-fp"}`;
+
+    // If we have fingerprints, use them for strict grouping
+    // Otherwise group by Release ID + Track Count as candidates
+    const groupId = album.release.fingerprint
+      ? `${album.release.id}::${album.release.fingerprint}`
+      : `${album.release.id}::${album.trackCount}t`;
+
     const group = groups.get(groupId) || [];
     group.push(album);
     groups.set(groupId, group);
@@ -472,7 +558,7 @@ function sanitizeArtistName(artistName: string): Maybe<string> {
 function stripReleaseTags(name: string): string {
   return name
     .replace(
-      /\s*[[({][^\])}]*?(?:flac|mp3|m4a|24bit|16[./-]?44|vinyl|web|cd|discography|pmedia|h33t|japan|eu|uk)[^\])}]*?[\])}]/gi,
+      /\s*[[({][^\])}]*?(?:flac|mp3|m4a|24bit|16[./-]?44|vinyl|web|cd|discography|pmedia|h33t|japan|eu|uk|remaster|edition|anniversary|deluxe|boxset|hi-res|highres|24-96|24-192|24bit-96khz|24bit-192khz)[^\])}]*?[\])}]/gi,
       "",
     )
     .replace(/\s+/g, " ")
