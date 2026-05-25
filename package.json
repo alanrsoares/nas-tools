@@ -10,7 +10,7 @@
     "apps/*"
   ],
   "bin": {
-    "nas-tools": "./dist/cli/index.js"
+    "nas-tools": "./cli/index.ts"
   },
   "scripts": {
     "build": "tsc && bun run --filter @nas-tools/core build && bun run --filter @nas-tools/server build && bun run --filter @nas-tools/web build",
@@ -19,6 +19,7 @@
     "dev:server": "bun run --filter @nas-tools/server start",
     "dev:web": "bun run --filter @nas-tools/web dev",
     "start:web": "bun scripts/dev.ts",
+    "cockpit": "bun cli/index.ts cockpit",
     "check": "bun run lint && bun run typecheck && bun run test",
     "test": "bun test cli",
     "typecheck": "tsc --noEmit",

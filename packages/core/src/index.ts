@@ -37,6 +37,92 @@ export const jobStatusSchema = z.union([
 
 export type JobStatus = z.infer<typeof jobStatusSchema>;
 
+export interface ReleaseInfo {
+  id: string; // Artist - Album or MBID
+  artist: string;
+  album: string;
+}
+
+export interface AlbumFolder {
+  path: string;
+  trackCount: number;
+  totalSize: number;
+  sampleRate: number;
+  bitsPerSample: number;
+  bitrate: number;
+  release: ReleaseInfo;
+}
+
+export function normalize(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/^the\s+/i, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+export function scoreAlbum(album: AlbumFolder): number {
+  // Priority: Track count (completeness) > Bits per sample > Sample rate > Bitrate
+  return (
+    album.trackCount * 100000000 +
+    album.bitsPerSample * 1000000 +
+    (album.sampleRate / 100) * 10 +
+    album.bitrate / 1000000
+  );
+}
+
+export function findDuplicates(albums: AlbumFolder[]): Map<string, AlbumFolder[]> {
+  const groups = new Map<string, AlbumFolder[]>();
+  for (const album of albums) {
+    // Never dedupe unknown releases
+    if (isUnknown(album.release.artist) && isUnknown(album.release.album)) {
+      continue;
+    }
+    const group = groups.get(album.release.id) || [];
+    group.push(album);
+    groups.set(album.release.id, group);
+  }
+
+  // Filter groups that have more than one album
+  for (const [id, group] of groups.entries()) {
+    if (group.length <= 1) {
+      groups.delete(id);
+    }
+  }
+
+  return groups;
+}
+
+export function identifyDedupeMoves(
+  groups: Map<string, AlbumFolder[]>,
+  root: string,
+  trashRoot: string,
+): { from: string; to: string; reason: string }[] {
+  const toMove: { from: string; to: string; reason: string }[] = [];
+
+  for (const group of groups.values()) {
+    // Sort by score descending
+    group.sort((a, b) => scoreAlbum(b) - scoreAlbum(a));
+
+    const winner = group[0];
+    if (!winner) continue;
+
+    const losers = group.slice(1);
+
+    for (const loser of losers) {
+      const reason = `${loser.bitsPerSample}bit/${loser.sampleRate}Hz vs ${winner.bitsPerSample}bit/${winner.sampleRate}Hz`;
+      const relativePath = path.relative(root, loser.path);
+      toMove.push({
+        from: loser.path,
+        to: path.join(trashRoot, relativePath),
+        reason,
+      });
+    }
+  }
+
+  return toMove;
+}
+
 export const nasPathConfigSchema = z.object({
   stagingDir: z.string().min(1),
   musicDir: z.string().min(1),
@@ -130,6 +216,59 @@ export const movePlanSchema = z.object({
 
 export type MovePlan = z.infer<typeof movePlanSchema>;
 
+export interface WalkEntry {
+  path: string;
+  name: string;
+  isDirectory: boolean;
+  size: number;
+  mtimeMs: number;
+}
+
+export function walk(
+  root: string,
+  options: { maxDepth?: number; includeHidden?: boolean } = {},
+): ResultAsync<WalkEntry[], CoreError> {
+  const maxDepth = options.maxDepth ?? Infinity;
+  const entries: WalkEntry[] = [];
+
+  async function visit(dir: string, depth: number): Promise<void> {
+    if (depth > maxDepth) {
+      return;
+    }
+
+    const names = await readdir(dir).catch(() => [] as string[]);
+    for (const name of names) {
+      if (!options.includeHidden && name.startsWith(".")) {
+        continue;
+      }
+
+      const entryPath = path.join(dir, name);
+      const entryStat = await stat(entryPath).catch(() => undefined);
+
+      if (!entryStat) {
+        continue;
+      }
+
+      const isDirectory = entryStat.isDirectory();
+      entries.push({
+        path: entryPath,
+        name,
+        isDirectory,
+        size: entryStat.size,
+        mtimeMs: entryStat.mtimeMs,
+      });
+
+      if (isDirectory) {
+        await visit(entryPath, depth + 1);
+      }
+    }
+  }
+
+  return ResultAsync.fromPromise(visit(root, 0), (cause) =>
+    toCoreError(`Failed to walk directory: ${root}`, cause),
+  ).map(() => entries);
+}
+
 const fileExtensions = {
   cue: ".cue",
   flac: ".flac",
@@ -196,20 +335,24 @@ function detectMediaType(dirName: string, files: string[], dirPath: string): May
   return Maybe.nothing();
 }
 
-async function collectRelativeFiles(rootDir: string, currentDir = rootDir): Promise<string[]> {
-  const entries = await readdir(currentDir, { withFileTypes: true }).catch(() => []);
-  const files: string[] = [];
+function collectRelativeFiles(rootDir: string, currentDir = rootDir): ResultAsync<string[], CoreError> {
+  return safeAsync(
+    () => readdir(currentDir, { withFileTypes: true }),
+    `Failed to read directory: ${currentDir}`,
+  ).andThen((entries) => {
+    const tasks = entries.map((entry) => {
+      const entryPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        return collectRelativeFiles(rootDir, entryPath);
+      }
+      if (entry.isFile()) {
+        return ResultAsync.fromSafePromise(Promise.resolve([path.relative(rootDir, entryPath)]));
+      }
+      return ResultAsync.fromSafePromise(Promise.resolve([] as string[]));
+    });
 
-  for (const entry of entries) {
-    const entryPath = path.join(currentDir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...(await collectRelativeFiles(rootDir, entryPath)));
-      continue;
-    }
-    if (entry.isFile()) files.push(path.relative(rootDir, entryPath));
-  }
-
-  return files;
+    return ResultAsync.combine(tasks).map((results) => results.flat());
+  });
 }
 
 function sanitizeArtistName(artistName: string): Maybe<string> {
@@ -237,6 +380,12 @@ function stripReleaseTags(name: string): string {
 
 export function inferArtistNameFromFolder(folderName: string): Maybe<string> {
   const cleaned = stripReleaseTags(folderName);
+
+  // Skip if it looks like just a Year - Album or Disc folder
+  if (/^\d{4}\s*-\s*/.test(cleaned) || /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(cleaned)) {
+    return Maybe.nothing();
+  }
+
   const patterns = [
     /^(.+?)\s+-\s+\d{4}\s+-\s+.+$/i,
     /^(.+?)\s+-\s+.+$/i,
@@ -247,27 +396,129 @@ export function inferArtistNameFromFolder(folderName: string): Maybe<string> {
   for (const pattern of patterns) {
     const matched = cleaned.match(pattern);
     const artist = matched?.[1];
-    if (artist) return sanitizeArtistName(artist);
+    if (artist && !/^\d{4}$/.test(artist.trim())) return sanitizeArtistName(artist);
   }
 
   return sanitizeArtistName(cleaned);
 }
 
 function inferArtistName(item: StagedMediaItem): ResultAsync<Maybe<string>, MovePlanError> {
-  return ResultAsync.fromPromise(inferArtistNameFromMetadata(item), (cause) =>
-    toCoreError(`Failed to infer artist for `, cause),
-  ).map((artist) => (artist.isJust ? artist : inferArtistNameFromFolder(item.name)));
+  return inferArtistNameFromMetadata(item)
+    .mapErr((error): MovePlanError => error)
+    .map((artist) => (artist.isJust ? artist : inferArtistNameFromFolder(item.name)));
 }
 
-async function inferArtistNameFromMetadata(item: StagedMediaItem): Promise<Maybe<string>> {
-  for (const file of item.musicFiles) {
-    const filePath = path.join(item.path, file);
-    const metadata = await parseFile(filePath).catch(() => undefined);
-    const artist = metadata?.common.artist?.trim();
-    if (artist) return sanitizeArtistName(artist);
-  }
+function isUnknown(str?: string): boolean {
+  if (!str) return true;
+  const n = str.toLowerCase();
+  return n === "unknown artist" || n === "unknown album" || n === "unknown" || n === "";
+}
 
-  return Maybe.nothing();
+export function getAlbumInfo(
+  folderPath: string,
+): ResultAsync<Maybe<AlbumFolder>, CoreError> {
+  return safeAsync(
+    () => readdir(folderPath, { withFileTypes: true }),
+    `Failed to read folder: ${folderPath}`,
+  ).andThen((entries) => {
+    const musicFiles = entries.filter((e) => e.isFile() && isMusicFile(e.name)).map((e) => e.name);
+
+    if (musicFiles.length === 0) return ok(Maybe.nothing<AlbumFolder>());
+
+    const firstFile = path.join(folderPath, musicFiles[0]!);
+    return ResultAsync.fromPromise(parseFile(firstFile), (cause) =>
+      toCoreError(`Failed to parse metadata: ${firstFile}`, cause),
+    ).map((metadata) => {
+      let artist = metadata.common.artist;
+      let album = metadata.common.album;
+      const mbid = metadata.common.musicbrainz_albumid;
+
+      // Infer from path if metadata missing or generic "Unknown"
+      if (isUnknown(artist) || isUnknown(album)) {
+        const folderName = path.basename(folderPath);
+        const parentDir = path.dirname(folderPath);
+        const parentName = path.basename(parentDir);
+
+        const isRange = alphabeticalRanges.some((r) => r.name === parentName);
+        const isDisc = /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(folderName);
+
+        if (isUnknown(artist)) {
+          const inferred = inferArtistNameFromFolder(folderName).unwrapOr(undefined);
+          if (inferred && !/^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(inferred)) {
+            artist = inferred;
+          }
+
+          if (isUnknown(artist) && !isRange && parentName && parentName !== "." && parentName !== "FLAC") {
+            artist = parentName;
+          }
+        }
+
+        if (isUnknown(album)) {
+          album = isDisc ? `${parentName} (${folderName})` : folderName;
+        }
+      }
+
+      artist = isUnknown(artist) ? "Unknown Artist" : artist!.trim();
+      album = isUnknown(album) ? "Unknown Album" : album!.trim();
+
+      // Extract disc number from metadata or path
+      let discNo = metadata.common.disk.no?.toString() || "";
+      if (!discNo) {
+        const parts = folderPath.split(path.sep).reverse();
+        for (const part of parts) {
+          const m = part.match(/(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*(\d+)/i);
+          if (m?.[1]) {
+            discNo = m[1];
+            break;
+          }
+        }
+      }
+
+      const release: ReleaseInfo = {
+        id: mbid
+          ? discNo
+            ? `${mbid}-d${discNo}`
+            : mbid
+          : `${normalize(artist)}-${normalize(album)}${discNo ? `-d${discNo}` : ""}`,
+        artist,
+        album,
+      };
+
+      return Maybe.just({
+        path: folderPath,
+        trackCount: musicFiles.length,
+        totalSize: 0, // Placeholder
+        sampleRate: metadata.format.sampleRate || 0,
+        bitsPerSample: metadata.format.bitsPerSample || 0,
+        bitrate: metadata.format.bitrate || 0,
+        release,
+      });
+    });
+  });
+}
+
+function inferArtistNameFromMetadata(
+  item: StagedMediaItem,
+): ResultAsync<Maybe<string>, CoreError> {
+  const tasks = item.musicFiles.map((file) => {
+    const filePath = path.join(item.path, file);
+    return ResultAsync.fromPromise(parseFile(filePath), (cause) =>
+      toCoreError(`Failed to parse metadata: ${filePath}`, cause),
+    );
+  });
+
+  return ResultAsync.combine(tasks)
+    .map((metadatas) => {
+      for (const metadata of metadatas) {
+        const artist = metadata.common.artist?.trim();
+        if (artist) {
+          const sanitized = sanitizeArtistName(artist);
+          if (sanitized.isJust) return sanitized;
+        }
+      }
+      return Maybe.nothing<string>();
+    })
+    .orElse(() => ok(Maybe.nothing<string>())); // Ignore metadata errors, just return nothing
 }
 
 export function getMusicTargetDirectory(artistName: string, musicDir: string): string {
@@ -327,34 +578,33 @@ export function scanDownloadStagingArea(
   return safeAsync(
     () => readdir(config.stagingDir, { withFileTypes: true }),
     `Failed to scan ${config.stagingDir}`,
-  ).andThen((entries) =>
-    ResultAsync.fromSafePromise(
-      entries
-        .filter((entry) => entry.isDirectory())
-        .reduce(
-          async (itemsPromise, entry) => {
-            const items = await itemsPromise;
-            const dir = path.join(config.stagingDir, entry.name);
-            const files = await collectRelativeFiles(dir);
-            const mediaType = detectMediaType(entry.name, files, dir);
-            if (mediaType.isNothing) return items;
+  ).andThen((entries) => {
+    const folders = entries.filter((entry) => entry.isDirectory());
+    const tasks = folders.map((entry) => {
+      const dir = path.join(config.stagingDir, entry.name);
+      return collectRelativeFiles(dir)
+        .mapErr((error): MovePlanError => error)
+        .map((files): Maybe<StagedMediaItem> => {
+          const mediaType = detectMediaType(entry.name, files, dir);
+          if (mediaType.isNothing) return Maybe.nothing();
 
-            return [
-              ...items,
-              {
-                id: crypto.randomUUID(),
-                path: dir,
-                name: entry.name,
-                type: mediaType.value,
-                files,
-                musicFiles: files.filter(isMusicFile),
-              } satisfies StagedMediaItem,
-            ];
-          },
-          Promise.resolve([] as StagedMediaItem[]),
-        ),
-    ),
-  );
+          return Maybe.just({
+            id: crypto.randomUUID(),
+            path: dir,
+            name: entry.name,
+            type: mediaType.value,
+            files,
+            musicFiles: files.filter(isMusicFile),
+          });
+        });
+    });
+
+    return ResultAsync.combine(tasks).map((results) =>
+      results
+        .filter((res): res is Maybe<StagedMediaItem> & { isJust: true } => res.isJust)
+        .map((res) => res.value),
+    );
+  });
 }
 
 function createIssue(code: string, message: string, itemId: string): DomainIssue {
@@ -368,50 +618,51 @@ export function createMovePlanDraft(
   return validateNasPathConfig(config)
     .mapErr((error): MovePlanError => error)
     .andThen(() => scanDownloadStagingArea(config))
-    .andThen((items) =>
-      ResultAsync.fromSafePromise(
-        Promise.all(
-          items.map(async (item): Promise<MovePlanItem> => {
-            const artist =
-              item.type === "music"
-                ? await inferArtistName(item).unwrapOr(Maybe.nothing())
-                : Maybe.nothing<string>();
-            const itemId = crypto.randomUUID();
-            const issues =
-              item.type === "music" && artist.isNothing
-                ? [
-                    createIssue(
-                      "ARTIST_REQUIRED",
-                      "Artist name is required before confirmation.",
-                      itemId,
-                    ),
-                  ]
-                : [];
-            const artistName = artist.isJust ? artist.value : undefined;
-            const targetDir = targetDirectoryFor(item.type, config, artistName).unwrapOr(
-              config.stagingDir,
-            );
+    .andThen((items) => {
+      const itemTasks = items.map((item) => {
+        const artistTask: ResultAsync<Maybe<string>, MovePlanError> =
+          item.type === "music"
+            ? inferArtistName(item).orElse(() => ok(Maybe.nothing<string>()))
+            : ResultAsync.fromSafePromise(Promise.resolve(Maybe.nothing<string>()));
 
-            return {
-              id: itemId,
-              status: issues.length > 0 ? "needs_correction" : "included",
-              mediaType: item.type,
-              sourcePath: item.path,
-              targetPath: path.join(targetDir, item.name),
-              artistName,
-              albumName: item.name,
-              included: issues.length === 0,
-              issues,
-            } satisfies MovePlanItem;
-          }),
-        ),
-      ),
-    )
+        return artistTask.map((artist): MovePlanItem => {
+          const itemId = crypto.randomUUID();
+          const issues =
+            item.type === "music" && artist.isNothing
+              ? [
+                  createIssue(
+                    "ARTIST_REQUIRED",
+                    "Artist name is required before confirmation.",
+                    itemId,
+                  ),
+                ]
+              : [];
+          const artistName = artist.isJust ? artist.value : undefined;
+          const targetDir = targetDirectoryFor(item.type, config, artistName).unwrapOr(
+            config.stagingDir,
+          );
+
+          return {
+            id: itemId,
+            status: issues.length > 0 ? "needs_correction" : "included",
+            mediaType: item.type,
+            sourcePath: item.path,
+            targetPath: path.join(targetDir, item.name),
+            artistName,
+            albumName: item.name,
+            included: issues.length === 0,
+            issues,
+          };
+        });
+      });
+
+      return ResultAsync.combine(itemTasks).map((items) => [...items]);
+    })
     .map((items) => {
       const now = new Date().toISOString();
       return {
         id: crypto.randomUUID(),
-        status: "draft",
+        status: "draft" as const,
         config,
         cueSplitEnabled,
         items,

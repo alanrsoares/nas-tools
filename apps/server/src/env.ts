@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const envSchema = z.object({
   HOME: z.string().optional(),
-  HOST: z.string().default("0.0.0.0"),
+  HOST: z.string().default("::"),
   PORT: z.coerce.number().int().positive().default(8788),
   NAS_TOOLS_DB_PATH: z.string().optional(),
   PLEX_URL: z.string().default("http://127.0.0.1:32400"),

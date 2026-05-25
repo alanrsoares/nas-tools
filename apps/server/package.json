@@ -9,7 +9,9 @@
     "test": "bun test test"
   },
   "dependencies": {
+    "@elysiajs/cors": "^1.4.2",
     "@elysiajs/eden": "latest",
+    "@elysiajs/static": "^1.4.10",
     "@elysiajs/stream": "latest",
     "@nas-tools/core": "workspace:*",
     "drizzle-orm": "latest",

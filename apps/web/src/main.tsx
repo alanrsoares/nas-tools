@@ -3,9 +3,20 @@ import type { MovePlan, MovePlanItem } from "@nas-tools/core";
 import type { App } from "@nas-tools/server";
 import { QueryClient, QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Link,
+  Outlet,
+  RouterProvider,
+  useNavigate,
+  useSearch,
+} from "@tanstack/react-router";
+import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Download,
   FolderCog,
   LayoutDashboard,
@@ -24,6 +35,7 @@ import {
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { match } from "ts-pattern";
+import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,7 +57,71 @@ import "./styles.css";
 const api = treaty<App>(window.location.origin).api;
 const queryClient = new QueryClient();
 
-type Section = "overview" | "staging" | "jobs" | "downloads" | "settings";
+// ── Router Setup ─────────────────────────────────────────────
+
+const rootRoute = createRootRoute({
+  component: AppShell,
+});
+
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: () => <Overview />,
+});
+
+const stagingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/staging",
+  component: () => <Staging />,
+});
+
+const dedupeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dedupe",
+  component: () => <Dedupe />,
+});
+
+const jobsSearchSchema = z.object({
+  jobId: z.string().optional(),
+});
+
+const jobsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/jobs",
+  validateSearch: (search) => jobsSearchSchema.parse(search),
+  component: () => <Jobs />,
+});
+
+const downloadsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/downloads",
+  component: () => <Downloads />,
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: () => <Settings />,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  stagingRoute,
+  dedupeRoute,
+  jobsRoute,
+  downloadsRoute,
+  settingsRoute,
+]);
+
+const router = createRouter({ routeTree });
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
+
+type Section = "overview" | "staging" | "dedupe" | "jobs" | "downloads" | "settings";
 
 type JobStatus =
   | "queued"
@@ -77,6 +153,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "staging", label: "Staging", icon: FolderCog },
+  { id: "dedupe", label: "Dedupe", icon: Copy },
   { id: "jobs", label: "Jobs", icon: ListChecks },
   { id: "downloads", label: "Downloads", icon: Download },
   { id: "settings", label: "Settings", icon: SettingsIcon },
@@ -85,6 +162,7 @@ const navItems: NavItem[] = [
 const sectionLabel: Record<Section, string> = {
   overview: "Overview",
   staging: "Download Staging Area",
+  dedupe: "Library Dedupe",
   jobs: "Jobs",
   downloads: "Downloads",
   settings: "Settings",
@@ -93,67 +171,54 @@ const sectionLabel: Record<Section, string> = {
 const sectionDescription: Record<Section, string> = {
   overview: "System status at a glance — active downloads, staging area, and cleanup tasks.",
   staging: "Scan your downloads folder, review detected media, and confirm moves to the library.",
+  dedupe: "Index your FLAC library to identify duplicated releases and keep the best quality versions.",
   jobs: "Track active and past move operations. Select a job to see its progress and event log.",
   downloads: "Search Prowlarr indexers for lossless audio and add directly to Transmission.",
   settings: "NAS library paths used when organizing media. Edit via server environment variables.",
 };
 
 function AppShell() {
-  const [section, setSection] = React.useState<Section>("overview");
-  const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
+  const { pathname } = window.location; // Simple way to get active state for now or use useMatch
 
-  const goToJob = (jobId: string) => {
-    setActiveJobId(jobId);
-    setSection("jobs");
-  };
-
-  const sectionView: Record<Section, () => React.ReactNode> = {
-    overview: () => <Overview onNavigate={setSection} />,
-    staging: () => <Staging onJobCreated={goToJob} />,
-    jobs: () => <Jobs activeJobId={activeJobId} />,
-    downloads: () => <Downloads />,
-    settings: () => <Settings />,
-  };
+  const currentSection = (pathname === "/"
+    ? "overview"
+    : pathname.slice(1)) as Section;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <div className="shell">
-          <aside className="sidebar">
-            <div className="brand">
-              <BrandIcon />
-              NAS Tools
-            </div>
-            <nav className="nav" aria-label="Cockpit sections">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    className={section === item.id ? "active" : ""}
-                    onClick={() => setSection(item.id)}
-                    type="button"
-                  >
-                    <Icon size={17} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </aside>
-          <main className="content">
-            <header className="topbar">
-              <div>
-                <h1>{sectionLabel[section]}</h1>
-                <p className="section-desc">{sectionDescription[section]}</p>
-              </div>
-              <ServerStatus />
-            </header>
-            {sectionView[section]()}
-          </main>
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <BrandIcon />
+          NAS Tools
         </div>
-      </TooltipProvider>
-    </QueryClientProvider>
+        <nav className="nav" aria-label="Cockpit sections">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const to = item.id === "overview" ? "/" : `/${item.id}`;
+            return (
+              <Link
+                key={item.id}
+                to={to}
+                activeProps={{ className: "active" }}
+              >
+                <Icon size={17} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+      <main className="content">
+        <header className="topbar">
+          <div>
+            <h1>{sectionLabel[currentSection]}</h1>
+            <p className="section-desc">{sectionDescription[currentSection]}</p>
+          </div>
+          <ServerStatus />
+        </header>
+        <Outlet />
+      </main>
+    </div>
   );
 }
 
@@ -235,9 +300,8 @@ type DashboardData = {
   staging: StagingStatus | null;
 };
 
-type OverviewProps = { onNavigate: (s: Section) => void };
-
-function Overview({ onNavigate }: OverviewProps) {
+function Overview() {
+  const navigate = useNavigate();
   const dashboard = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => {
@@ -365,7 +429,7 @@ function Overview({ onNavigate }: OverviewProps) {
             size="sm"
             variant={staging && staging.total > 0 ? "default" : "outline"}
             className="w-full mt-auto"
-            onClick={() => onNavigate("staging")}
+            onClick={() => navigate({ to: "/staging" })}
           >
             <FolderCog size={13} />
             {staging && staging.total > 0 ? "Review & Move" : "Go to Staging"}
@@ -521,18 +585,17 @@ function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
 
 // ── Staging ────────────────────────────────────────────────────
 
-type StagingProps = { onJobCreated: (jobId: string) => void };
-
-function isCleanSuccess(data: unknown): data is { removed: number } {
+function isCleanSuccess(data: any): data is { removed: number } {
   return (
     typeof data === "object" &&
     data !== null &&
     "removed" in data &&
-    typeof (data as Record<string, unknown>).removed === "number"
+    typeof data.removed === "number"
   );
 }
 
-function Staging({ onJobCreated }: StagingProps) {
+function Staging() {
+  const navigate = useNavigate();
   const [plan, setPlan] = React.useState<MovePlan>();
 
   const scan = useMutation({
@@ -578,7 +641,7 @@ function Staging({ onJobCreated }: StagingProps) {
     onSuccess: (response) => {
       if (response.data && "jobId" in response.data) {
         setPlan(undefined);
-        onJobCreated(response.data.jobId as string);
+        navigate({ to: "/jobs", search: { jobId: response.data.jobId as string } });
       }
     },
   });
@@ -630,7 +693,7 @@ function Staging({ onJobCreated }: StagingProps) {
                       {cleanTorrents.isPending
                         ? "Removing…"
                         : isCleanSuccess(cleanTorrents.data?.data)
-                          ? `Removed ${cleanTorrents.data.data.removed} torrent${cleanTorrents.data.data.removed !== 1 ? "s" : ""}`
+                          ? `Removed ${cleanTorrents.data?.data?.removed} torrent${cleanTorrents.data?.data?.removed !== 1 ? "s" : ""}`
                           : `Remove moved (${orphanedCount})`}
                     </span>
                   </Button>
@@ -823,6 +886,209 @@ function StatusBadge({ item }: StatusBadgeProps) {
   );
 }
 
+// ── Dedupe ────────────────────────────────────────────────────
+
+type DedupeGroup = {
+  id: string;
+  release: { artist: string; album: string };
+  winner: AlbumFolder;
+  losers: AlbumFolder[];
+};
+
+type AlbumFolder = {
+  path: string;
+  trackCount: number;
+  totalSize: number;
+  sampleRate: number;
+  bitsPerSample: number;
+  bitrate: number;
+};
+
+function Dedupe() {
+  const [results, setResults] = React.useState<{
+    duplicates: DedupeGroup[];
+    moves: { from: string; to: string; reason: string }[];
+  }>();
+  const [status, setStatus] = React.useState<{
+    type: string;
+    message: string;
+    current?: number;
+    total?: number;
+  }>();
+  const [isScanning, setIsScanning] = React.useState(false);
+
+  const startScan = async () => {
+    setIsScanning(true);
+    setResults(undefined);
+    setStatus({ type: "connecting", message: "Connecting..." });
+
+    try {
+      const response = await fetch("/api/music-dedupe/scan");
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      let buffer = "";
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value);
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const rawData = line.slice(6);
+            try {
+              const data = JSON.parse(rawData);
+              if (data.type === "result") {
+                setResults(data);
+                setStatus(undefined);
+              } else {
+                setStatus(data);
+              }
+            } catch (e) {
+              console.error("Failed to parse stream data:", rawData, e);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Scan failed:", e);
+      setStatus({ type: "error", message: "Scan failed. Check console." });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const apply = useMutation({
+    mutationFn: async (moves: { from: string; to: string; reason: string }[]) =>
+      await api["music-dedupe"].apply.post({ moves }),
+    onSuccess: () => {
+      setResults(undefined);
+      startScan();
+    },
+  });
+
+  const duplicates = results?.duplicates ?? [];
+  const moves = results?.moves ?? [];
+  const showProgress = status?.current !== undefined && status?.total !== undefined;
+  const progressPercent =
+    status?.current !== undefined && status?.total !== undefined
+      ? Math.round((status.current / status.total) * 100)
+      : 0;
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="toolbar">
+          <section className="summary" aria-label="Dedupe summary">
+            <SummaryCell label="Duplicates Found" value={duplicates.length} />
+            <SummaryCell label="Folders to Move" value={moves.length} />
+          </section>
+          <div className="flex gap-2 items-center toolbar-actions">
+            <Button
+              onClick={startScan}
+              disabled={isScanning || apply.isPending}
+              size="sm"
+              variant="outline"
+            >
+              <Search size={15} />
+              <span>{isScanning ? "Scanning…" : "Scan Library"}</span>
+            </Button>
+            {moves.length > 0 && (
+              <Button
+                onClick={() => apply.mutate(moves)}
+                disabled={apply.isPending || isScanning}
+                size="sm"
+              >
+                {apply.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Trash2 size={15} />
+                )}
+                <span>{apply.isPending ? "Applying…" : "Apply Dedupe"}</span>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {isScanning && status ? (
+          <div className="mt-8 flex flex-col items-center justify-center p-12 text-center">
+            <Loader2 size={32} className="animate-spin mb-4 text-primary" />
+            <div className="text-lg font-medium mb-1">{status.message}</div>
+            {showProgress && (
+              <div className="w-full max-w-md mt-4">
+                <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                  <span>
+                    {status.current} / {status.total} albums
+                  </span>
+                  <span>{progressPercent}%</span>
+                </div>
+                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all duration-300 ease-out"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        ) : duplicates.length > 0 ? (
+          <div className="grid gap-4 mt-4">
+            {duplicates.map((group) => (
+              <Card key={group.id} className="border-border/50">
+                <CardContent className="p-3">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-bold text-sm">
+                        {group.release.artist} — {group.release.album}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">{group.id}</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-2 text-xs bg-success/10 p-2 rounded border border-success/20">
+                      <Badge variant="success">KEEP</Badge>
+                      <div className="flex-1 truncate font-mono">{group.winner.path}</div>
+                      <div className="text-muted-foreground whitespace-nowrap">
+                        {group.winner.bitsPerSample}bit / {group.winner.sampleRate}Hz
+                      </div>
+                    </div>
+                    {group.losers.map((loser, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 text-xs bg-muted/50 p-2 rounded border border-border/50"
+                      >
+                        <Badge variant="secondary">MOVE</Badge>
+                        <div className="flex-1 truncate font-mono">{loser.path}</div>
+                        <div className="text-muted-foreground whitespace-nowrap">
+                          {loser.bitsPerSample}bit / {loser.sampleRate}Hz
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <Copy size={28} />
+            <span>
+              {status?.type === "error"
+                ? status.message
+                : "Scan your music library to find duplicate releases."}
+            </span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── PlexScanPopover ────────────────────────────────────────────
 
 type PlexSection = { key: string; title: string; type: string };
@@ -968,14 +1234,9 @@ const TERMINAL_STATUSES = new Set<JobStatus>([
   "interrupted",
 ]);
 
-type JobsProps = { activeJobId: string | null };
-
-function Jobs({ activeJobId }: JobsProps) {
-  const [selectedId, setSelectedId] = React.useState<string | null>(activeJobId);
-
-  React.useEffect(() => {
-    if (activeJobId) setSelectedId(activeJobId);
-  }, [activeJobId]);
+function Jobs() {
+  const { jobId } = useSearch({ from: jobsRoute.id });
+  const navigate = useNavigate();
 
   const jobsQuery = useQuery({
     queryKey: ["jobs"],
@@ -1002,8 +1263,8 @@ function Jobs({ activeJobId }: JobsProps) {
     );
   }
 
-  const selected = selectedId
-    ? (jobList.find((j) => j.id === selectedId) ?? jobList[0])
+  const selected = jobId
+    ? (jobList.find((j) => j.id === jobId) ?? jobList[0])
     : jobList[0];
 
   return (
@@ -1021,7 +1282,7 @@ function Jobs({ activeJobId }: JobsProps) {
                 <button
                   key={job.id}
                   type="button"
-                  onClick={() => setSelectedId(job.id)}
+                  onClick={() => navigate({ to: "/jobs", search: { jobId: job.id } })}
                   className={`job-list-item${selected?.id === job.id ? " active" : ""}`}
                 >
                   <JobStatusDot status={job.status} />
@@ -1490,6 +1751,13 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-const root = document.getElementById("root");
-if (!root) throw new Error("Root element missing");
-createRoot(root).render(<AppShell />);
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("Root element missing");
+
+createRoot(rootElement).render(
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <RouterProvider router={router} />
+    </TooltipProvider>
+  </QueryClientProvider>,
+);

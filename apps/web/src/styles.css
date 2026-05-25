@@ -56,8 +56,18 @@
   --warning: oklch(0.21 0.045 60);
   --warning-foreground: oklch(0.78 0.13 60);
   --border: oklch(0.32 0.018 175);
-  --input: oklch(0.275 0.018 175);
+  --input: oklch(0.14 0.01 175);
   --ring: oklch(0.58 0.14 170);
+}
+
+/* ── Global Input Style ──────────────────────────── */
+
+input {
+  transition: background 150ms var(--ease-out-quart), border-color 150ms var(--ease-out-quart);
+}
+
+input:focus {
+  background: oklch(0.11 0.01 175);
 }
 
 @keyframes pulse-dot {
@@ -125,7 +135,8 @@ input {
   gap: 2px;
 }
 
-.nav button {
+.nav button,
+.nav a {
   @apply w-full border-0 text-left cursor-pointer flex items-center gap-2;
   border-radius: 5px;
   padding: 8px 10px;
@@ -136,20 +147,24 @@ input {
     background 150ms var(--ease-out-quart),
     color 150ms var(--ease-out-quart);
   letter-spacing: -0.005em;
+  text-decoration: none;
 }
 
-.nav button:hover {
+.nav button:hover,
+.nav a:hover {
   background: oklch(0.23 0.018 175);
   color: oklch(0.945 0.006 155);
 }
 
-.nav button.active {
+.nav button.active,
+.nav a.active {
   background: oklch(0.265 0.022 175);
   color: oklch(0.94 0.008 155);
   font-weight: 500;
 }
 
-.nav button.active svg {
+.nav button.active svg,
+.nav a.active svg {
   color: var(--primary);
 }
 
@@ -634,7 +649,8 @@ h1 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .nav button {
+  .nav button,
+  .nav a {
     @apply justify-center;
     padding: 8px;
     font-size: 13px;

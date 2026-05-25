@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { Command } from "commander";

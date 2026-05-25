@@ -1,16 +1,23 @@
-import { readdir } from "node:fs/promises";
+import { mkdir, readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createMovePlanDraft,
   defaultNasPathConfig,
   type FieldIssue,
+  findDuplicates,
+  getAlbumInfo,
   getMusicTargetDirectory,
+  identifyDedupeMoves,
   type MovePlan,
   type MovePlanError,
   type NasPathConfig,
   nasPathConfigSchema,
+  scoreAlbum,
+  walk,
 } from "@nas-tools/core";
 import { eq } from "drizzle-orm";
+import { cors } from "@elysiajs/cors";
+import { staticPlugin } from "@elysiajs/static";
 import { Elysia, t } from "elysia";
 import { z } from "zod";
 
@@ -149,7 +156,7 @@ async function getStagingStatus(stagingDir: string) {
   return { total: items.length, withCue: cueChecks.filter(Boolean).length, preview };
 }
 
-export const app = new Elysia({ prefix: "/api" })
+export const api = new Elysia({ prefix: "/api" })
   // ── Health ──────────────────────────────────────────────────
   .get("/health", () => ({ ok: true }))
 
@@ -325,6 +332,118 @@ export const app = new Elysia({ prefix: "/api" })
             id: t.String(),
             artistName: t.Optional(t.String()),
             included: t.Boolean(),
+          }),
+        ),
+      }),
+    },
+  )
+
+  // ── Music Dedupe ──────────────────────────────────────────
+  .get("/music-dedupe/scan", () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const root = config.musicDir;
+        const send = (data: any) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        };
+
+        try {
+          send({ type: "indexing", message: "Scanning music directory..." });
+          const entries = await walk(root, { maxDepth: 4 });
+
+          const albumFolders = new Set<string>();
+          for (const entry of entries) {
+            if (!entry.isDirectory && entry.name.toLowerCase().endsWith(".flac")) {
+              albumFolders.add(join(entry.path, ".."));
+            }
+          }
+
+          send({
+            type: "analyzing",
+            message: `Analyzing ${albumFolders.size} potential albums...`,
+            total: albumFolders.size,
+          });
+
+          const albums = [];
+          let count = 0;
+          for (const folder of albumFolders) {
+            if (folder.includes("_duplicates")) {
+              count++;
+              continue;
+            }
+            const info = await getAlbumInfo(folder);
+            if (info) {
+              info.totalSize = entries
+                .filter((e) => join(e.path, "..") === folder && !e.isDirectory)
+                .reduce((sum, e) => sum + e.size, 0);
+              albums.push(info);
+            }
+            count++;
+            if (count % 10 === 0) {
+              send({ type: "progress", current: count, total: albumFolders.size });
+            }
+          }
+
+          const groups = findDuplicates(albums);
+          const duplicates = [];
+          const moves = identifyDedupeMoves(groups, root, join(root, "_duplicates"));
+
+          for (const [id, group] of groups.entries()) {
+            group.sort((a, b) => scoreAlbum(b) - scoreAlbum(a));
+            const winner = group[0];
+            if (!winner) continue;
+
+            duplicates.push({
+              id,
+              release: winner.release,
+              winner,
+              losers: group.slice(1),
+            });
+          }
+
+          send({ type: "result", duplicates, moves });
+          controller.close();
+        } catch (e) {
+          console.error("Dedupe scan stream error:", e);
+          controller.error(e);
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  })
+
+  .post(
+    "/music-dedupe/apply",
+    async ({ body }) => {
+      const results = [];
+
+      for (const task of body.moves) {
+        try {
+          await mkdir(join(task.to, ".."), { recursive: true });
+          await rename(task.from, task.to);
+          results.push({ from: task.from, ok: true });
+        } catch (e) {
+          results.push({ from: task.from, ok: false, error: String(e) });
+        }
+      }
+
+      return { ok: true, results };
+    },
+    {
+      body: t.Object({
+        moves: t.Array(
+          t.Object({
+            from: t.String(),
+            to: t.String(),
+            reason: t.String(),
           }),
         ),
       }),
@@ -538,7 +657,29 @@ export const app = new Elysia({ prefix: "/api" })
     }
   });
 
-export type App = typeof app;
+export const app = new Elysia()
+  .use(cors())
+  .use(
+    staticPlugin({
+      assets: "apps/web/dist",
+      prefix: "/",
+    }),
+  )
+  .use(api)
+  .get("*", async ({ path }) => {
+    const filePath = join("apps/web/dist", path);
+    const file = Bun.file(filePath);
+
+    // If it's a valid file (not a directory), serve it
+    if ((await file.exists()) && file.size > 0 && !filePath.endsWith("/")) {
+      return file;
+    }
+
+    // Default to index.html for SPA routing
+    return Bun.file("apps/web/dist/index.html");
+  });
+
+export type App = typeof api;
 
 if (import.meta.main) {
   app.listen({ hostname: host, port });
