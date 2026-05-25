@@ -43,27 +43,36 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
           .map((e) => path.dirname(e.path))
       )].filter((f) => !f.includes("_duplicates"));
 
-      console.log(pc.cyan(`Indexing ${folderPaths.length} albums...`));
+      return ResultAsync.fromPromise((async () => {
+        console.log(pc.cyan(`Indexing ${folderPaths.length} albums...`));
 
-      const albumTasks = folderPaths.map((folder) => 
-        getAlbumInfo(folder)
-          .map((maybeAlbum) => {
-            if (maybeAlbum.isNothing) return maybeAlbum;
-            const album = maybeAlbum.value;
-            album.totalSize = entries
-              .filter((e) => path.dirname(e.path) === folder && !e.isDirectory)
-              .reduce((sum, e) => sum + e.size, 0);
-            return maybeAlbum;
-          })
-          .orElse((error) => {
-            logError(`Skipping album at ${folder}: ${error.message}`);
-            return ok(Maybe.nothing<AlbumFolder>());
-          })
-      );
-
-      return ResultAsync.combine(albumTasks)
-        .map((results) => results.filter((r): r is import("true-myth").Maybe<AlbumFolder> & { isJust: true } => r.isJust).map((r) => r.value))
-        .mapErr((error) => ({ type: "fail", message: error.message } as const));
+        const albums: AlbumFolder[] = [];
+        const batchSize = 10;
+        for (let i = 0; i < folderPaths.length; i += batchSize) {
+          const batch = folderPaths.slice(i, i + batchSize);
+          const batchTasks = batch.map((folder) =>
+            getAlbumInfo(folder)
+              .map((maybeAlbum) => {
+                if (maybeAlbum.isNothing) return;
+                const album = maybeAlbum.value;
+                album.totalSize = entries
+                  .filter((e) => path.dirname(e.path) === folder && !e.isDirectory)
+                  .reduce((sum, e) => sum + e.size, 0);
+                albums.push(album);
+              })
+              .orElse((error) => {
+                logError(`Skipping album at ${folder}: ${error.message}`);
+                return ok(undefined);
+              }),
+          );
+          await ResultAsync.combine(batchTasks);
+          if (i > 0 && i % 100 === 0) {
+            process.stdout.write(pc.dim(`  Processed ${i}/${folderPaths.length}...\r`));
+          }
+        }
+        console.log(pc.cyan(`\nAnalyzed ${albums.length} albums.`));
+        return albums;
+      })(), (e) => ({ type: "fail", message: String(e) } as const));
     })
     .andThen((albums) => {
       const groups = findDuplicates(albums);
@@ -81,9 +90,9 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
         const losers = group.slice(1);
 
         console.log(pc.yellow(`\nRelease: ${winner.release.artist} - ${winner.release.album}`));
-        console.log(pc.green(`  [KEEP] ${winner.path} (${winner.bitsPerSample}bit/${winner.sampleRate}Hz)`));
+        console.log(pc.green(`  [KEEP] ${winner.path} (${winner.trackCount} tracks, ${winner.bitsPerSample}bit/${winner.sampleRate}Hz)`));
         for (const loser of losers) {
-          console.log(pc.red(`  [MOVE] ${loser.path} (${loser.bitsPerSample}bit/${loser.sampleRate}Hz)`));
+          console.log(pc.red(`  [MOVE] ${loser.path} (${loser.trackCount} tracks, ${loser.bitsPerSample}bit/${loser.sampleRate}Hz)`));
         }
       }
 

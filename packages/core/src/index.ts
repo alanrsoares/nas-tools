@@ -41,6 +41,7 @@ export interface ReleaseInfo {
   id: string; // Artist - Album or MBID
   artist: string;
   album: string;
+  fingerprint?: string; // Track durations hash/string
 }
 
 export interface AlbumFolder {
@@ -71,6 +72,104 @@ export function scoreAlbum(album: AlbumFolder): number {
   );
 }
 
+export function getAlbumInfo(
+  folderPath: string,
+): ResultAsync<Maybe<AlbumFolder>, CoreError> {
+  return safeAsync(
+    () => readdir(folderPath, { withFileTypes: true }),
+    `Failed to read folder: ${folderPath}`,
+  ).andThen((entries) => {
+    const musicFiles = entries
+      .filter((e) => e.isFile() && isMusicFile(e.name))
+      .map((e) => e.name)
+      .sort();
+
+    if (musicFiles.length === 0) return ok(Maybe.nothing<AlbumFolder>());
+
+    const metadataTasks = musicFiles.map((file) => {
+      const filePath = path.join(folderPath, file);
+      return ResultAsync.fromPromise(parseFile(filePath), (cause) =>
+        toCoreError(`Failed to parse metadata: ${filePath}`, cause),
+      );
+    });
+
+    return ResultAsync.combine(metadataTasks).map((metadatas) => {
+      const firstMetadata = metadatas[0]!;
+      let artist = firstMetadata.common.artist;
+      let album = firstMetadata.common.album;
+      const mbid = firstMetadata.common.musicbrainz_albumid;
+
+      // Fingerprint: Sorted durations (rounded to 1 decimal place to handle small jitter)
+      const fingerprint = metadatas
+        .map((m) => (m.format.duration || 0).toFixed(1))
+        .sort()
+        .join(",");
+
+      // Infer from path if metadata missing or generic "Unknown"
+      if (isUnknown(artist) || isUnknown(album)) {
+        const folderName = path.basename(folderPath);
+        const parentDir = path.dirname(folderPath);
+        const parentName = path.basename(parentDir);
+
+        const isRange = alphabeticalRanges.some((r) => r.name === parentName);
+        const isDisc = /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(folderName);
+
+        if (isUnknown(artist)) {
+          const inferred = inferArtistNameFromFolder(folderName).unwrapOr(undefined);
+          if (inferred && !/^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(inferred)) {
+            artist = inferred;
+          }
+
+          if (isUnknown(artist) && !isRange && parentName && parentName !== "." && parentName !== "FLAC") {
+            artist = parentName;
+          }
+        }
+
+        if (isUnknown(album)) {
+          album = isDisc ? `${parentName} (${folderName})` : folderName;
+        }
+      }
+
+      artist = isUnknown(artist) ? "Unknown Artist" : artist!.trim();
+      album = isUnknown(album) ? "Unknown Album" : album!.trim();
+
+      // Extract disc number from metadata or path
+      let discNo = firstMetadata.common.disk.no?.toString() || "";
+      if (!discNo) {
+        const parts = folderPath.split(path.sep).reverse();
+        for (const part of parts) {
+          const m = part.match(/(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*(\d+)/i);
+          if (m?.[1]) {
+            discNo = m[1];
+            break;
+          }
+        }
+      }
+
+      const release: ReleaseInfo = {
+        id: mbid
+          ? discNo
+            ? `${mbid}-d${discNo}`
+            : mbid
+          : `${normalize(artist)}-${normalize(album)}${discNo ? `-d${discNo}` : ""}`,
+        artist,
+        album,
+        fingerprint,
+      };
+
+      return Maybe.just({
+        path: folderPath,
+        trackCount: musicFiles.length,
+        totalSize: 0, // Placeholder
+        sampleRate: firstMetadata.format.sampleRate || 0,
+        bitsPerSample: firstMetadata.format.bitsPerSample || 0,
+        bitrate: firstMetadata.format.bitrate || 0,
+        release,
+      });
+    });
+  });
+}
+
 export function findDuplicates(albums: AlbumFolder[]): Map<string, AlbumFolder[]> {
   const groups = new Map<string, AlbumFolder[]>();
   for (const album of albums) {
@@ -78,9 +177,11 @@ export function findDuplicates(albums: AlbumFolder[]): Map<string, AlbumFolder[]
     if (isUnknown(album.release.artist) && isUnknown(album.release.album)) {
       continue;
     }
-    const group = groups.get(album.release.id) || [];
+    // Group by Release ID AND Track Fingerprint
+    const groupId = `${album.release.id}::${album.release.fingerprint || "no-fp"}`;
+    const group = groups.get(groupId) || [];
     group.push(album);
-    groups.set(album.release.id, group);
+    groups.set(groupId, group);
   }
 
   // Filter groups that have more than one album
@@ -412,89 +513,6 @@ function isUnknown(str?: string): boolean {
   if (!str) return true;
   const n = str.toLowerCase();
   return n === "unknown artist" || n === "unknown album" || n === "unknown" || n === "";
-}
-
-export function getAlbumInfo(
-  folderPath: string,
-): ResultAsync<Maybe<AlbumFolder>, CoreError> {
-  return safeAsync(
-    () => readdir(folderPath, { withFileTypes: true }),
-    `Failed to read folder: ${folderPath}`,
-  ).andThen((entries) => {
-    const musicFiles = entries.filter((e) => e.isFile() && isMusicFile(e.name)).map((e) => e.name);
-
-    if (musicFiles.length === 0) return ok(Maybe.nothing<AlbumFolder>());
-
-    const firstFile = path.join(folderPath, musicFiles[0]!);
-    return ResultAsync.fromPromise(parseFile(firstFile), (cause) =>
-      toCoreError(`Failed to parse metadata: ${firstFile}`, cause),
-    ).map((metadata) => {
-      let artist = metadata.common.artist;
-      let album = metadata.common.album;
-      const mbid = metadata.common.musicbrainz_albumid;
-
-      // Infer from path if metadata missing or generic "Unknown"
-      if (isUnknown(artist) || isUnknown(album)) {
-        const folderName = path.basename(folderPath);
-        const parentDir = path.dirname(folderPath);
-        const parentName = path.basename(parentDir);
-
-        const isRange = alphabeticalRanges.some((r) => r.name === parentName);
-        const isDisc = /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(folderName);
-
-        if (isUnknown(artist)) {
-          const inferred = inferArtistNameFromFolder(folderName).unwrapOr(undefined);
-          if (inferred && !/^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(inferred)) {
-            artist = inferred;
-          }
-
-          if (isUnknown(artist) && !isRange && parentName && parentName !== "." && parentName !== "FLAC") {
-            artist = parentName;
-          }
-        }
-
-        if (isUnknown(album)) {
-          album = isDisc ? `${parentName} (${folderName})` : folderName;
-        }
-      }
-
-      artist = isUnknown(artist) ? "Unknown Artist" : artist!.trim();
-      album = isUnknown(album) ? "Unknown Album" : album!.trim();
-
-      // Extract disc number from metadata or path
-      let discNo = metadata.common.disk.no?.toString() || "";
-      if (!discNo) {
-        const parts = folderPath.split(path.sep).reverse();
-        for (const part of parts) {
-          const m = part.match(/(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*(\d+)/i);
-          if (m?.[1]) {
-            discNo = m[1];
-            break;
-          }
-        }
-      }
-
-      const release: ReleaseInfo = {
-        id: mbid
-          ? discNo
-            ? `${mbid}-d${discNo}`
-            : mbid
-          : `${normalize(artist)}-${normalize(album)}${discNo ? `-d${discNo}` : ""}`,
-        artist,
-        album,
-      };
-
-      return Maybe.just({
-        path: folderPath,
-        trackCount: musicFiles.length,
-        totalSize: 0, // Placeholder
-        sampleRate: metadata.format.sampleRate || 0,
-        bitsPerSample: metadata.format.bitsPerSample || 0,
-        bitrate: metadata.format.bitrate || 0,
-        release,
-      });
-    });
-  });
 }
 
 function inferArtistNameFromMetadata(
