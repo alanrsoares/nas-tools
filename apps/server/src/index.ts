@@ -350,7 +350,11 @@ export const api = new Elysia({ prefix: "/api" })
 
         try {
           send({ type: "indexing", message: "Scanning music directory..." });
-          const entries = await walk(root, { maxDepth: 4 });
+          const entriesResult = await walk(root, { maxDepth: 4 });
+          if (entriesResult.isErr()) {
+            throw entriesResult.error;
+          }
+          const entries = entriesResult.value;
 
           const albumFolders = new Set<string>();
           for (const entry of entries) {
@@ -372,8 +376,9 @@ export const api = new Elysia({ prefix: "/api" })
               count++;
               continue;
             }
-            const info = await getAlbumInfo(folder);
-            if (info) {
+            const infoResult = await getAlbumInfo(folder);
+            if (infoResult.isOk() && infoResult.value.isJust) {
+              const info = infoResult.value.value;
               info.totalSize = entries
                 .filter((e) => join(e.path, "..") === folder && !e.isDirectory)
                 .reduce((sum, e) => sum + e.size, 0);

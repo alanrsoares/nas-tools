@@ -9,8 +9,7 @@ import {
   walk,
   type AlbumFolder,
 } from "@nas-tools/core";
-import { err, ok, ResultAsync } from "neverthrow";
-import { Maybe } from "true-myth";
+import { ok, ResultAsync } from "neverthrow";
 import pc from "picocolors";
 import { z } from "zod";
 
