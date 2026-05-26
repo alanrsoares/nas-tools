@@ -29,7 +29,7 @@ describe("download CLI integration", () => {
     const testUrl = "https://raw.githubusercontent.com/thedevdojo/pines/refs/heads/main/cover.jpg";
 
     // Run the CLI command
-    const result = await $`node ${cliPath} download ${testUrl} --dest ${tempDir}`;
+    const result = await $`bun ${cliPath} download ${testUrl} --dest ${tempDir}`;
 
     // Verify the command executed successfully
     expect(result.exitCode).toBe(0);
@@ -62,7 +62,7 @@ describe("download CLI integration", () => {
 
     // The CLI should exit with code 1 for errors
     try {
-      await $`node ${cliPath} download ${invalidUrl} --dest ${tempDir} --retries 1 --timeout 5000`;
+      await $`bun ${cliPath} download ${invalidUrl} --dest ${tempDir} --retries 1 --timeout 5000`;
       throw new Error("Expected CLI to fail with invalid URL");
       // biome-ignore lint/suspicious/noExplicitAny: zx error shape requires any
     } catch (error: any) {
@@ -76,7 +76,7 @@ describe("download CLI integration", () => {
     const customUA = "Custom-Test-Agent/1.0";
 
     // Run the CLI command with custom User-Agent
-    const result = await $`node ${cliPath} download ${testUrl} --dest ${tempDir} --ua ${customUA}`;
+    const result = await $`bun ${cliPath} download ${testUrl} --dest ${tempDir} --ua ${customUA}`;
 
     // Verify the command executed successfully
     expect(result.exitCode).toBe(0);
@@ -97,7 +97,7 @@ describe("download CLI integration", () => {
 
   it("should handle missing URL argument", async () => {
     try {
-      await $`node ${cliPath} download`;
+      await $`bun ${cliPath} download`;
       throw new Error("Expected CLI to fail with missing URL");
       // biome-ignore lint/suspicious/noExplicitAny: zx error shape requires any
     } catch (error: any) {

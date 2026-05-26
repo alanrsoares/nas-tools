@@ -68,11 +68,6 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
                       .filter((e) => path.dirname(e.path) === folder && !e.isDirectory)
                       .reduce((sum, e) => sum + e.size, 0);
                     verifiedAlbums.push(album);
-                    console.log(
-                      pc.dim(
-                        `  Analyzed: ${album.release.artist} - ${album.release.album} [FP: ${album.release.fingerprint}]`,
-                      ),
-                    );
                   }
                   return undefined;
                 })
@@ -81,6 +76,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
                   return ok(undefined);
                 }),
             );
+
             await ResultAsync.combine(tasks);
             process.stdout.write(
               pc.dim(
@@ -88,7 +84,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
               ),
             );
           }
-          console.log(pc.cyan(`\nVerification complete.`));
+          console.log(pc.cyan("\nVerification complete."));
           return verifiedAlbums;
         })(),
         (e) => ({ type: "fail", message: String(e) }) as const,
@@ -146,7 +142,11 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
             await rename(task.from, task.to);
             console.log(pc.green(`  Moved: ${path.basename(task.from)}`));
           })(),
-          (e) => ({ type: "fail", message: `Failed to move ${task.from}: ${e}` }) as const,
+          (e) =>
+            ({
+              type: "fail",
+              message: `Failed to move ${task.from}: ${e}`,
+            }) as const,
         ),
       );
 

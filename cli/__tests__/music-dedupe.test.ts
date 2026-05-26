@@ -13,7 +13,12 @@ describe("music-dedupe logic", () => {
       bitsPerSample: 16,
       sampleRate: 44100,
       bitrate: 900000,
-      release: { id: "artist1-album1", artist: "Artist 1", album: "Album 1" },
+      release: {
+        id: "artist1-album1",
+        artist: "Artist 1",
+        album: "Album 1",
+        trackCount: 10,
+      },
     },
     {
       path: "/library/A-D/Artist1/Album1 [24-96]",
@@ -22,7 +27,12 @@ describe("music-dedupe logic", () => {
       bitsPerSample: 24,
       sampleRate: 960000,
       bitrate: 2800000,
-      release: { id: "artist1-album1", artist: "Artist 1", album: "Album 1" },
+      release: {
+        id: "artist1-album1",
+        artist: "Artist 1",
+        album: "Album 1",
+        trackCount: 10,
+      },
     },
     {
       path: "/library/E-F/Artist2/Album2",
@@ -31,7 +41,12 @@ describe("music-dedupe logic", () => {
       bitsPerSample: 16,
       sampleRate: 44100,
       bitrate: 850000,
-      release: { id: "artist2-album2", artist: "Artist 2", album: "Album 2" },
+      release: {
+        id: "artist2-album2",
+        artist: "Artist 2",
+        album: "Album 2",
+        trackCount: 12,
+      },
     },
   ];
 
@@ -39,11 +54,12 @@ describe("music-dedupe logic", () => {
     expect(scoreAlbum(albums[1])).toBeGreaterThan(scoreAlbum(albums[0]));
   });
 
-  it("finds duplicates based on release ID", () => {
+  it("finds duplicates based on artist and track count (lazy match)", () => {
     const groups = findDuplicates(albums);
+    const expectedId = "artist1-album1::10t";
     expect(groups.size).toBe(1);
-    expect(groups.has("artist1-album1")).toBe(true);
-    expect(groups.get("artist1-album1")).toHaveLength(2);
+    expect(groups.has(expectedId)).toBe(true);
+    expect(groups.get(expectedId)).toHaveLength(2);
   });
 
   it("identifies moves correctly (inferior quality to trash)", () => {
