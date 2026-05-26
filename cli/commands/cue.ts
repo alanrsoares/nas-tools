@@ -198,7 +198,8 @@ function matchingAudio(cueFile: string, audioFiles: string[]): Maybe<string> {
 }
 
 async function commandAvailable(name: string): Promise<boolean> {
-  const bunPath = globalThis.Bun?.which(name);
+  const bunRuntime = (globalThis as { Bun?: { which: (name: string) => string | null } }).Bun;
+  const bunPath = bunRuntime?.which(name);
   if (bunPath) {
     return true;
   }
