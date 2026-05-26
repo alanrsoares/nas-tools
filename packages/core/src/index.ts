@@ -74,75 +74,73 @@ export function scoreAlbum(album: AlbumFolder): number {
 }
 
 export function getAlbumInfo(folderPath: string): ResultAsync<Maybe<AlbumFolder>, CoreError> {
-  return safeAsync(
-    () => readdir(folderPath, { withFileTypes: true }),
-    `Failed to read folder: ${folderPath}`,
-  ).andThen((entries) => {
-    const musicFiles = entries
-      .filter((e) => e.isFile() && isMusicFile(e.name))
-      .map((e) => e.name)
-      .sort();
+  return ResultAsync.fromPromise(
+    (async () => {
+      const musicFiles = await collectMusicFilePaths(folderPath);
+      if (musicFiles.length === 0) return Maybe.nothing<AlbumFolder>();
 
-    if (musicFiles.length === 0) return ok(Maybe.nothing<AlbumFolder>());
+      const metadatas: Awaited<ReturnType<typeof parseFile>>[] = [];
+      for (const filePath of musicFiles) {
+        try {
+          const metadata = await parseFile(filePath);
+          metadatas.push(metadata);
+        } catch (_e) {
+          // Skip individual failed tracks
+        }
+      }
 
-    return ResultAsync.fromPromise(
-      (async () => {
-        const metadatas = [];
-        for (const file of musicFiles) {
-          const filePath = path.join(folderPath, file);
-          try {
-            const metadata = await parseFile(filePath);
-            metadatas.push(metadata);
-          } catch (_e) {
-            // Skip individual failed tracks
-          }
-        }
-        if (metadatas.length === 0) {
-          throw new Error(`Failed to parse any metadata in: ${folderPath}`);
-        }
-        return metadatas;
-      })(),
-      (cause) => toCoreError(`Failed to parse metadata in: ${folderPath}`, cause),
-    ).andThen((metadatas) => {
+      if (metadatas.length === 0) {
+        throw new Error(`Failed to parse any metadata in: ${folderPath}`);
+      }
+
       const firstMetadata = metadatas[0];
       if (!firstMetadata) {
-        return err(toCoreError(`Failed to parse any metadata in: ${folderPath}`));
+        throw new Error(`Failed to parse any metadata in: ${folderPath}`);
       }
-      const artist = firstMetadata.common.artist;
+
+      const artist = firstMetadata.common.albumartist || firstMetadata.common.artist;
       const album = firstMetadata.common.album;
       const mbid = firstMetadata.common.musicbrainz_albumid;
 
-      // Fingerprint: Track count + Total duration rounded to nearest 30s
-      const totalDuration = metadatas.reduce((sum, m) => sum + (m.format.duration || 0), 0);
-      const fingerprint = `${musicFiles.length}t-${Math.round(totalDuration / 30) * 30}s`;
+      const durationFingerprint = metadatas
+        .map((metadata) => Math.round(metadata.format.duration || 0))
+        .join(",");
+      const fingerprint = `${musicFiles.length}t-${durationFingerprint}`;
 
       const lazyInfo = getAlbumInfoLazy(folderPath, musicFiles.length, 0);
 
-      const release: ReleaseInfo = {
-        id: mbid
-          ? firstMetadata.common.disk.no
-            ? `${mbid}-d${firstMetadata.common.disk.no}`
-            : mbid
-          : lazyInfo.release.id,
-        artist: artist?.trim() || lazyInfo.release.artist,
-        album: album?.trim() || lazyInfo.release.album,
-        fingerprint,
+      return Maybe.just({
+        path: folderPath,
         trackCount: musicFiles.length,
-      };
-
-      return ok(
-        Maybe.just({
-          path: folderPath,
+        totalSize: 0, // Set by caller if needed
+        sampleRate: Math.max(...metadatas.map((metadata) => metadata.format.sampleRate || 0)),
+        bitsPerSample: Math.max(...metadatas.map((metadata) => metadata.format.bitsPerSample || 0)),
+        bitrate: Math.max(...metadatas.map((metadata) => metadata.format.bitrate || 0)),
+        release: {
+          id: mbid || lazyInfo.release.id,
+          artist: artist?.trim() || lazyInfo.release.artist,
+          album: album?.trim() || lazyInfo.release.album,
+          fingerprint,
           trackCount: musicFiles.length,
-          totalSize: 0, // Set by caller if needed
-          sampleRate: firstMetadata.format.sampleRate || 0,
-          bitsPerSample: firstMetadata.format.bitsPerSample || 0,
-          bitrate: firstMetadata.format.bitrate || 0,
-          release,
-        }),
-      );
-    });
-  });
+        },
+      });
+    })(),
+    (cause) => toCoreError(`Failed to parse metadata in: ${folderPath}`, cause),
+  );
+}
+
+async function collectMusicFilePaths(folderPath: string): Promise<string[]> {
+  const entries = await readdir(folderPath, { withFileTypes: true });
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(folderPath, entry.name);
+      if (entry.isDirectory()) return collectMusicFilePaths(entryPath);
+      if (entry.isFile() && isMusicFile(entry.name)) return [entryPath];
+      return [] as string[];
+    }),
+  );
+
+  return nested.flat().sort();
 }
 
 export function getAlbumInfoLazy(
@@ -153,16 +151,22 @@ export function getAlbumInfoLazy(
   const folderName = path.basename(folderPath);
   const parentDir = path.dirname(folderPath);
   const parentName = path.basename(parentDir);
+  const grandparentName = path.basename(path.dirname(parentDir));
 
   const isRange = alphabeticalRanges.some((r) => r.name === parentName);
   const isDisc = /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(folderName);
+  const parsedFolder = parseReleaseFolderName(folderName);
 
-  let artist = inferArtistNameFromFolder(folderName).unwrapOr(undefined);
-  if (!artist && !isRange && parentName && parentName !== "." && parentName !== "FLAC") {
+  let artist = parsedFolder.map((release) => release.artist).unwrapOr(undefined);
+  if (isDisc && grandparentName && !isLibraryRootName(grandparentName)) {
+    artist = grandparentName;
+  } else if (!artist && !isRange && parentName && !isLibraryRootName(parentName)) {
     artist = parentName;
   }
 
-  let album = isDisc ? `${parentName} (${folderName})` : folderName;
+  let album = isDisc
+    ? `${parentName} (${folderName})`
+    : parsedFolder.map((release) => release.album).unwrapOr(folderName);
 
   artist = artist?.trim() || "Unknown Artist";
   album = album?.trim() || "Unknown Album";
@@ -196,11 +200,38 @@ export function getAlbumInfoLazy(
   };
 }
 
-export function identifyAlbumCandidates(entries: WalkEntry[]): AlbumFolder[] {
+function parseReleaseFolderName(folderName: string): Maybe<{ artist: string; album: string }> {
+  const cleaned = stripReleaseTags(folderName);
+  const patterns = [
+    /^(.+?)\s+-\s+\d{4}\s+-\s+(.+)$/i,
+    /^(.+?)\s+-\s+(.+)$/i,
+    /^(.+?)\s+_\s+(.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const matched = cleaned.match(pattern);
+    const artist = matched?.[1]?.trim();
+    const album = matched?.[2]?.trim();
+    if (!artist || !album || /^\d{4}$/.test(artist)) continue;
+
+    return sanitizeArtistName(artist).map((sanitizedArtist) => ({
+      artist: sanitizedArtist,
+      album,
+    }));
+  }
+
+  return Maybe.nothing();
+}
+
+function isLibraryRootName(name: string): boolean {
+  return name === "." || name === "FLAC" || alphabeticalRanges.some((range) => range.name === name);
+}
+
+export function identifyAlbumCandidates(entries: WalkEntry[], root?: string): AlbumFolder[] {
   const folderStats = new Map<string, { count: number; size: number }>();
   for (const entry of entries) {
     if (!entry.isDirectory && isMusicFile(entry.name)) {
-      const dir = path.dirname(entry.path);
+      const dir = root ? inferAlbumRoot(entry.path, root) : path.dirname(entry.path);
       const stats = folderStats.get(dir) || { count: 0, size: 0 };
       stats.count++;
       stats.size += entry.size;
@@ -215,6 +246,24 @@ export function identifyAlbumCandidates(entries: WalkEntry[]): AlbumFolder[] {
   }
 
   return candidates;
+}
+
+function inferAlbumRoot(filePath: string, root: string): string {
+  const fileDir = path.dirname(filePath);
+  const relativeDir = path.relative(root, fileDir);
+  if (relativeDir.startsWith("..") || path.isAbsolute(relativeDir)) return fileDir;
+
+  const parts = relativeDir.split(path.sep).filter(Boolean);
+  if (parts.length === 0) return fileDir;
+
+  const hasRange = alphabeticalRanges.some((range) => range.name === parts[0]);
+  if (hasRange) {
+    if (parts.length >= 3) return path.join(root, parts[0] ?? "", parts[1] ?? "", parts[2] ?? "");
+    return fileDir;
+  }
+
+  if (parts.length >= 2) return path.join(root, parts[0] ?? "", parts[1] ?? "");
+  return fileDir;
 }
 
 export function findDuplicates(albums: AlbumFolder[]): Map<string, AlbumFolder[]> {

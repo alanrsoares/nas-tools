@@ -34,39 +34,37 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
   return walk(options.root, { maxDepth: 4 })
     .mapErr((error) => ({ type: "fail", message: error.message }) as const)
     .andThen((entries) => {
-      // 1. Identify candidates cheaply using folder names and track counts
-      const candidates = identifyAlbumCandidates(entries);
-      console.log(
-        pc.cyan(`Found ${candidates.length} albums. Identifying potential duplicates...`),
-      );
+      const candidates = identifyAlbumCandidates(entries, options.root);
+      const candidateFolders = [...new Set(candidates.map((album) => album.path))];
+      console.log(pc.cyan(`Found ${candidateFolders.length} album roots. Verifying metadata...`));
 
-      const initialGroups = findDuplicates(candidates);
-      const suspectFolders = [...new Set([...initialGroups.values()].flat().map((a) => a.path))];
-
-      if (suspectFolders.length === 0) {
+      if (candidateFolders.length === 0) {
         return ok([] as AlbumFolder[]);
       }
 
-      console.log(
-        pc.yellow(`Suspect duplicates in ${suspectFolders.length} folders. Verifying durations...`),
-      );
-
-      // 2. Perform expensive fingerprinting ONLY on suspect folders
       return ResultAsync.fromPromise(
         (async () => {
           const verifiedAlbums: AlbumFolder[] = [];
           const batchSize = 10;
 
-          for (let i = 0; i < suspectFolders.length; i += batchSize) {
-            const batch = suspectFolders.slice(i, i + batchSize);
+          for (let i = 0; i < candidateFolders.length; i += batchSize) {
+            const batch = candidateFolders.slice(i, i + batchSize);
             const tasks = batch.map((folder) =>
               getAlbumInfo(folder)
                 .map((maybeAlbum) => {
                   if (maybeAlbum.isJust) {
                     const album = maybeAlbum.value;
                     album.totalSize = entries
-                      .filter((e) => path.dirname(e.path) === folder && !e.isDirectory)
-                      .reduce((sum, e) => sum + e.size, 0);
+                      .filter((entry) => {
+                        if (entry.isDirectory) return false;
+                        const relative = path.relative(folder, entry.path);
+                        return (
+                          relative !== "" &&
+                          !relative.startsWith("..") &&
+                          !path.isAbsolute(relative)
+                        );
+                      })
+                      .reduce((sum, entry) => sum + entry.size, 0);
                     verifiedAlbums.push(album);
                   }
                   return undefined;
@@ -80,7 +78,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
             await ResultAsync.combine(tasks);
             process.stdout.write(
               pc.dim(
-                `  Verified ${Math.min(i + batchSize, suspectFolders.length)}/${suspectFolders.length}...\r`,
+                `  Verified ${Math.min(i + batchSize, candidateFolders.length)}/${candidateFolders.length}...\r`,
               ),
             );
           }
