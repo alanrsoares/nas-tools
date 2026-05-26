@@ -63,7 +63,9 @@
 /* ── Global Input Style ──────────────────────────── */
 
 input {
-  transition: background 150ms var(--ease-out-quart), border-color 150ms var(--ease-out-quart);
+  transition:
+    background 150ms var(--ease-out-quart),
+    border-color 150ms var(--ease-out-quart);
 }
 
 input:focus {

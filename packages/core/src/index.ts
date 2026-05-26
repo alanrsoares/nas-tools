@@ -73,9 +73,7 @@ export function scoreAlbum(album: AlbumFolder): number {
   );
 }
 
-export function getAlbumInfo(
-  folderPath: string,
-): ResultAsync<Maybe<AlbumFolder>, CoreError> {
+export function getAlbumInfo(folderPath: string): ResultAsync<Maybe<AlbumFolder>, CoreError> {
   return safeAsync(
     () => readdir(folderPath, { withFileTypes: true }),
     `Failed to read folder: ${folderPath}`,
@@ -95,7 +93,7 @@ export function getAlbumInfo(
           try {
             const metadata = await parseFile(filePath);
             metadatas.push(metadata);
-          } catch (e) {
+          } catch (_e) {
             // Skip individual failed tracks
           }
         }
@@ -105,79 +103,44 @@ export function getAlbumInfo(
         return metadatas;
       })(),
       (cause) => toCoreError(`Failed to parse metadata in: ${folderPath}`, cause),
-    ).map((metadatas) => {
-      const firstMetadata = metadatas[0]!;
-      let artist = firstMetadata.common.artist;
-      let album = firstMetadata.common.album;
+    ).andThen((metadatas) => {
+      const firstMetadata = metadatas[0];
+      if (!firstMetadata) {
+        return err(toCoreError(`Failed to parse any metadata in: ${folderPath}`));
+      }
+      const artist = firstMetadata.common.artist;
+      const album = firstMetadata.common.album;
       const mbid = firstMetadata.common.musicbrainz_albumid;
 
       // Fingerprint: Track count + Total duration rounded to nearest 30s
-      // This is robust against mastering differences while still discriminating between different releases/discs
       const totalDuration = metadatas.reduce((sum, m) => sum + (m.format.duration || 0), 0);
       const fingerprint = `${musicFiles.length}t-${Math.round(totalDuration / 30) * 30}s`;
 
-      // Infer from path if metadata missing or generic "Unknown"
-      if (isUnknown(artist) || isUnknown(album)) {
-        const folderName = path.basename(folderPath);
-        const parentDir = path.dirname(folderPath);
-        const parentName = path.basename(parentDir);
-
-        const isRange = alphabeticalRanges.some((r) => r.name === parentName);
-        const isDisc = /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(folderName);
-
-        if (isUnknown(artist)) {
-          const inferred = inferArtistNameFromFolder(folderName).unwrapOr(undefined);
-          if (inferred && !/^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(inferred)) {
-            artist = inferred;
-          }
-
-          if (isUnknown(artist) && !isRange && parentName && parentName !== "." && parentName !== "FLAC") {
-            artist = parentName;
-          }
-        }
-
-        if (isUnknown(album)) {
-          album = isDisc ? `${parentName} (${folderName})` : folderName;
-        }
-      }
-
-      artist = isUnknown(artist) ? "Unknown Artist" : artist!.trim();
-      album = isUnknown(album) ? "Unknown Album" : album!.trim();
-
-      // Extract disc number from metadata or path
-      let discNo = firstMetadata.common.disk.no?.toString() || "";
-      if (!discNo) {
-        const parts = folderPath.split(path.sep).reverse();
-        for (const part of parts) {
-          const m = part.match(/(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*(\d+)/i);
-          if (m?.[1]) {
-            discNo = m[1];
-            break;
-          }
-        }
-      }
+      const lazyInfo = getAlbumInfoLazy(folderPath, musicFiles.length, 0);
 
       const release: ReleaseInfo = {
         id: mbid
-          ? discNo
-            ? `${mbid}-d${discNo}`
+          ? firstMetadata.common.disk.no
+            ? `${mbid}-d${firstMetadata.common.disk.no}`
             : mbid
-          : `${normalize(artist)}-${normalize(stripReleaseTags(album))}${discNo ? `-d${discNo}` : ""}`,
-        artist,
-        album,
+          : lazyInfo.release.id,
+        artist: artist?.trim() || lazyInfo.release.artist,
+        album: album?.trim() || lazyInfo.release.album,
         fingerprint,
         trackCount: musicFiles.length,
       };
 
-      return Maybe.just({
-        path: folderPath,
-        trackCount: musicFiles.length,
-        totalSize: 0, // Placeholder
-        sampleRate: firstMetadata.format.sampleRate || 0,
-        bitsPerSample: firstMetadata.format.bitsPerSample || 0,
-        bitrate: firstMetadata.format.bitrate || 0,
-        release,
-      });
+      return ok(
+        Maybe.just({
+          path: folderPath,
+          trackCount: musicFiles.length,
+          totalSize: 0, // Set by caller if needed
+          sampleRate: firstMetadata.format.sampleRate || 0,
+          bitsPerSample: firstMetadata.format.bitsPerSample || 0,
+          bitrate: firstMetadata.format.bitrate || 0,
+          release,
+        }),
+      );
     });
   });
 }
@@ -223,7 +186,9 @@ export function getAlbumInfoLazy(
     bitsPerSample: 0,
     bitrate: 0,
     release: {
-      id: `${normalize(artist)}-${normalize(stripReleaseTags(album))}${discNo ? `-d${discNo}` : ""}`,
+      id: `${normalize(artist)}-${normalize(stripReleaseTags(album))}${
+        discNo ? `-d${discNo}` : ""
+      }`,
       artist,
       album,
       trackCount: musicFilesCount,
@@ -259,10 +224,11 @@ export function findDuplicates(albums: AlbumFolder[]): Map<string, AlbumFolder[]
       continue;
     }
 
-    // If we have fingerprints, use them for strict grouping
-    // Otherwise group by Release ID + Track Count as candidates
+    // Fingerprint-first grouping:
+    // Albums are duplicates if they have the SAME tracks/durations AND same ARTIST.
+    // This catches "Album" vs "Album (Remaster)" even if Release IDs differ.
     const groupId = album.release.fingerprint
-      ? `${album.release.id}::${album.release.fingerprint}`
+      ? `${normalize(album.release.artist)}::${album.release.fingerprint}`
       : `${album.release.id}::${album.trackCount}t`;
 
     const group = groups.get(groupId) || [];
@@ -522,7 +488,10 @@ function detectMediaType(dirName: string, files: string[], dirPath: string): May
   return Maybe.nothing();
 }
 
-function collectRelativeFiles(rootDir: string, currentDir = rootDir): ResultAsync<string[], CoreError> {
+function collectRelativeFiles(
+  rootDir: string,
+  currentDir = rootDir,
+): ResultAsync<string[], CoreError> {
   return safeAsync(
     () => readdir(currentDir, { withFileTypes: true }),
     `Failed to read directory: ${currentDir}`,
@@ -569,7 +538,10 @@ export function inferArtistNameFromFolder(folderName: string): Maybe<string> {
   const cleaned = stripReleaseTags(folderName);
 
   // Skip if it looks like just a Year - Album or Disc folder
-  if (/^\d{4}\s*-\s*/.test(cleaned) || /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(cleaned)) {
+  if (
+    /^\d{4}\s*-\s*/.test(cleaned) ||
+    /^(?:disc|cd|vol|volume|part|side|record|lp)\.?\s*\d+$/i.test(cleaned)
+  ) {
     return Maybe.nothing();
   }
 
@@ -601,9 +573,7 @@ function isUnknown(str?: string): boolean {
   return n === "unknown artist" || n === "unknown album" || n === "unknown" || n === "";
 }
 
-function inferArtistNameFromMetadata(
-  item: StagedMediaItem,
-): ResultAsync<Maybe<string>, CoreError> {
+function inferArtistNameFromMetadata(item: StagedMediaItem): ResultAsync<Maybe<string>, CoreError> {
   const tasks = item.musicFiles.map((file) => {
     const filePath = path.join(item.path, file);
     return ResultAsync.fromPromise(parseFile(filePath), (cause) =>
@@ -724,10 +694,9 @@ export function createMovePlanDraft(
     .andThen(() => scanDownloadStagingArea(config))
     .andThen((items) => {
       const itemTasks = items.map((item) => {
-        const artistTask: ResultAsync<Maybe<string>, MovePlanError> =
-          item.type === "music"
-            ? inferArtistName(item).orElse(() => ok(Maybe.nothing<string>()))
-            : ResultAsync.fromSafePromise(Promise.resolve(Maybe.nothing<string>()));
+        const artistTask: ResultAsync<Maybe<string>, MovePlanError> = item.type === "music"
+          ? inferArtistName(item).orElse(() => ok(Maybe.nothing<string>()))
+          : ResultAsync.fromSafePromise(Promise.resolve(Maybe.nothing<string>()));
 
         return artistTask.map((artist): MovePlanItem => {
           const itemId = crypto.randomUUID();

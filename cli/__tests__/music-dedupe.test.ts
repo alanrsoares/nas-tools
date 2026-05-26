@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { findDuplicates, identifyDedupeMoves, scoreAlbum, type AlbumFolder } from "@nas-tools/core";
+import { type AlbumFolder, findDuplicates, identifyDedupeMoves, scoreAlbum } from "@nas-tools/core";
 
 describe("music-dedupe logic", () => {
   const root = "/library";
@@ -13,7 +13,7 @@ describe("music-dedupe logic", () => {
       bitsPerSample: 16,
       sampleRate: 44100,
       bitrate: 900000,
-      release: { id: "artist1-album1", artist: "Artist 1", album: "Album 1" }
+      release: { id: "artist1-album1", artist: "Artist 1", album: "Album 1" },
     },
     {
       path: "/library/A-D/Artist1/Album1 [24-96]",
@@ -22,7 +22,7 @@ describe("music-dedupe logic", () => {
       bitsPerSample: 24,
       sampleRate: 960000,
       bitrate: 2800000,
-      release: { id: "artist1-album1", artist: "Artist 1", album: "Album 1" }
+      release: { id: "artist1-album1", artist: "Artist 1", album: "Album 1" },
     },
     {
       path: "/library/E-F/Artist2/Album2",
@@ -31,8 +31,8 @@ describe("music-dedupe logic", () => {
       bitsPerSample: 16,
       sampleRate: 44100,
       bitrate: 850000,
-      release: { id: "artist2-album2", artist: "Artist 2", album: "Album 2" }
-    }
+      release: { id: "artist2-album2", artist: "Artist 2", album: "Album 2" },
+    },
   ];
 
   it("calculates score correctly (24bit > 16bit)", () => {

@@ -1,12 +1,16 @@
 import { mkdir, readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
+import { cors } from "@elysiajs/cors";
+import { staticPlugin } from "@elysiajs/static";
 import {
+  type AlbumFolder,
   createMovePlanDraft,
   defaultNasPathConfig,
   type FieldIssue,
   findDuplicates,
   getAlbumInfo,
   getMusicTargetDirectory,
+  identifyAlbumCandidates,
   identifyDedupeMoves,
   type MovePlan,
   type MovePlanError,
@@ -16,8 +20,6 @@ import {
   walk,
 } from "@nas-tools/core";
 import { eq } from "drizzle-orm";
-import { cors } from "@elysiajs/cors";
-import { staticPlugin } from "@elysiajs/static";
 import { Elysia, t } from "elysia";
 import { z } from "zod";
 
@@ -344,7 +346,7 @@ export const api = new Elysia({ prefix: "/api" })
     const stream = new ReadableStream({
       async start(controller) {
         const root = config.musicDir;
-        const send = (data: any) => {
+        const send = (data: unknown) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         };
 
@@ -360,7 +362,9 @@ export const api = new Elysia({ prefix: "/api" })
           send({ type: "analyzing", message: "Identifying potential duplicates..." });
           const candidates = identifyAlbumCandidates(entries);
           const initialGroups = findDuplicates(candidates);
-          const suspectFolders = [...new Set([...initialGroups.values()].flat().map((a) => a.path))];
+          const suspectFolders = [
+            ...new Set([...initialGroups.values()].flat().map((a) => a.path)),
+          ];
 
           if (suspectFolders.length === 0) {
             send({ type: "result", duplicates: [], moves: [] });
@@ -375,7 +379,7 @@ export const api = new Elysia({ prefix: "/api" })
           });
 
           // 2. Targeted verification
-          const albums = [];
+          const albums: AlbumFolder[] = [];
           let count = 0;
           const batchSize = 10;
           for (let i = 0; i < suspectFolders.length; i += batchSize) {

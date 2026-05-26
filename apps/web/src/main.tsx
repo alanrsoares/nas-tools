@@ -171,7 +171,8 @@ const sectionLabel: Record<Section, string> = {
 const sectionDescription: Record<Section, string> = {
   overview: "System status at a glance — active downloads, staging area, and cleanup tasks.",
   staging: "Scan your downloads folder, review detected media, and confirm moves to the library.",
-  dedupe: "Index your FLAC library to identify duplicated releases and keep the best quality versions.",
+  dedupe:
+    "Index your FLAC library to identify duplicated releases and keep the best quality versions.",
   jobs: "Track active and past move operations. Select a job to see its progress and event log.",
   downloads: "Search Prowlarr indexers for lossless audio and add directly to Transmission.",
   settings: "NAS library paths used when organizing media. Edit via server environment variables.",
@@ -180,9 +181,7 @@ const sectionDescription: Record<Section, string> = {
 function AppShell() {
   const { pathname } = window.location; // Simple way to get active state for now or use useMatch
 
-  const currentSection = (pathname === "/"
-    ? "overview"
-    : pathname.slice(1)) as Section;
+  const currentSection = (pathname === "/" ? "overview" : pathname.slice(1)) as Section;
 
   return (
     <div className="shell">
@@ -196,11 +195,7 @@ function AppShell() {
             const Icon = item.icon;
             const to = item.id === "overview" ? "/" : `/${item.id}`;
             return (
-              <Link
-                key={item.id}
-                to={to}
-                activeProps={{ className: "active" }}
-              >
+              <Link key={item.id} to={to} activeProps={{ className: "active" }}>
                 <Icon size={17} />
                 <span>{item.label}</span>
               </Link>
@@ -585,12 +580,12 @@ function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
 
 // ── Staging ────────────────────────────────────────────────────
 
-function isCleanSuccess(data: any): data is { removed: number } {
+function isCleanSuccess(data: unknown): data is { removed: number } {
   return (
     typeof data === "object" &&
     data !== null &&
     "removed" in data &&
-    typeof data.removed === "number"
+    typeof (data as { removed: unknown }).removed === "number"
   );
 }
 
@@ -1263,9 +1258,7 @@ function Jobs() {
     );
   }
 
-  const selected = jobId
-    ? (jobList.find((j) => j.id === jobId) ?? jobList[0])
-    : jobList[0];
+  const selected = jobId ? (jobList.find((j) => j.id === jobId) ?? jobList[0]) : jobList[0];
 
   return (
     <div className="flex gap-4" style={{ minWidth: 0 }}>

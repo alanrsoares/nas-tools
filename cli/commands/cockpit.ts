@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Command } from "commander";
-import { app } from "../../apps/server/src/index.js";
 import { env } from "../../apps/server/src/env.js";
+import { app } from "../../apps/server/src/index.js";
 
 export default function cockpitCommand(program: Command) {
   program
