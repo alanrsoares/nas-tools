@@ -1,5 +1,5 @@
 import { mkdir, readdir, rename } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { cors } from "@elysiajs/cors";
 import { staticPlugin } from "@elysiajs/static";
 import {
@@ -358,15 +358,11 @@ export const api = new Elysia({ prefix: "/api" })
           }
           const entries = entriesResult.value;
 
-          // 1. Identify candidates cheaply
-          send({ type: "analyzing", message: "Identifying potential duplicates..." });
-          const candidates = identifyAlbumCandidates(entries);
-          const initialGroups = findDuplicates(candidates);
-          const suspectFolders = [
-            ...new Set([...initialGroups.values()].flat().map((a) => a.path)),
-          ];
+          send({ type: "analyzing", message: "Identifying album roots..." });
+          const candidates = identifyAlbumCandidates(entries, root);
+          const candidateFolders = [...new Set(candidates.map((album) => album.path))];
 
-          if (suspectFolders.length === 0) {
+          if (candidateFolders.length === 0) {
             send({ type: "result", duplicates: [], moves: [] });
             controller.close();
             return;
@@ -374,29 +370,34 @@ export const api = new Elysia({ prefix: "/api" })
 
           send({
             type: "analyzing",
-            message: `Verifying durations for ${suspectFolders.length} folders...`,
-            total: suspectFolders.length,
+            message: `Verifying metadata for ${candidateFolders.length} album roots...`,
+            total: candidateFolders.length,
           });
 
-          // 2. Targeted verification
           const albums: AlbumFolder[] = [];
           let count = 0;
           const batchSize = 10;
-          for (let i = 0; i < suspectFolders.length; i += batchSize) {
-            const batch = suspectFolders.slice(i, i + batchSize);
+          for (let i = 0; i < candidateFolders.length; i += batchSize) {
+            const batch = candidateFolders.slice(i, i + batchSize);
             const batchTasks = batch.map(async (folder) => {
               const infoResult = await getAlbumInfo(folder);
               if (infoResult.isOk() && infoResult.value.isJust) {
                 const info = infoResult.value.value;
                 info.totalSize = entries
-                  .filter((e) => join(e.path, "..") === folder && !e.isDirectory)
-                  .reduce((sum, e) => sum + e.size, 0);
+                  .filter((entry) => {
+                    if (entry.isDirectory) return false;
+                    const nestedPath = relative(folder, entry.path);
+                    return (
+                      nestedPath !== "" && !nestedPath.startsWith("..") && !isAbsolute(nestedPath)
+                    );
+                  })
+                  .reduce((sum, entry) => sum + entry.size, 0);
                 albums.push(info);
               }
               count++;
             });
             await Promise.all(batchTasks);
-            send({ type: "progress", current: count, total: suspectFolders.length });
+            send({ type: "progress", current: count, total: candidateFolders.length });
           }
 
           const groups = findDuplicates(albums);
