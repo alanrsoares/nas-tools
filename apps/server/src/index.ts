@@ -771,20 +771,17 @@ function markRunningJobsCrashed(error: unknown) {
   const message = error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error);
   const now = new Date().toISOString();
 
-  const runningJobs = db
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(eq(jobs.status, "running"))
-    .all();
+  const runningJobs = db.select({ id: jobs.id }).from(jobs).where(eq(jobs.status, "running")).all();
 
   for (const job of runningJobs) {
-    const maxSeq = db
-      .select({ seq: jobEvents.seq })
-      .from(jobEvents)
-      .where(eq(jobEvents.jobId, job.id))
-      .orderBy(jobEvents.seq)
-      .all()
-      .at(-1)?.seq ?? -1;
+    const maxSeq =
+      db
+        .select({ seq: jobEvents.seq })
+        .from(jobEvents)
+        .where(eq(jobEvents.jobId, job.id))
+        .orderBy(jobEvents.seq)
+        .all()
+        .at(-1)?.seq ?? -1;
 
     db.insert(jobEvents)
       .values({
@@ -799,10 +796,7 @@ function markRunningJobsCrashed(error: unknown) {
       })
       .run();
 
-    db.update(jobs)
-      .set({ status: "interrupted", updatedAt: now })
-      .where(eq(jobs.id, job.id))
-      .run();
+    db.update(jobs).set({ status: "interrupted", updatedAt: now }).where(eq(jobs.id, job.id)).run();
   }
 }
 

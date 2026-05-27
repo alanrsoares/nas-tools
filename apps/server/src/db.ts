@@ -103,7 +103,6 @@ sqlite.exec(`
   );
 `);
 
-
 export const db = drizzle(sqlite, {
   schema: { movePlans, movePlanItems, jobs, jobEvents },
 });
