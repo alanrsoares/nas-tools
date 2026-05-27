@@ -22,7 +22,7 @@ import { eq } from "drizzle-orm";
 import { Elysia, t } from "elysia";
 import { z } from "zod";
 import { type CuePair, findCuePairs } from "./cue.js";
-import { db, jobs, movePlanItems, movePlans } from "./db.js";
+import { db, jobEvents, jobs, movePlanItems, movePlans } from "./db.js";
 import { env } from "./env.js";
 import {
   cancelJob,
@@ -767,7 +767,58 @@ export const app = new Elysia()
 
 export type App = typeof api;
 
+function markRunningJobsCrashed(error: unknown) {
+  const message = error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error);
+  const now = new Date().toISOString();
+
+  const runningJobs = db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(eq(jobs.status, "running"))
+    .all();
+
+  for (const job of runningJobs) {
+    const maxSeq = db
+      .select({ seq: jobEvents.seq })
+      .from(jobEvents)
+      .where(eq(jobEvents.jobId, job.id))
+      .orderBy(jobEvents.seq)
+      .all()
+      .at(-1)?.seq ?? -1;
+
+    db.insert(jobEvents)
+      .values({
+        id: crypto.randomUUID(),
+        jobId: job.id,
+        seq: maxSeq + 1,
+        type: "process_crashed",
+        level: "error",
+        message: `Server crashed: ${message.slice(0, 500)}`,
+        data: null,
+        createdAt: now,
+      })
+      .run();
+
+    db.update(jobs)
+      .set({ status: "interrupted", updatedAt: now })
+      .where(eq(jobs.id, job.id))
+      .run();
+  }
+}
+
 if (import.meta.main) {
+  process.on("uncaughtException", (error) => {
+    console.error("[nas-tools] uncaughtException:", error);
+    markRunningJobsCrashed(error);
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("[nas-tools] unhandledRejection:", reason);
+    markRunningJobsCrashed(reason);
+    process.exit(1);
+  });
+
   app.listen({ hostname: host, port });
   console.log(`NAS Tools server listening on http://${host}:${port}`);
 }
