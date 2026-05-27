@@ -26,6 +26,47 @@ const optionsSchema = z.object({
 
 type CommandOptions = z.infer<typeof optionsSchema>;
 
+function printDuplicateGroups(groups: Map<string, AlbumFolder[]>): void {
+  for (const group of groups.values()) {
+    group.sort((a, b) => scoreAlbum(b) - scoreAlbum(a));
+    const winner = group[0];
+    if (!winner) continue;
+    const losers = group.slice(1);
+    console.log(pc.yellow(`\nRelease: ${winner.release.artist} - ${winner.release.album}`));
+    console.log(
+      pc.green(
+        `  [KEEP] ${winner.path} (${winner.trackCount} tracks, ${winner.bitsPerSample}bit/${winner.sampleRate}Hz)`,
+      ),
+    );
+    for (const loser of losers) {
+      console.log(
+        pc.red(
+          `  [MOVE] ${loser.path} (${loser.trackCount} tracks, ${loser.bitsPerSample}bit/${loser.sampleRate}Hz)`,
+        ),
+      );
+    }
+  }
+}
+
+function executeMoves(
+  toMove: { from: string; to: string }[],
+): ResultAsync<undefined, { type: "fail"; message: string }> {
+  const moveTasks = toMove.map((task) =>
+    ResultAsync.fromPromise(
+      (async () => {
+        await mkdir(path.dirname(task.to), { recursive: true });
+        await rename(task.from, task.to);
+        console.log(pc.green(`  Moved: ${path.basename(task.from)}`));
+      })(),
+      (e) => ({ type: "fail", message: `Failed to move ${task.from}: ${e}` }) as const,
+    ),
+  );
+  return ResultAsync.combine(moveTasks).map(() => {
+    console.log(pc.bold("\nDeduplication complete."));
+    return undefined;
+  });
+}
+
 function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   const trashRoot = path.join(options.root, "_duplicates");
 
@@ -96,27 +137,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
         return ok(undefined);
       }
 
-      for (const group of groups.values()) {
-        group.sort((a, b) => scoreAlbum(b) - scoreAlbum(a));
-        const winner = group[0];
-        if (!winner) continue;
-
-        const losers = group.slice(1);
-
-        console.log(pc.yellow(`\nRelease: ${winner.release.artist} - ${winner.release.album}`));
-        console.log(
-          pc.green(
-            `  [KEEP] ${winner.path} (${winner.trackCount} tracks, ${winner.bitsPerSample}bit/${winner.sampleRate}Hz)`,
-          ),
-        );
-        for (const loser of losers) {
-          console.log(
-            pc.red(
-              `  [MOVE] ${loser.path} (${loser.trackCount} tracks, ${loser.bitsPerSample}bit/${loser.sampleRate}Hz)`,
-            ),
-          );
-        }
-      }
+      printDuplicateGroups(groups);
 
       const toMove = identifyDedupeMoves(groups, options.root, trashRoot);
 
@@ -132,26 +153,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
       }
 
       console.log(pc.bold(`\nMoving ${toMove.length} folders...`));
-
-      const moveTasks = toMove.map((task) =>
-        ResultAsync.fromPromise(
-          (async () => {
-            await mkdir(path.dirname(task.to), { recursive: true });
-            await rename(task.from, task.to);
-            console.log(pc.green(`  Moved: ${path.basename(task.from)}`));
-          })(),
-          (e) =>
-            ({
-              type: "fail",
-              message: `Failed to move ${task.from}: ${e}`,
-            }) as const,
-        ),
-      );
-
-      return ResultAsync.combine(moveTasks).map(() => {
-        console.log(pc.bold("\nDeduplication complete."));
-        return undefined;
-      });
+      return executeMoves(toMove);
     });
 }
 

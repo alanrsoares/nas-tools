@@ -34,6 +34,115 @@ const optionsSchema = z.object({
 
 type CommandOptions = z.infer<typeof optionsSchema>;
 
+async function applyRestorePlan(
+  options: CommandOptions,
+  duplicatesRoot: string,
+  plans: ReturnType<typeof planDuplicateRestores>,
+  deletePlans: ReturnType<typeof planDuplicateDeletes>,
+  mergePlans: MergeConflictPlan[],
+): Promise<void> {
+  const toRestore = options.restoreFalsePositives
+    ? plans.filter((plan) => plan.status === "false-positive")
+    : [];
+  if (!options.apply) {
+    console.log(
+      pc.bold(
+        `\nDry run: ${toRestore.length + actionableMergePlans(mergePlans).length} folders would be restored, ${deletePlans.length} folders would be deleted, ${reviewMergePlans(mergePlans).length} merge items need review.`,
+      ),
+    );
+    console.log(pc.cyan("Use --apply to execute restore/delete actions."));
+    return;
+  }
+
+  for (const plan of toRestore) {
+    await mkdir(path.dirname(plan.restorePath), { recursive: true });
+    await rename(plan.duplicatePath, plan.restorePath);
+    console.log(pc.green(`Restored: ${plan.restorePath}`));
+  }
+
+  for (const plan of actionableMergePlans(mergePlans)) {
+    assertInsideDuplicatesRoot(plan.duplicatePath, duplicatesRoot);
+    await mkdir(path.dirname(plan.targetPath), { recursive: true });
+    await rename(plan.duplicatePath, plan.targetPath);
+    console.log(pc.green(`Merged: ${plan.duplicatePath} → ${plan.targetPath}`));
+  }
+
+  for (const plan of deletePlans) {
+    assertInsideDuplicatesRoot(plan.duplicatePath, duplicatesRoot);
+    await rm(plan.duplicatePath, { recursive: true });
+    console.log(pc.green(`Deleted duplicate: ${plan.duplicatePath}`));
+  }
+
+  for (const conflict of plans.filter((plan) => plan.status === "conflict")) {
+    await pruneEmptyDirectories(conflict.duplicatePath, duplicatesRoot);
+  }
+}
+
+async function executeRestore(
+  options: CommandOptions,
+  duplicatesRoot: string,
+  activeAlbums: AlbumFolder[],
+  duplicateAlbums: AlbumFolder[],
+): Promise<void> {
+  const existingPaths = new Set<string>();
+  for (const album of duplicateAlbums) {
+    const target = path.join(options.root, path.relative(duplicatesRoot, album.path));
+    if (await pathExists(target)) existingPaths.add(target);
+  }
+
+  const plans = planDuplicateRestores({
+    root: options.root,
+    duplicatesRoot,
+    activeAlbums,
+    duplicateAlbums,
+    exists: (targetPath) => existingPaths.has(targetPath),
+  });
+
+  const shouldAuditConflicts = options.auditConflicts || options.deleteSafeConflicts;
+  const conflictAudits = shouldAuditConflicts
+    ? await auditConflicts(plans.filter((plan) => plan.status === "conflict"))
+    : [];
+  const deletePlans = planDuplicateDeletes({
+    restorePlans: plans,
+    conflictAudits,
+    deleteConfirmed: options.deleteConfirmed,
+    deleteSafeConflicts: options.deleteSafeConflicts,
+  });
+  const mergePlans = options.mergeConflicts
+    ? await planConflictMerges(plans.filter((plan) => plan.status === "conflict"))
+    : [];
+
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          root: options.root,
+          duplicatesRoot,
+          activeAlbums: activeAlbums.length,
+          duplicateAlbums: duplicateAlbums.length,
+          plans,
+          conflictAudits,
+          deletePlans,
+          mergePlans,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  printReport(
+    activeAlbums.length,
+    duplicateAlbums.length,
+    plans,
+    conflictAudits,
+    deletePlans,
+    mergePlans,
+  );
+  await applyRestorePlan(options, duplicatesRoot, plans, deletePlans, mergePlans);
+}
+
 function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   const duplicatesRoot = options.duplicatesRoot ?? path.join(options.root, "_duplicates");
 
@@ -49,100 +158,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
     .mapErr((error) => ({ type: "fail", message: error.message }) as const)
     .andThen(([activeAlbums, duplicateAlbums]) =>
       ResultAsync.fromPromise(
-        (async () => {
-          const existingPaths = new Set<string>();
-          for (const album of duplicateAlbums) {
-            const target = path.join(options.root, path.relative(duplicatesRoot, album.path));
-            if (await pathExists(target)) existingPaths.add(target);
-          }
-
-          const plans = planDuplicateRestores({
-            root: options.root,
-            duplicatesRoot,
-            activeAlbums,
-            duplicateAlbums,
-            exists: (targetPath) => existingPaths.has(targetPath),
-          });
-
-          const shouldAuditConflicts = options.auditConflicts || options.deleteSafeConflicts;
-          const conflictAudits = shouldAuditConflicts
-            ? await auditConflicts(plans.filter((plan) => plan.status === "conflict"))
-            : [];
-          const deletePlans = planDuplicateDeletes({
-            restorePlans: plans,
-            conflictAudits,
-            deleteConfirmed: options.deleteConfirmed,
-            deleteSafeConflicts: options.deleteSafeConflicts,
-          });
-          const mergePlans = options.mergeConflicts
-            ? await planConflictMerges(plans.filter((plan) => plan.status === "conflict"))
-            : [];
-
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                {
-                  root: options.root,
-                  duplicatesRoot,
-                  activeAlbums: activeAlbums.length,
-                  duplicateAlbums: duplicateAlbums.length,
-                  plans,
-                  conflictAudits,
-                  deletePlans,
-                  mergePlans,
-                },
-                null,
-                2,
-              ),
-            );
-            return;
-          }
-
-          printReport(
-            activeAlbums.length,
-            duplicateAlbums.length,
-            plans,
-            conflictAudits,
-            deletePlans,
-            mergePlans,
-          );
-
-          const toRestore = options.restoreFalsePositives
-            ? plans.filter((plan) => plan.status === "false-positive")
-            : [];
-          if (!options.apply) {
-            console.log(
-              pc.bold(
-                `\nDry run: ${toRestore.length + actionableMergePlans(mergePlans).length} folders would be restored, ${deletePlans.length} folders would be deleted, ${reviewMergePlans(mergePlans).length} merge items need review.`,
-              ),
-            );
-            console.log(pc.cyan("Use --apply to execute restore/delete actions."));
-            return;
-          }
-
-          for (const plan of toRestore) {
-            await mkdir(path.dirname(plan.restorePath), { recursive: true });
-            await rename(plan.duplicatePath, plan.restorePath);
-            console.log(pc.green(`Restored: ${plan.restorePath}`));
-          }
-
-          for (const plan of actionableMergePlans(mergePlans)) {
-            assertInsideDuplicatesRoot(plan.duplicatePath, duplicatesRoot);
-            await mkdir(path.dirname(plan.targetPath), { recursive: true });
-            await rename(plan.duplicatePath, plan.targetPath);
-            console.log(pc.green(`Merged: ${plan.duplicatePath} → ${plan.targetPath}`));
-          }
-
-          for (const plan of deletePlans) {
-            assertInsideDuplicatesRoot(plan.duplicatePath, duplicatesRoot);
-            await rm(plan.duplicatePath, { recursive: true });
-            console.log(pc.green(`Deleted duplicate: ${plan.duplicatePath}`));
-          }
-
-          for (const conflict of plans.filter((plan) => plan.status === "conflict")) {
-            await pruneEmptyDirectories(conflict.duplicatePath, duplicatesRoot);
-          }
-        })(),
+        executeRestore(options, duplicatesRoot, activeAlbums, duplicateAlbums),
         (cause) => ({ type: "fail", message: String(cause) }) as const,
       ),
     );
@@ -216,6 +232,43 @@ function inferDuplicateAlbumRoot(filePath: string, root: string): string {
   return path.join(root, first, second, third);
 }
 
+function printRestorePlan(
+  plan: {
+    artist: string;
+    album: string;
+    duplicatePath: string;
+    restorePath: string;
+    reason: string;
+  },
+  label: string,
+  color: (s: string) => string,
+): void {
+  console.log(color(`\n[${label}] ${plan.artist} - ${plan.album}`));
+  console.log(`  from: ${plan.duplicatePath}`);
+  console.log(`  to:   ${plan.restorePath}`);
+  console.log(`  why:  ${plan.reason}`);
+}
+
+function printDeletePlans(deletePlans: ReturnType<typeof planDuplicateDeletes>): void {
+  for (const plan of deletePlans) {
+    console.log(pc.green(`\n[DELETE:${plan.status}] ${plan.artist} - ${plan.album}`));
+    console.log(`  path: ${plan.duplicatePath}`);
+    console.log(`  why:  ${plan.reason}`);
+    for (const match of plan.matchingActivePaths) console.log(`  kept: ${match}`);
+  }
+}
+
+function printConflictAudits(conflictAudits: ConflictAudit[]): void {
+  for (const audit of conflictAudits) {
+    const color = audit.status === "safe-delete" ? pc.green : pc.yellow;
+    console.log(color(`\n[AUDIT:${audit.status}] ${audit.duplicatePath}`));
+    console.log(`  target: ${audit.restorePath}`);
+    console.log(`  files:  ${audit.matchedFiles}/${audit.duplicateFiles} duplicate files matched`);
+    console.log(`  why:    ${audit.reason}`);
+    for (const metadataMatch of audit.metadataMatches) console.log(`  match:  ${metadataMatch}`);
+  }
+}
+
 function printReport(
   activeAlbums: number,
   duplicateAlbums: number,
@@ -238,28 +291,9 @@ function printReport(
   console.log(`Merge restores: ${actionableMergePlans(mergePlans).length}`);
   console.log(`Merge reviews: ${reviewMergePlans(mergePlans).length}`);
 
-  for (const plan of falsePositives) {
-    console.log(pc.yellow(`\n[RESTORE] ${plan.artist} - ${plan.album}`));
-    console.log(`  from: ${plan.duplicatePath}`);
-    console.log(`  to:   ${plan.restorePath}`);
-    console.log(`  why:  ${plan.reason}`);
-  }
-
-  for (const plan of conflicts) {
-    console.log(pc.red(`\n[CONFLICT] ${plan.artist} - ${plan.album}`));
-    console.log(`  from: ${plan.duplicatePath}`);
-    console.log(`  to:   ${plan.restorePath}`);
-    console.log(`  why:  ${plan.reason}`);
-  }
-
-  for (const plan of deletePlans) {
-    console.log(pc.green(`\n[DELETE:${plan.status}] ${plan.artist} - ${plan.album}`));
-    console.log(`  path: ${plan.duplicatePath}`);
-    console.log(`  why:  ${plan.reason}`);
-    for (const match of plan.matchingActivePaths) {
-      console.log(`  kept: ${match}`);
-    }
-  }
+  for (const plan of falsePositives) printRestorePlan(plan, "RESTORE", pc.yellow);
+  for (const plan of conflicts) printRestorePlan(plan, "CONFLICT", pc.red);
+  printDeletePlans(deletePlans);
 
   for (const plan of mergePlans) {
     const color = plan.action === "review" ? pc.yellow : pc.green;
@@ -268,16 +302,7 @@ function printReport(
     console.log(`  why: ${plan.reason}`);
   }
 
-  for (const audit of conflictAudits) {
-    const color = audit.status === "safe-delete" ? pc.green : pc.yellow;
-    console.log(color(`\n[AUDIT:${audit.status}] ${audit.duplicatePath}`));
-    console.log(`  target: ${audit.restorePath}`);
-    console.log(`  files:  ${audit.matchedFiles}/${audit.duplicateFiles} duplicate files matched`);
-    console.log(`  why:    ${audit.reason}`);
-    for (const metadataMatch of audit.metadataMatches) {
-      console.log(`  match:  ${metadataMatch}`);
-    }
-  }
+  printConflictAudits(conflictAudits);
 }
 
 type ConflictAudit = {
@@ -291,55 +316,63 @@ type ConflictAudit = {
   metadataMatches: string[];
 };
 
+function countMatchedHashes(
+  duplicateFiles: HashedMusicFile[],
+  targetFiles: HashedMusicFile[],
+): number {
+  const targetCounts = new Map<string, number>();
+  for (const file of targetFiles) {
+    targetCounts.set(file.hash, (targetCounts.get(file.hash) ?? 0) + 1);
+  }
+  let matched = 0;
+  for (const file of duplicateFiles) {
+    const count = targetCounts.get(file.hash) ?? 0;
+    if (count <= 0) continue;
+    matched++;
+    targetCounts.set(file.hash, count - 1);
+  }
+  return matched;
+}
+
+async function auditOneConflict(
+  conflict: ReturnType<typeof planDuplicateRestores>[number],
+): Promise<ConflictAudit> {
+  const duplicateFiles = await collectMusicFileHashes(conflict.duplicatePath);
+  const duplicateSizes = new Set(duplicateFiles.map((file) => file.size));
+  const targetFiles = await collectMusicFileHashes(conflict.restorePath, duplicateSizes);
+  const matchedFiles = countMatchedHashes(duplicateFiles, targetFiles);
+  const isExactSubset = duplicateFiles.length > 0 && matchedFiles === duplicateFiles.length;
+  const metadataMatches = isExactSubset
+    ? []
+    : await findMetadataMatches(conflict.duplicatePath, conflict.restorePath);
+  const status: ConflictAudit["status"] = isExactSubset
+    ? "safe-delete"
+    : metadataMatches.length > 0
+      ? "same-tracks-different-files"
+      : "different-release";
+  return {
+    status,
+    duplicatePath: conflict.duplicatePath,
+    restorePath: conflict.restorePath,
+    duplicateFiles: duplicateFiles.length,
+    targetFiles: targetFiles.length,
+    matchedFiles,
+    reason: isExactSubset
+      ? "all duplicate music files are byte-identical to files already under target"
+      : metadataMatches.length > 0
+        ? "track count and rounded durations match target album, but files differ"
+        : "no byte-identical files and no target album with same duration fingerprint",
+    metadataMatches,
+  };
+}
+
 async function auditConflicts(
   conflicts: ReturnType<typeof planDuplicateRestores>,
 ): Promise<ConflictAudit[]> {
   const audits: ConflictAudit[] = [];
-
   for (const conflict of conflicts) {
-    const duplicateFiles = await collectMusicFileHashes(conflict.duplicatePath);
-    const duplicateSizes = new Set(duplicateFiles.map((file) => file.size));
-    const targetFiles = await collectMusicFileHashes(conflict.restorePath, duplicateSizes);
-    const targetCounts = new Map<string, number>();
-
-    for (const file of targetFiles) {
-      targetCounts.set(file.hash, (targetCounts.get(file.hash) ?? 0) + 1);
-    }
-
-    let matchedFiles = 0;
-    for (const file of duplicateFiles) {
-      const count = targetCounts.get(file.hash) ?? 0;
-      if (count <= 0) continue;
-      matchedFiles++;
-      targetCounts.set(file.hash, count - 1);
-    }
-
-    const isExactSubset = duplicateFiles.length > 0 && matchedFiles === duplicateFiles.length;
-    const metadataMatches = isExactSubset
-      ? []
-      : await findMetadataMatches(conflict.duplicatePath, conflict.restorePath);
-    const status = isExactSubset
-      ? "safe-delete"
-      : metadataMatches.length > 0
-        ? "same-tracks-different-files"
-        : "different-release";
-
-    audits.push({
-      status,
-      duplicatePath: conflict.duplicatePath,
-      restorePath: conflict.restorePath,
-      duplicateFiles: duplicateFiles.length,
-      targetFiles: targetFiles.length,
-      matchedFiles,
-      reason: isExactSubset
-        ? "all duplicate music files are byte-identical to files already under target"
-        : metadataMatches.length > 0
-          ? "track count and rounded durations match target album, but files differ"
-          : "no byte-identical files and no target album with same duration fingerprint",
-      metadataMatches,
-    });
+    audits.push(await auditOneConflict(conflict));
   }
-
   return audits;
 }
 
@@ -510,32 +543,32 @@ type HashedMusicFile = {
   size: number;
 };
 
+async function visitForHashes(
+  dir: string,
+  allowedSizes: ReadonlySet<number> | undefined,
+  files: HashedMusicFile[],
+): Promise<void> {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await visitForHashes(entryPath, allowedSizes, files);
+      continue;
+    }
+    if (!entry.isFile() || !isMusicFile(entry.name)) continue;
+    const fileStat = await stat(entryPath).catch(() => undefined);
+    if (!fileStat || (allowedSizes && !allowedSizes.has(fileStat.size))) continue;
+    const content = await readFile(entryPath);
+    files.push({ hash: createHash("sha256").update(content).digest("hex"), size: fileStat.size });
+  }
+}
+
 async function collectMusicFileHashes(
   root: string,
   allowedSizes?: ReadonlySet<number>,
 ): Promise<HashedMusicFile[]> {
   const files: HashedMusicFile[] = [];
-
-  async function visit(dir: string): Promise<void> {
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      const entryPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await visit(entryPath);
-        continue;
-      }
-      if (!entry.isFile() || !isMusicFile(entry.name)) continue;
-      const fileStat = await stat(entryPath).catch(() => undefined);
-      if (!fileStat || (allowedSizes && !allowedSizes.has(fileStat.size))) continue;
-      const content = await readFile(entryPath);
-      files.push({
-        hash: createHash("sha256").update(content).digest("hex"),
-        size: fileStat.size,
-      });
-    }
-  }
-
-  await visit(root);
+  await visitForHashes(root, allowedSizes, files);
   return files;
 }
 

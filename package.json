@@ -21,6 +21,7 @@
     "start:web": "bun scripts/dev.ts",
     "cockpit": "bun cli/index.ts cockpit",
     "check": "bun run lint && bun run typecheck && bun run test",
+    "check:size": "bun scripts/check-file-size.ts",
     "test": "bun test cli",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

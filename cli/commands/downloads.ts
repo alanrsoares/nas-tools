@@ -202,43 +202,27 @@ export async function findMovedCompletedTorrents(
   return candidates;
 }
 
-async function transmissionRpc<T>(
-  options: Pick<CleanTransmissionOptions, "password" | "rpcUrl" | "username">,
-  method: string,
-  args: Record<string, unknown> = {},
+function buildTransmissionHeaders(
+  options: Pick<CleanTransmissionOptions, "password" | "username">,
   sessionId?: string,
-): Promise<TransmissionRpcResponse<T>> {
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-
+): Record<string, string> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
   if (options.username || options.password) {
-    headers.authorization = `Basic ${Buffer.from(
-      `${options.username}:${options.password}`,
-    ).toString("base64")}`;
+    headers.authorization = `Basic ${Buffer.from(`${options.username}:${options.password}`).toString("base64")}`;
   }
-  if (sessionId) {
-    headers["x-transmission-session-id"] = sessionId;
-  }
+  if (sessionId) headers["x-transmission-session-id"] = sessionId;
+  return headers;
+}
 
-  const response = await fetch(options.rpcUrl, {
-    body: JSON.stringify({ method, arguments: args }),
-    headers,
-    method: "POST",
-  });
-
-  if (response.status === 409 && !sessionId) {
-    const nextSessionId = response.headers.get("x-transmission-session-id");
-    if (!nextSessionId) {
-      throw new Error("Transmission RPC requested session id but sent none");
-    }
-    return await transmissionRpc<T>(options, method, args, nextSessionId);
-  }
-
+async function assertTransmissionResponse<T>(
+  response: Response,
+  method: string,
+  password: string | undefined,
+): Promise<TransmissionRpcResponse<T>> {
   if (!response.ok) {
     const body = await response.text();
     if (response.status === 401 || response.status === 403) {
-      const authHint = options.password
+      const authHint = password
         ? "check TRANSMISSION_RPC_USERNAME/TRANSMISSION_RPC_PASSWORD"
         : "missing TRANSMISSION_RPC_PASSWORD";
       throw new Error(
@@ -247,12 +231,32 @@ async function transmissionRpc<T>(
     }
     throw new Error(`Transmission RPC ${method} failed: HTTP ${response.status} - ${body}`);
   }
-
   const data = (await response.json()) as TransmissionRpcResponse<T>;
-  if (data.result !== "success") {
+  if (data.result !== "success")
     throw new Error(`Transmission RPC ${method} failed: ${data.result}`);
-  }
   return data;
+}
+
+async function transmissionRpc<T>(
+  options: Pick<CleanTransmissionOptions, "password" | "rpcUrl" | "username">,
+  method: string,
+  args: Record<string, unknown> = {},
+  sessionId?: string,
+): Promise<TransmissionRpcResponse<T>> {
+  const headers = buildTransmissionHeaders(options, sessionId);
+  const response = await fetch(options.rpcUrl, {
+    body: JSON.stringify({ method, arguments: args }),
+    headers,
+    method: "POST",
+  });
+
+  if (response.status === 409 && !sessionId) {
+    const nextSessionId = response.headers.get("x-transmission-session-id");
+    if (!nextSessionId) throw new Error("Transmission RPC requested session id but sent none");
+    return await transmissionRpc<T>(options, method, args, nextSessionId);
+  }
+
+  return assertTransmissionResponse<T>(response, method, options.password);
 }
 
 function runTriage(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {

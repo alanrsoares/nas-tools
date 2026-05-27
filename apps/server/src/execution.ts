@@ -58,6 +58,124 @@ export function executeJob(jobId: string, plan: MovePlan): void {
 type JobEventLevel = "info" | "warning" | "error";
 type JobEmitter = (type: string, level: JobEventLevel, message: string, data?: unknown) => void;
 
+function makeEmitter(jobId: string): JobEmitter {
+  let seq = 0;
+  return (type, level, message, data) => {
+    db.insert(jobEvents)
+      .values({
+        id: crypto.randomUUID(),
+        jobId,
+        seq: seq++,
+        type,
+        level,
+        message,
+        data: data != null ? JSON.stringify(data) : null,
+        createdAt: new Date().toISOString(),
+      })
+      .run();
+  };
+}
+
+function makeJobStatusUpdater(jobId: string) {
+  return (
+    status: JobStatus,
+    counts: JobCounts,
+    extra: Partial<{ startedAt: string; completedAt: string }> = {},
+  ) => {
+    db.update(jobs)
+      .set({
+        status,
+        counts: JSON.stringify(counts),
+        updatedAt: new Date().toISOString(),
+        ...extra,
+      })
+      .where(eq(jobs.id, jobId))
+      .run();
+  };
+}
+
+async function moveItem(
+  item: MovePlan["items"][number],
+  plan: MovePlan,
+  emit: JobEmitter,
+): Promise<void> {
+  const backupDest = path.join(plan.config.backupDir, item.albumName);
+  emit("backup_started", "info", `Backing up: ${item.albumName}`, { itemId: item.id });
+  await cp(item.sourcePath, backupDest, { recursive: true });
+  emit("backup_completed", "info", `Backup complete: ${item.albumName}`, {
+    itemId: item.id,
+    backupDest,
+  });
+  await mkdir(path.dirname(item.targetPath), { recursive: true });
+  emit("move_started", "info", `Moving: ${item.albumName}`, { itemId: item.id });
+  await rename(item.sourcePath, item.targetPath);
+  emit("move_completed", "info", `Move complete: ${item.albumName}`, {
+    itemId: item.id,
+    targetPath: item.targetPath,
+  });
+  await splitCueForMovedItem(item, plan, emit);
+}
+
+async function cleanTorrentsStep(stagingDir: string, emit: JobEmitter): Promise<void> {
+  try {
+    const { removed } = await cleanCompletedTorrents(stagingDir);
+    emit(
+      "torrents_cleaned",
+      "info",
+      `Removed ${removed} completed torrent${removed !== 1 ? "s" : ""} from Transmission`,
+    );
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    emit("torrents_clean_failed", "warning", `Torrent cleanup skipped: ${message}`);
+  }
+}
+
+async function plexScanStep(emit: JobEmitter): Promise<void> {
+  try {
+    const sectionTitle = await triggerPlexMusicScan();
+    emit("plex_scan_triggered", "info", `Plex library scan triggered: ${sectionTitle}`);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    emit("plex_scan_failed", "warning", `Plex scan skipped: ${message}`);
+  }
+}
+
+async function runPostExecution(
+  included: MovePlan["items"],
+  counts: JobCounts,
+  plan: MovePlan,
+  emit: JobEmitter,
+): Promise<void> {
+  if (counts.completed > 0) {
+    await cleanTorrentsStep(plan.config.stagingDir, emit);
+  }
+  const hasMusicItems = included.some((item) => item.mediaType === "music");
+  if (hasMusicItems && counts.completed > 0) {
+    await plexScanStep(emit);
+  }
+}
+
+async function processCuePair(
+  pair: CuePair,
+  bashFunctionsPath: string,
+  emit: JobEmitter,
+): Promise<"completed" | "failed"> {
+  emit("item_started", "info", `Splitting: ${pair.cueFile}`, pair);
+  try {
+    await splitCuePair({
+      pair,
+      bashFunctionsPath,
+      onLine: (line) => emit("item_log", "info", line, { pairId: pair.id }),
+    });
+    emit("item_completed", "info", `Split complete: ${pair.cueFile}`, pair);
+    return "completed";
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    emit("item_failed", "error", `Failed: ${pair.cueFile} — ${message}`, pair);
+    return "failed";
+  }
+}
+
 async function splitCueForMovedItem(
   item: MovePlan["items"][number],
   plan: MovePlan,
@@ -110,81 +228,23 @@ async function splitCueForMovedItem(
 }
 
 async function runExecution(jobId: string, plan: MovePlan, signal: AbortSignal): Promise<void> {
-  const now = () => new Date().toISOString();
-  let seq = 0;
-
-  const emit = (type: string, level: JobEventLevel, message: string, data?: unknown) => {
-    db.insert(jobEvents)
-      .values({
-        id: crypto.randomUUID(),
-        jobId,
-        seq: seq++,
-        type,
-        level,
-        message,
-        data: data != null ? JSON.stringify(data) : null,
-        createdAt: now(),
-      })
-      .run();
-  };
-
-  const setJobStatus = (
-    status: JobStatus,
-    counts: JobCounts,
-    extra: Partial<{ startedAt: string; completedAt: string }> = {},
-  ) => {
-    db.update(jobs)
-      .set({
-        status,
-        counts: JSON.stringify(counts),
-        updatedAt: now(),
-        ...extra,
-      })
-      .where(eq(jobs.id, jobId))
-      .run();
-  };
-
+  const emit = makeEmitter(jobId);
+  const setJobStatus = makeJobStatusUpdater(jobId);
   const included = plan.items.filter((item) => item.included);
-  const counts: JobCounts = {
-    total: included.length,
-    completed: 0,
-    failed: 0,
-    skipped: 0,
-  };
+  const counts: JobCounts = { total: included.length, completed: 0, failed: 0, skipped: 0 };
 
-  setJobStatus("running", counts, { startedAt: now() });
+  setJobStatus("running", counts, { startedAt: new Date().toISOString() });
   emit("job_started", "info", `Starting move of ${counts.total} item(s)`);
 
   for (const item of included) {
     if (signal.aborted) {
-      setJobStatus("canceled", counts, { completedAt: now() });
+      setJobStatus("canceled", counts, { completedAt: new Date().toISOString() });
       emit("job_canceled", "info", "Job canceled by user");
       return;
     }
-
-    emit("item_started", "info", `Moving: ${item.albumName}`, {
-      itemId: item.id,
-    });
-
+    emit("item_started", "info", `Moving: ${item.albumName}`, { itemId: item.id });
     try {
-      const backupDest = path.join(plan.config.backupDir, item.albumName);
-      emit("backup_started", "info", `Backing up: ${item.albumName}`, { itemId: item.id });
-      await cp(item.sourcePath, backupDest, { recursive: true });
-      emit("backup_completed", "info", `Backup complete: ${item.albumName}`, {
-        itemId: item.id,
-        backupDest,
-      });
-
-      await mkdir(path.dirname(item.targetPath), { recursive: true });
-      emit("move_started", "info", `Moving: ${item.albumName}`, { itemId: item.id });
-      await rename(item.sourcePath, item.targetPath);
-      emit("move_completed", "info", `Move complete: ${item.albumName}`, {
-        itemId: item.id,
-        targetPath: item.targetPath,
-      });
-
-      await splitCueForMovedItem(item, plan, emit);
-
+      await moveItem(item, plan, emit);
       counts.completed++;
       emit("item_completed", "info", `Done: ${item.albumName} → ${item.targetPath}`, {
         itemId: item.id,
@@ -192,47 +252,20 @@ async function runExecution(jobId: string, plan: MovePlan, signal: AbortSignal):
     } catch (cause) {
       counts.failed++;
       const message = cause instanceof Error ? cause.message : String(cause);
-      emit("item_failed", "error", `Failed: ${item.albumName} — ${message}`, {
-        itemId: item.id,
-      });
+      emit("item_failed", "error", `Failed: ${item.albumName} — ${message}`, { itemId: item.id });
     }
-
     setJobStatus("running", counts);
   }
 
   const finalStatus = counts.failed === 0 ? "completed" : "completed_with_failures";
-  setJobStatus(finalStatus, counts, { completedAt: now() });
+  setJobStatus(finalStatus, counts, { completedAt: new Date().toISOString() });
   emit(
     "job_completed",
     counts.failed === 0 ? "info" : "warning",
     `Done: ${counts.completed} moved, ${counts.failed} failed`,
     counts,
   );
-
-  if (counts.completed > 0) {
-    try {
-      const { removed } = await cleanCompletedTorrents(plan.config.stagingDir);
-      emit(
-        "torrents_cleaned",
-        "info",
-        `Removed ${removed} completed torrent${removed !== 1 ? "s" : ""} from Transmission`,
-      );
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      emit("torrents_clean_failed", "warning", `Torrent cleanup skipped: ${message}`);
-    }
-  }
-
-  const hasMusicItems = included.some((item) => item.mediaType === "music");
-  if (hasMusicItems && counts.completed > 0) {
-    try {
-      const sectionTitle = await triggerPlexMusicScan();
-      emit("plex_scan_triggered", "info", `Plex library scan triggered: ${sectionTitle}`);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      emit("plex_scan_failed", "warning", `Plex scan skipped: ${message}`);
-    }
-  }
+  await runPostExecution(included, counts, plan, emit);
 }
 
 export function executeCueJob(jobId: string, pairs: CuePair[]): void {
@@ -249,53 +282,16 @@ async function runCueExecution(
   pairs: CuePair[],
   signal: AbortSignal,
 ): Promise<void> {
-  const now = () => new Date().toISOString();
-  let seq = 0;
+  const emit = makeEmitter(jobId);
+  const setJobStatus = makeJobStatusUpdater(jobId);
+  const counts: JobCounts = { total: pairs.length, completed: 0, failed: 0, skipped: 0 };
 
-  const emit = (type: string, level: JobEventLevel, message: string, data?: unknown) => {
-    db.insert(jobEvents)
-      .values({
-        id: crypto.randomUUID(),
-        jobId,
-        seq: seq++,
-        type,
-        level,
-        message,
-        data: data != null ? JSON.stringify(data) : null,
-        createdAt: now(),
-      })
-      .run();
-  };
-
-  const setJobStatus = (
-    status: JobStatus,
-    counts: JobCounts,
-    extra: Partial<{ startedAt: string; completedAt: string }> = {},
-  ) => {
-    db.update(jobs)
-      .set({
-        status,
-        counts: JSON.stringify(counts),
-        updatedAt: now(),
-        ...extra,
-      })
-      .where(eq(jobs.id, jobId))
-      .run();
-  };
-
-  const counts: JobCounts = {
-    total: pairs.length,
-    completed: 0,
-    failed: 0,
-    skipped: 0,
-  };
-
-  setJobStatus("running", counts, { startedAt: now() });
+  setJobStatus("running", counts, { startedAt: new Date().toISOString() });
   emit("job_started", "info", `Starting CUE fix for ${counts.total} pair(s)`);
 
   const bashFunctionsPath = await getBashFunctionsPath();
   if (!bashFunctionsPath) {
-    setJobStatus("failed", counts, { completedAt: now() });
+    setJobStatus("failed", counts, { completedAt: new Date().toISOString() });
     emit(
       "job_failed",
       "error",
@@ -306,39 +302,23 @@ async function runCueExecution(
 
   for (const pair of pairs) {
     if (signal.aborted) {
-      setJobStatus("canceled", counts, { completedAt: now() });
+      setJobStatus("canceled", counts, { completedAt: new Date().toISOString() });
       emit("job_canceled", "info", "Job canceled by user");
       return;
     }
-
     if (pair.blocked) {
       counts.skipped++;
       emit("item_skipped", "warning", `Skipped blocked CUE: ${pair.cueFile}`, pair);
       setJobStatus("running", counts);
       continue;
     }
-
-    emit("item_started", "info", `Splitting: ${pair.cueFile}`, pair);
-
-    try {
-      await splitCuePair({
-        pair,
-        bashFunctionsPath,
-        onLine: (line) => emit("item_log", "info", line, { pairId: pair.id }),
-      });
-      counts.completed++;
-      emit("item_completed", "info", `Split complete: ${pair.cueFile}`, pair);
-    } catch (cause) {
-      counts.failed++;
-      const message = cause instanceof Error ? cause.message : String(cause);
-      emit("item_failed", "error", `Failed: ${pair.cueFile} — ${message}`, pair);
-    }
-
+    const outcome = await processCuePair(pair, bashFunctionsPath, emit);
+    counts[outcome]++;
     setJobStatus("running", counts);
   }
 
   const finalStatus = counts.failed === 0 ? "completed" : "completed_with_failures";
-  setJobStatus(finalStatus, counts, { completedAt: now() });
+  setJobStatus(finalStatus, counts, { completedAt: new Date().toISOString() });
   emit(
     "job_completed",
     counts.failed === 0 ? "info" : "warning",

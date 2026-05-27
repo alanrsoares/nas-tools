@@ -72,118 +72,131 @@ function isAllowedRoot(root: string): boolean {
   return allowedRoots.some((allowed) => root === allowed || root.startsWith(`${allowed}/`));
 }
 
-function runClean(options: CleanOptions): ResultAsync<void, ReturnType<typeof fail>> {
-  return ResultAsync.fromSafePromise(
-    (async () => {
-      const findings: Finding[] = [];
-      let deleted = 0;
+async function deleteCandidate(
+  candidate: { path: string; name: string },
+  options: CleanOptions,
+  findings: Finding[],
+): Promise<boolean> {
+  const backupPath = await safeAsync(
+    () => backupCleanupCandidate(options.root, options.backupDir, candidate.path),
+    `backup ${candidate.path}`,
+  ).unwrapOr(undefined);
 
-      if (!isAllowedRoot(options.root)) {
-        findings.push({
-          severity: "error",
-          message: "Refusing cleanup outside approved /volume1 roots.",
-          path: options.root,
-        });
-        printReport(
-          {
-            title: "NAS clean",
-            root: options.root,
-            dryRun: true,
-            stats: { candidates: 0, deleted: 0 },
-            findings,
-          } satisfies CleanReport,
-          options.json,
-        );
-        return;
-      }
+  if (!backupPath) {
+    findings.push({
+      severity: "error",
+      message: "Backup failed; candidate was not deleted.",
+      path: candidate.path,
+    });
+    return false;
+  }
 
-      if (!(await pathExists(options.root))) {
-        findings.push({
-          severity: "error",
-          message: "Cleanup root missing.",
-          path: options.root,
-        });
-      }
+  // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+  await safeAsync(() => rm(candidate.path, { force: true }), `delete ${candidate.path}`).map(() => {
+    findings.push({
+      severity: "info",
+      message: `Deleted after backup: ${backupPath}`,
+      path: candidate.path,
+    });
+  });
+  return true;
+}
 
-      const entries = await walk(options.root, {
-        includeHidden: true,
-        maxDepth: options.root === "/volume1" ? 4 : 6,
-      });
-      const candidates = entries.filter(
-        (entry) =>
-          !entry.isDirectory &&
-          (isAppleJunk(entry.name) ||
-            (entry.name.endsWith(".part") && entry.path.includes("/#Recycle/"))),
-      );
-
-      for (const candidate of candidates.slice(0, 100)) {
-        findings.push({
-          severity: "info",
-          message: options.dryRun ? "Would delete cleanup candidate." : "Cleanup candidate.",
-          path: candidate.path,
-        });
-      }
-
-      const shouldDelete = !options.dryRun && options.yes;
-      if (!options.dryRun && !options.yes) {
-        findings.push({
-          severity: "warn",
-          message: "Deletion requested without --yes; no files deleted.",
-        });
-      }
-
-      if (shouldDelete) {
-        for (const candidate of candidates) {
-          const backupPath = await safeAsync(
-            () => backupCleanupCandidate(options.root, options.backupDir, candidate.path),
-            `backup ${candidate.path}`,
-          ).unwrapOr(undefined);
-
-          if (!backupPath) {
-            findings.push({
-              severity: "error",
-              message: "Backup failed; candidate was not deleted.",
-              path: candidate.path,
-            });
-            continue;
-          }
-
-          await safeAsync(
-            () => rm(candidate.path, { force: true }),
-            `delete ${candidate.path}`,
-            // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
-          ).map(() => {
-            deleted++;
-            findings.push({
-              severity: "info",
-              message: `Deleted after backup: ${backupPath}`,
-              path: candidate.path,
-            });
-          });
-        }
-      }
-
-      printReport(
-        {
-          title: "NAS clean",
-          root: options.root,
-          dryRun: !shouldDelete,
-          stats: {
-            candidates: candidates.length,
-            deleted,
-          },
-          findings,
-        } satisfies CleanReport,
-        options.json,
-      );
-
-      if (shouldDelete) {
-        logSuccess(`Deleted ${deleted} cleanup candidates.`);
-      } else if (candidates.length > 0 && !options.json) {
-        logInfo("Dry-run only. Use --no-dry-run --yes to delete.");
-      }
-    })(),
+function isCleanCandidate(entry: { isDirectory: boolean; name: string; path: string }): boolean {
+  if (entry.isDirectory) return false;
+  return (
+    isAppleJunk(entry.name) || (entry.name.endsWith(".part") && entry.path.includes("/#Recycle/"))
   );
+}
+
+async function gatherCandidates(
+  options: CleanOptions,
+  findings: Finding[],
+): Promise<Array<{ path: string; name: string }>> {
+  if (!(await pathExists(options.root))) {
+    findings.push({ severity: "error", message: "Cleanup root missing.", path: options.root });
+  }
+  const entries = await walk(options.root, {
+    includeHidden: true,
+    maxDepth: options.root === "/volume1" ? 4 : 6,
+  });
+  return entries.filter(isCleanCandidate);
+}
+
+async function deleteCandidates(
+  candidates: Array<{ path: string; name: string }>,
+  options: CleanOptions,
+  findings: Finding[],
+): Promise<number> {
+  let deleted = 0;
+  for (const candidate of candidates) {
+    if (await deleteCandidate(candidate, options, findings)) deleted++;
+  }
+  return deleted;
+}
+
+async function executeClean(options: CleanOptions): Promise<void> {
+  if (!isAllowedRoot(options.root)) {
+    printReport(
+      {
+        title: "NAS clean",
+        root: options.root,
+        dryRun: true,
+        stats: { candidates: 0, deleted: 0 },
+        findings: [
+          {
+            severity: "error",
+            message: "Refusing cleanup outside approved /volume1 roots.",
+            path: options.root,
+          },
+        ],
+      } satisfies CleanReport,
+      options.json,
+    );
+    return;
+  }
+
+  const findings: Finding[] = [];
+  const candidates = await gatherCandidates(options, findings);
+
+  for (const candidate of candidates.slice(0, 100)) {
+    findings.push({
+      severity: "info",
+      message: options.dryRun ? "Would delete cleanup candidate." : "Cleanup candidate.",
+      path: candidate.path,
+    });
+  }
+
+  const shouldDelete = !options.dryRun && options.yes;
+  if (!options.dryRun && !options.yes) {
+    findings.push({
+      severity: "warn",
+      message: "Deletion requested without --yes; no files deleted.",
+    });
+  }
+
+  const deleted = shouldDelete ? await deleteCandidates(candidates, options, findings) : 0;
+
+  printReport(
+    {
+      title: "NAS clean",
+      root: options.root,
+      dryRun: !shouldDelete,
+      stats: { candidates: candidates.length, deleted },
+      findings,
+    } satisfies CleanReport,
+    options.json,
+  );
+
+  if (shouldDelete) {
+    logSuccess(`Deleted ${deleted} cleanup candidates.`);
+  } else if (candidates.length > 0 && !options.json) {
+    logInfo("Dry-run only. Use --no-dry-run --yes to delete.");
+  }
+}
+
+function runClean(options: CleanOptions): ResultAsync<void, ReturnType<typeof fail>> {
+  return ResultAsync.fromSafePromise(executeClean(options));
 }
 
 export default function nasCommand(program: Command): void {

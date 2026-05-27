@@ -306,6 +306,238 @@ type DashboardData = {
   staging: StagingStatus | null;
 };
 
+function StagingPreviewList({ staging }: { staging: StagingStatus }) {
+  if (!staging.preview || staging.preview.length === 0) return null;
+  return (
+    <div className="overview-orphan-list">
+      {staging.preview.map((item) => (
+        <div key={item.name} className="overview-orphan-item">
+          {item.hasCue ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="staging-cue-indicator" role="img" aria-label="Has CUE file">
+                  ♪
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Contains .cue file</TooltipContent>
+            </Tooltip>
+          ) : null}
+          {item.name}
+        </div>
+      ))}
+      {staging.total > 5 ? (
+        <div className="overview-orphan-item muted">+{staging.total - 5} more</div>
+      ) : null}
+    </div>
+  );
+}
+
+function StagingAreaBody({ staging }: { staging: StagingStatus }) {
+  return (
+    <>
+      <div className="overview-stats">
+        <div className="overview-stat">
+          <strong>{staging.total}</strong>
+          <span>items</span>
+        </div>
+        {staging.withCue > 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="overview-stat warn">
+                <strong>{staging.withCue}</strong>
+                <span>need CUE split</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              Items containing .cue files that may need splitting before moving
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+      </div>
+      <StagingPreviewList staging={staging} />
+    </>
+  );
+}
+
+function OrphanedList({ orphaned }: { orphaned: OrphanedTorrent[] }) {
+  if (orphaned.length === 0) return null;
+  return (
+    <div className="overview-orphan-list">
+      {orphaned.slice(0, 4).map((o) => (
+        <div key={o.id} className="overview-orphan-item">
+          {o.name}
+        </div>
+      ))}
+      {orphaned.length > 4 ? (
+        <div className="overview-orphan-item muted">+{orphaned.length - 4} more</div>
+      ) : null}
+    </div>
+  );
+}
+
+function CleanButton({
+  cleanTorrents,
+  orphanedCount,
+}: {
+  cleanTorrents: CleanTorrentsMutation;
+  orphanedCount: number;
+}) {
+  return (
+    <Button
+      size="sm"
+      variant={orphanedCount > 0 ? "default" : "ghost"}
+      className="w-full mt-auto"
+      disabled={orphanedCount === 0 || cleanTorrents.isPending}
+      onClick={() => cleanTorrents.mutate()}
+    >
+      {cleanTorrents.isPending ? (
+        <Loader2 size={13} className="animate-spin" />
+      ) : cleanTorrents.isSuccess ? (
+        <CheckCircle2 size={13} />
+      ) : (
+        <Trash2 size={13} />
+      )}
+      {cleanTorrents.isPending
+        ? "Cleaning…"
+        : cleanTorrents.isSuccess
+          ? "Cleaned"
+          : "Clean orphans"}
+    </Button>
+  );
+}
+
+type ActiveDownloadsCardProps = {
+  tx: TransmissionStatus | null;
+  loading: boolean;
+};
+
+function ActiveDownloadsCard({ tx, loading }: ActiveDownloadsCardProps) {
+  return (
+    <Card className="overview-downloads">
+      <CardContent className="p-4 flex flex-col gap-3">
+        <div className="overview-card-header">
+          <span className="overview-card-title">
+            <Download size={13} />
+            Active Downloads
+          </span>
+          {tx ? (
+            <span className="text-xs text-muted-foreground">
+              {tx.seeding > 0 ? `${tx.seeding} seeding · ` : ""}
+              {tx.total} total
+            </span>
+          ) : null}
+        </div>
+        {loading ? (
+          <div className="overview-idle">
+            <Loader2 size={14} className="animate-spin" /> Loading…
+          </div>
+        ) : tx === null ? (
+          <div className="overview-idle">Transmission unreachable</div>
+        ) : tx.downloading.length === 0 ? (
+          <div className="overview-idle">Nothing downloading</div>
+        ) : (
+          <div className="overview-dl-list">
+            {tx.downloading.map((t) => (
+              <ActiveDownloadRow key={t.id} torrent={t} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+type StagingAreaCardProps = {
+  staging: StagingStatus | null;
+  loading: boolean;
+  navigate: ReturnType<typeof useNavigate>;
+};
+
+function StagingAreaCard({ staging, loading, navigate }: StagingAreaCardProps) {
+  const hasItems = staging !== null && staging.total > 0;
+  return (
+    <Card>
+      <CardContent className="p-4 flex flex-col gap-3">
+        <div className="overview-card-header">
+          <span className="overview-card-title">
+            <FolderCog size={13} />
+            Staging Area
+          </span>
+        </div>
+        {loading ? (
+          <div className="overview-idle">
+            <Loader2 size={14} className="animate-spin" /> Loading…
+          </div>
+        ) : staging === null ? (
+          <div className="overview-idle">Staging dir unavailable</div>
+        ) : staging.total === 0 ? (
+          <div className="overview-idle">
+            <CheckCircle2 size={14} className="text-success-foreground" />
+            Staging area clear
+          </div>
+        ) : (
+          <StagingAreaBody staging={staging} />
+        )}
+        <Button
+          size="sm"
+          variant={hasItems ? "default" : "outline"}
+          className="w-full mt-auto"
+          onClick={() => navigate({ to: "/staging" })}
+        >
+          <FolderCog size={13} />
+          {hasItems ? "Review & Move" : "Go to Staging"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+type CleanTorrentsMutation = {
+  isPending: boolean;
+  isSuccess: boolean;
+  data: { data: unknown } | undefined;
+  mutate: () => void;
+};
+
+type OrphanedTorrentsCardProps = {
+  tx: TransmissionStatus | null;
+  loading: boolean;
+  cleanTorrents: CleanTorrentsMutation;
+};
+
+function OrphanedTorrentsCard({ tx, loading, cleanTorrents }: OrphanedTorrentsCardProps) {
+  return (
+    <Card>
+      <CardContent className="p-4 flex flex-col gap-3">
+        <div className="overview-card-header">
+          <span className="overview-card-title">
+            <Trash2 size={13} />
+            Orphaned Torrents
+          </span>
+        </div>
+        {loading ? (
+          <div className="overview-idle">
+            <Loader2 size={14} className="animate-spin" /> Loading…
+          </div>
+        ) : tx === null ? (
+          <div className="overview-idle">Transmission unreachable</div>
+        ) : (
+          <>
+            <div className="overview-stats">
+              <div className={`overview-stat${tx.orphaned.length > 0 ? " warn" : ""}`}>
+                <strong>{tx.orphaned.length}</strong>
+                <span>{tx.orphaned.length === 1 ? "torrent" : "torrents"}</span>
+              </div>
+            </div>
+            <OrphanedList orphaned={tx.orphaned} />
+            <CleanButton cleanTorrents={cleanTorrents} orphanedCount={tx.orphaned.length} />
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function Overview() {
   const navigate = useNavigate();
   const dashboard = useQuery({
@@ -329,179 +561,9 @@ function Overview() {
 
   return (
     <div className="overview-grid">
-      {/* Active downloads */}
-      <Card className="overview-downloads">
-        <CardContent className="p-4 flex flex-col gap-3">
-          <div className="overview-card-header">
-            <span className="overview-card-title">
-              <Download size={13} />
-              Active Downloads
-            </span>
-            {tx ? (
-              <span className="text-xs text-muted-foreground">
-                {tx.seeding > 0 ? `${tx.seeding} seeding · ` : ""}
-                {tx.total} total
-              </span>
-            ) : null}
-          </div>
-          {loading ? (
-            <div className="overview-idle">
-              <Loader2 size={14} className="animate-spin" /> Loading…
-            </div>
-          ) : tx === null ? (
-            <div className="overview-idle">Transmission unreachable</div>
-          ) : tx.downloading.length === 0 ? (
-            <div className="overview-idle">Nothing downloading</div>
-          ) : (
-            <div className="overview-dl-list">
-              {tx.downloading.map((t) => (
-                <ActiveDownloadRow key={t.id} torrent={t} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Staging area */}
-      <Card>
-        <CardContent className="p-4 flex flex-col gap-3">
-          <div className="overview-card-header">
-            <span className="overview-card-title">
-              <FolderCog size={13} />
-              Staging Area
-            </span>
-          </div>
-          {loading ? (
-            <div className="overview-idle">
-              <Loader2 size={14} className="animate-spin" /> Loading…
-            </div>
-          ) : staging === null ? (
-            <div className="overview-idle">Staging dir unavailable</div>
-          ) : staging.total === 0 ? (
-            <div className="overview-idle">
-              <CheckCircle2 size={14} className="text-success-foreground" />
-              Staging area clear
-            </div>
-          ) : (
-            <>
-              <div className="overview-stats">
-                <div className="overview-stat">
-                  <strong>{staging.total}</strong>
-                  <span>items</span>
-                </div>
-                {staging.withCue > 0 ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="overview-stat warn">
-                        <strong>{staging.withCue}</strong>
-                        <span>need CUE split</span>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Items containing .cue files that may need splitting before moving
-                    </TooltipContent>
-                  </Tooltip>
-                ) : null}
-              </div>
-              {staging.preview && staging.preview.length > 0 ? (
-                <div className="overview-orphan-list">
-                  {staging.preview.map((item) => (
-                    <div key={item.name} className="overview-orphan-item">
-                      {item.hasCue ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                              className="staging-cue-indicator"
-                              role="img"
-                              aria-label="Has CUE file"
-                            >
-                              ♪
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>Contains .cue file</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-                      {item.name}
-                    </div>
-                  ))}
-                  {staging.total > 5 ? (
-                    <div className="overview-orphan-item muted">+{staging.total - 5} more</div>
-                  ) : null}
-                </div>
-              ) : null}
-            </>
-          )}
-          <Button
-            size="sm"
-            variant={staging && staging.total > 0 ? "default" : "outline"}
-            className="w-full mt-auto"
-            onClick={() => navigate({ to: "/staging" })}
-          >
-            <FolderCog size={13} />
-            {staging && staging.total > 0 ? "Review & Move" : "Go to Staging"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Orphaned torrents */}
-      <Card>
-        <CardContent className="p-4 flex flex-col gap-3">
-          <div className="overview-card-header">
-            <span className="overview-card-title">
-              <Trash2 size={13} />
-              Orphaned Torrents
-            </span>
-          </div>
-          {loading ? (
-            <div className="overview-idle">
-              <Loader2 size={14} className="animate-spin" /> Loading…
-            </div>
-          ) : tx === null ? (
-            <div className="overview-idle">Transmission unreachable</div>
-          ) : (
-            <>
-              <div className="overview-stats">
-                <div className={`overview-stat${tx.orphaned.length > 0 ? " warn" : ""}`}>
-                  <strong>{tx.orphaned.length}</strong>
-                  <span>{tx.orphaned.length === 1 ? "torrent" : "torrents"}</span>
-                </div>
-              </div>
-              {tx.orphaned.length > 0 ? (
-                <div className="overview-orphan-list">
-                  {tx.orphaned.slice(0, 4).map((o) => (
-                    <div key={o.id} className="overview-orphan-item">
-                      {o.name}
-                    </div>
-                  ))}
-                  {tx.orphaned.length > 4 ? (
-                    <div className="overview-orphan-item muted">+{tx.orphaned.length - 4} more</div>
-                  ) : null}
-                </div>
-              ) : null}
-              <Button
-                size="sm"
-                variant={tx.orphaned.length > 0 ? "default" : "ghost"}
-                className="w-full mt-auto"
-                disabled={tx.orphaned.length === 0 || cleanTorrents.isPending}
-                onClick={() => cleanTorrents.mutate()}
-              >
-                {cleanTorrents.isPending ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : cleanTorrents.isSuccess ? (
-                  <CheckCircle2 size={13} />
-                ) : (
-                  <Trash2 size={13} />
-                )}
-                {cleanTorrents.isPending
-                  ? "Cleaning…"
-                  : cleanTorrents.isSuccess
-                    ? "Cleaned"
-                    : "Clean orphans"}
-              </Button>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <ActiveDownloadsCard tx={tx} loading={loading} />
+      <StagingAreaCard staging={staging} loading={loading} navigate={navigate} />
+      <OrphanedTorrentsCard tx={tx} loading={loading} cleanTorrents={cleanTorrents} />
     </div>
   );
 }
@@ -600,6 +662,242 @@ function isCleanSuccess(data: unknown): data is { removed: number } {
   );
 }
 
+type StagingCleanTorrentsMutation = {
+  isPending: boolean;
+  data: { data: unknown } | undefined;
+  mutate: () => void;
+};
+
+function CueSplitToggle({ plan, setPlan }: { plan: MovePlan; setPlan: (p: MovePlan) => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="cue-split-toggle">
+          <Checkbox
+            id="staging-cue-split"
+            checked={plan.cueSplitEnabled}
+            onCheckedChange={(checked: boolean | "indeterminate") =>
+              setPlan({ ...plan, cueSplitEnabled: checked === true })
+            }
+          />
+          <label htmlFor="staging-cue-split" className="cue-split-toggle-label">
+            <Scissors size={14} />
+            <span>Split CUE</span>
+          </label>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>
+        Split matching CUE/audio pairs after move and before Transmission cleanup
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function StagingCleanButton({
+  cleanTorrents,
+  orphanedCount,
+}: {
+  cleanTorrents: StagingCleanTorrentsMutation;
+  orphanedCount: number;
+}) {
+  const cleanData = cleanTorrents.data?.data;
+  const cleanSucceeded = isCleanSuccess(cleanData);
+  const label = cleanTorrents.isPending
+    ? "Removing…"
+    : cleanSucceeded
+      ? `Removed ${(cleanData as { removed: number }).removed} torrent${(cleanData as { removed: number }).removed !== 1 ? "s" : ""}`
+      : `Remove moved (${orphanedCount})`;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          onClick={() => cleanTorrents.mutate()}
+          disabled={cleanTorrents.isPending}
+          size="sm"
+          variant="ghost"
+        >
+          {cleanTorrents.isPending ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <Trash2 size={15} />
+          )}
+          <span>{label}</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        Remove {orphanedCount} completed Transmission torrent
+        {orphanedCount !== 1 ? "s" : ""} whose files have already been moved to the library
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function StagingConfirmButton({
+  plan,
+  canConfirm,
+  confirmIsPending,
+  needsCorrection,
+  onConfirm,
+}: {
+  plan: MovePlan;
+  canConfirm: boolean | undefined;
+  confirmIsPending: boolean;
+  needsCorrection: number;
+  onConfirm: () => void;
+}) {
+  if (!plan.items.length) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <Button onClick={onConfirm} disabled={!canConfirm || confirmIsPending} size="sm">
+            {confirmIsPending ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={15} />
+            )}
+            <span>{confirmIsPending ? "Confirming…" : "Confirm"}</span>
+          </Button>
+        </span>
+      </TooltipTrigger>
+      {!canConfirm ? (
+        <TooltipContent>
+          {needsCorrection > 0
+            ? `Fix ${needsCorrection} item(s) before confirming`
+            : "No items included"}
+        </TooltipContent>
+      ) : null}
+    </Tooltip>
+  );
+}
+
+type StagingToolbarProps = {
+  plan: MovePlan | undefined;
+  stats: ReturnType<typeof summarizePlan> | undefined;
+  cuePairTotal: number;
+  orphanedCount: number;
+  cleanTorrents: StagingCleanTorrentsMutation;
+  confirm: {
+    isPending: boolean;
+    mutate: (plan: MovePlan) => void;
+  };
+  scan: {
+    isPending: boolean;
+    mutate: () => void;
+  };
+  setPlan: (plan: MovePlan | undefined) => void;
+};
+
+function StagingSummarySection({
+  stats,
+  cuePairTotal,
+}: {
+  stats: ReturnType<typeof summarizePlan> | undefined;
+  cuePairTotal: number;
+}) {
+  if (!stats) return <div />;
+  return (
+    <section className="summary" aria-label="Move Plan summary">
+      <SummaryCell label="Found" value={stats.total} />
+      <SummaryCell label="To move" value={stats.included} />
+      {stats.excluded > 0 ? <SummaryCell label="Skipped" value={stats.excluded} /> : null}
+      <SummaryCell
+        label="Needs fix"
+        value={stats.needsCorrection}
+        tone={stats.needsCorrection > 0 ? "warn" : ""}
+      />
+      {cuePairTotal > 0 ? <SummaryCell label="CUE pairs" value={cuePairTotal} tone="warn" /> : null}
+    </section>
+  );
+}
+
+function StagingActions({
+  plan,
+  cuePairTotal,
+  orphanedCount,
+  cleanTorrents,
+  confirm,
+  scan,
+  setPlan,
+  canConfirm,
+  needsCorrection,
+}: {
+  plan: MovePlan | undefined;
+  cuePairTotal: number;
+  orphanedCount: number;
+  cleanTorrents: StagingCleanTorrentsMutation;
+  confirm: { isPending: boolean; mutate: (plan: MovePlan) => void };
+  scan: { isPending: boolean; mutate: () => void };
+  setPlan: (p: MovePlan | undefined) => void;
+  canConfirm: boolean;
+  needsCorrection: number;
+}) {
+  const showClean =
+    orphanedCount > 0 || cleanTorrents.isPending || isCleanSuccess(cleanTorrents.data?.data);
+  return (
+    <div className="flex gap-2 items-center toolbar-actions">
+      {plan && cuePairTotal > 0 ? <CueSplitToggle plan={plan} setPlan={setPlan} /> : null}
+      {showClean ? (
+        <StagingCleanButton cleanTorrents={cleanTorrents} orphanedCount={orphanedCount} />
+      ) : null}
+      <PlexScanPopover />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            onClick={() => scan.mutate()}
+            disabled={scan.isPending || confirm.isPending}
+            size="sm"
+            variant="outline"
+          >
+            <Search size={15} />
+            <span>{scan.isPending ? "Scanning…" : "Scan"}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Scan the staging directory for new media</TooltipContent>
+      </Tooltip>
+      {plan ? (
+        <StagingConfirmButton
+          plan={plan}
+          canConfirm={canConfirm}
+          confirmIsPending={confirm.isPending}
+          needsCorrection={needsCorrection}
+          onConfirm={() => confirm.mutate(plan)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function StagingToolbar({
+  plan,
+  stats,
+  cuePairTotal,
+  orphanedCount,
+  cleanTorrents,
+  confirm,
+  scan,
+  setPlan,
+}: StagingToolbarProps) {
+  const canConfirm = !!(plan && stats && stats.included > 0 && stats.needsCorrection === 0);
+
+  return (
+    <div className="toolbar">
+      <StagingSummarySection stats={stats} cuePairTotal={cuePairTotal} />
+      <StagingActions
+        plan={plan}
+        cuePairTotal={cuePairTotal}
+        orphanedCount={orphanedCount}
+        cleanTorrents={cleanTorrents}
+        confirm={confirm}
+        scan={scan}
+        setPlan={setPlan}
+        canConfirm={canConfirm}
+        needsCorrection={stats?.needsCorrection ?? 0}
+      />
+    </div>
+  );
+}
+
 function Staging() {
   const navigate = useNavigate();
   const [plan, setPlan] = React.useState<MovePlan>();
@@ -660,184 +958,93 @@ function Staging() {
   const confirmIssues =
     confirm.data?.data && "issues" in confirm.data.data ? confirm.data.data.issues : [];
 
-  const canConfirm = plan && stats && stats.included > 0 && stats.needsCorrection === 0;
-
   return (
     <Card>
       <CardContent className="p-4">
-        <div className="toolbar">
-          {stats ? (
-            <section className="summary" aria-label="Move Plan summary">
-              <SummaryCell label="Found" value={stats.total} />
-              <SummaryCell label="To move" value={stats.included} />
-              {stats.excluded > 0 ? <SummaryCell label="Skipped" value={stats.excluded} /> : null}
-              <SummaryCell
-                label="Needs fix"
-                value={stats.needsCorrection}
-                tone={stats.needsCorrection > 0 ? "warn" : ""}
-              />
-              {cuePairTotal > 0 ? (
-                <SummaryCell label="CUE pairs" value={cuePairTotal} tone="warn" />
-              ) : null}
-            </section>
-          ) : (
-            <div />
-          )}
-          <div className="flex gap-2 items-center toolbar-actions">
-            {plan && cuePairTotal > 0 ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="cue-split-toggle">
-                    <Checkbox
-                      id="staging-cue-split"
-                      checked={plan.cueSplitEnabled}
-                      onCheckedChange={(checked: boolean | "indeterminate") =>
-                        setPlan({ ...plan, cueSplitEnabled: checked === true })
-                      }
-                    />
-                    <label htmlFor="staging-cue-split" className="cue-split-toggle-label">
-                      <Scissors size={14} />
-                      <span>Split CUE</span>
-                    </label>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Split matching CUE/audio pairs after move and before Transmission cleanup
-                </TooltipContent>
-              </Tooltip>
-            ) : null}
-            {orphanedCount > 0 ||
-            cleanTorrents.isPending ||
-            isCleanSuccess(cleanTorrents.data?.data) ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={() => cleanTorrents.mutate()}
-                    disabled={cleanTorrents.isPending}
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {cleanTorrents.isPending ? (
-                      <Loader2 size={15} className="animate-spin" />
-                    ) : (
-                      <Trash2 size={15} />
-                    )}
-                    <span>
-                      {cleanTorrents.isPending
-                        ? "Removing…"
-                        : isCleanSuccess(cleanTorrents.data?.data)
-                          ? `Removed ${cleanTorrents.data?.data?.removed} torrent${cleanTorrents.data?.data?.removed !== 1 ? "s" : ""}`
-                          : `Remove moved (${orphanedCount})`}
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Remove {orphanedCount} completed Transmission torrent
-                  {orphanedCount !== 1 ? "s" : ""} whose files have already been moved to the
-                  library
-                </TooltipContent>
-              </Tooltip>
-            ) : null}
-            <PlexScanPopover />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={() => scan.mutate()}
-                  disabled={scan.isPending || confirm.isPending}
-                  size="sm"
-                  variant="outline"
-                >
-                  <Search size={15} />
-                  <span>{scan.isPending ? "Scanning…" : "Scan"}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Scan the staging directory for new media</TooltipContent>
-            </Tooltip>
-            {plan && plan.items.length > 0 ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button
-                      onClick={() => confirm.mutate(plan)}
-                      disabled={!canConfirm || confirm.isPending}
-                      size="sm"
-                    >
-                      {confirm.isPending ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : (
-                        <CheckCircle2 size={15} />
-                      )}
-                      <span>{confirm.isPending ? "Confirming…" : "Confirm"}</span>
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                {!canConfirm ? (
-                  <TooltipContent>
-                    {(stats?.needsCorrection ?? 0) > 0
-                      ? `Fix ${stats?.needsCorrection} item(s) before confirming`
-                      : "No items included"}
-                  </TooltipContent>
-                ) : null}
-              </Tooltip>
-            ) : null}
-          </div>
-        </div>
+        <StagingToolbar
+          plan={plan}
+          stats={stats}
+          cuePairTotal={cuePairTotal}
+          orphanedCount={orphanedCount}
+          cleanTorrents={cleanTorrents}
+          confirm={confirm}
+          scan={scan}
+          setPlan={setPlan}
+        />
 
         {issues.length > 0 ? <IssueList issues={issues} /> : null}
         {confirmIssues.length > 0 ? <IssueList issues={confirmIssues} /> : null}
-
-        {plan && plan.items.length === 0 ? (
-          <div className="empty-state">
-            <CheckCircle2 size={28} className="text-success-foreground" />
-            <span>Staging area is clear — nothing to move.</span>
-          </div>
-        ) : plan ? (
-          <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-14 text-center">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="cursor-default">Use</span>
-                      </TooltipTrigger>
-                      <TooltipContent>Include this item in the move</TooltipContent>
-                    </Tooltip>
-                  </TableHead>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Artist</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Target</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {plan.items.map((item) => (
-                  <MovePlanRow
-                    key={item.id}
-                    item={item}
-                    onChange={(next) => setPlan(updatePlanItem(plan, next))}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <div className="empty-state">
-            {scan.isPending ? (
-              <Loader2 size={28} className="animate-spin" />
-            ) : (
-              <FolderCog size={28} />
-            )}
-            <span>
-              {scan.isPending
-                ? "Scanning staging area…"
-                : "Scan the staging area to build a Move Plan."}
-            </span>
-          </div>
-        )}
+        <StagingBody plan={plan} scanIsPending={scan.isPending} setPlan={setPlan} />
       </CardContent>
     </Card>
+  );
+}
+
+type MovePlanTableProps = {
+  plan: MovePlan;
+  setPlan: (plan: MovePlan | undefined) => void;
+};
+
+function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
+  return (
+    <div className="overflow-x-auto rounded-md border border-border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-14 text-center">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="cursor-default">Use</span>
+                </TooltipTrigger>
+                <TooltipContent>Include this item in the move</TooltipContent>
+              </Tooltip>
+            </TableHead>
+            <TableHead>Item</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Artist</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Target</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {plan.items.map((item) => (
+            <MovePlanRow
+              key={item.id}
+              item={item}
+              onChange={(next) => setPlan(updatePlanItem(plan, next))}
+            />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+type StagingBodyProps = {
+  plan: MovePlan | undefined;
+  scanIsPending: boolean;
+  setPlan: (plan: MovePlan | undefined) => void;
+};
+
+function StagingBody({ plan, scanIsPending, setPlan }: StagingBodyProps) {
+  if (plan && plan.items.length === 0) {
+    return (
+      <div className="empty-state">
+        <CheckCircle2 size={28} className="text-success-foreground" />
+        <span>Staging area is clear — nothing to move.</span>
+      </div>
+    );
+  }
+  if (plan) {
+    return <MovePlanTable plan={plan} setPlan={setPlan} />;
+  }
+  return (
+    <div className="empty-state">
+      {scanIsPending ? <Loader2 size={28} className="animate-spin" /> : <FolderCog size={28} />}
+      <span>
+        {scanIsPending ? "Scanning staging area…" : "Scan the staging area to build a Move Plan."}
+      </span>
+    </div>
   );
 }
 
@@ -952,81 +1159,193 @@ type AlbumFolder = {
   bitrate: number;
 };
 
-function Dedupe() {
-  const [results, setResults] = React.useState<{
-    duplicates: DedupeGroup[];
-    moves: { from: string; to: string; reason: string }[];
-  }>();
-  const [status, setStatus] = React.useState<{
-    type: string;
-    message: string;
-    current?: number;
-    total?: number;
-  }>();
+type DedupeResults = {
+  duplicates: DedupeGroup[];
+  moves: { from: string; to: string; reason: string }[];
+};
+
+type DedupeStatus = {
+  type: string;
+  message: string;
+  current?: number;
+  total?: number;
+};
+
+function parseSseChunk(chunk: string, onEvent: (data: unknown) => void): void {
+  if (!chunk.startsWith("data: ")) return;
+  const raw = chunk.slice(6);
+  try {
+    onEvent(JSON.parse(raw));
+  } catch (e) {
+    console.error("Failed to parse stream data:", raw, e);
+  }
+}
+
+async function readSseStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onEvent: (data: unknown) => void,
+): Promise<void> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value);
+    const lines = buffer.split("\n\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      parseSseChunk(line, onEvent);
+    }
+  }
+}
+
+function useDedupeScan() {
+  const [results, setResults] = React.useState<DedupeResults>();
+  const [status, setStatus] = React.useState<DedupeStatus>();
   const [isScanning, setIsScanning] = React.useState(false);
 
-  const startScan = async () => {
+  async function startScan() {
     setIsScanning(true);
     setResults(undefined);
     setStatus({ type: "connecting", message: "Connecting..." });
-
     try {
       const response = await fetch("/api/music-dedupe/scan");
       const reader = response.body?.getReader();
       if (!reader) return;
-
-      let buffer = "";
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value);
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const rawData = line.slice(6);
-            try {
-              const data = JSON.parse(rawData);
-              if (data.type === "result") {
-                setResults(data);
-                setStatus(undefined);
-              } else {
-                setStatus(data);
-              }
-            } catch (e) {
-              console.error("Failed to parse stream data:", rawData, e);
-            }
-          }
+      await readSseStream(reader, (data) => {
+        if (
+          data !== null &&
+          typeof data === "object" &&
+          "type" in data &&
+          (data as { type: string }).type === "result"
+        ) {
+          setResults(data as unknown as DedupeResults);
+          setStatus(undefined);
+        } else {
+          setStatus(data as DedupeStatus);
         }
-      }
+      });
     } catch (e) {
       console.error("Scan failed:", e);
       setStatus({ type: "error", message: "Scan failed. Check console." });
     } finally {
       setIsScanning(false);
     }
-  };
+  }
+
+  return { results, status, isScanning, startScan };
+}
+
+function DedupeProgress({ status }: { status: DedupeStatus }) {
+  const showProgress = status.current !== undefined && status.total !== undefined;
+  const progressPercent =
+    status.current !== undefined && status.total !== undefined
+      ? Math.round((status.current / status.total) * 100)
+      : 0;
+  return (
+    <div className="mt-8 flex flex-col items-center justify-center p-12 text-center">
+      <Loader2 size={32} className="animate-spin mb-4 text-primary" />
+      <div className="text-lg font-medium mb-1">{status.message}</div>
+      {showProgress && (
+        <div className="w-full max-w-md mt-4">
+          <div className="flex justify-between text-xs text-muted-foreground mb-1">
+            <span>
+              {status.current} / {status.total} albums
+            </span>
+            <span>{progressPercent}%</span>
+          </div>
+          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all duration-300 ease-out"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DedupeGroupCard({ group }: { group: DedupeGroup }) {
+  return (
+    <Card key={group.id} className="border-border/50">
+      <CardContent className="p-3">
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <h3 className="font-bold text-sm">
+              {group.release.artist} — {group.release.album}
+            </h3>
+            <p className="text-xs text-muted-foreground">{group.id}</p>
+          </div>
+        </div>
+        <div className="grid gap-2">
+          <div className="flex items-center gap-2 text-xs bg-success/10 p-2 rounded border border-success/20">
+            <Badge variant="success">KEEP</Badge>
+            <div className="flex-1 truncate font-mono">{group.winner.path}</div>
+            <div className="text-muted-foreground whitespace-nowrap">
+              {group.winner.bitsPerSample}bit / {group.winner.sampleRate}Hz
+            </div>
+          </div>
+          {group.losers.map((loser, idx) => (
+            <div
+              key={idx}
+              className="flex items-center gap-2 text-xs bg-muted/50 p-2 rounded border border-border/50"
+            >
+              <Badge variant="secondary">MOVE</Badge>
+              <div className="flex-1 truncate font-mono">{loser.path}</div>
+              <div className="text-muted-foreground whitespace-nowrap">
+                {loser.bitsPerSample}bit / {loser.sampleRate}Hz
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+type DedupeBodyProps = {
+  isScanning: boolean;
+  status: DedupeStatus | undefined;
+  duplicates: DedupeGroup[];
+};
+
+function DedupeBody({ isScanning, status, duplicates }: DedupeBodyProps) {
+  if (isScanning && status) return <DedupeProgress status={status} />;
+  if (duplicates.length > 0) {
+    return (
+      <div className="grid gap-4 mt-4">
+        {duplicates.map((group) => (
+          <DedupeGroupCard key={group.id} group={group} />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="empty-state">
+      <Copy size={28} />
+      <span>
+        {status?.type === "error"
+          ? status.message
+          : "Scan your music library to find duplicate releases."}
+      </span>
+    </div>
+  );
+}
+
+function Dedupe() {
+  const { results, status, isScanning, startScan } = useDedupeScan();
 
   const apply = useMutation({
     mutationFn: async (moves: { from: string; to: string; reason: string }[]) =>
       await api["music-dedupe"].apply.post({ moves }),
     onSuccess: () => {
-      setResults(undefined);
       startScan();
     },
   });
 
   const duplicates = results?.duplicates ?? [];
   const moves = results?.moves ?? [];
-  const showProgress = status?.current !== undefined && status?.total !== undefined;
-  const progressPercent =
-    status?.current !== undefined && status?.total !== undefined
-      ? Math.round((status.current / status.total) * 100)
-      : 0;
 
   return (
     <Card>
@@ -1062,76 +1381,7 @@ function Dedupe() {
             )}
           </div>
         </div>
-
-        {isScanning && status ? (
-          <div className="mt-8 flex flex-col items-center justify-center p-12 text-center">
-            <Loader2 size={32} className="animate-spin mb-4 text-primary" />
-            <div className="text-lg font-medium mb-1">{status.message}</div>
-            {showProgress && (
-              <div className="w-full max-w-md mt-4">
-                <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                  <span>
-                    {status.current} / {status.total} albums
-                  </span>
-                  <span>{progressPercent}%</span>
-                </div>
-                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-300 ease-out"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        ) : duplicates.length > 0 ? (
-          <div className="grid gap-4 mt-4">
-            {duplicates.map((group) => (
-              <Card key={group.id} className="border-border/50">
-                <CardContent className="p-3">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="font-bold text-sm">
-                        {group.release.artist} — {group.release.album}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">{group.id}</p>
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <div className="flex items-center gap-2 text-xs bg-success/10 p-2 rounded border border-success/20">
-                      <Badge variant="success">KEEP</Badge>
-                      <div className="flex-1 truncate font-mono">{group.winner.path}</div>
-                      <div className="text-muted-foreground whitespace-nowrap">
-                        {group.winner.bitsPerSample}bit / {group.winner.sampleRate}Hz
-                      </div>
-                    </div>
-                    {group.losers.map((loser, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-2 text-xs bg-muted/50 p-2 rounded border border-border/50"
-                      >
-                        <Badge variant="secondary">MOVE</Badge>
-                        <div className="flex-1 truncate font-mono">{loser.path}</div>
-                        <div className="text-muted-foreground whitespace-nowrap">
-                          {loser.bitsPerSample}bit / {loser.sampleRate}Hz
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state">
-            <Copy size={28} />
-            <span>
-              {status?.type === "error"
-                ? status.message
-                : "Scan your music library to find duplicate releases."}
-            </span>
-          </div>
-        )}
+        <DedupeBody isScanning={isScanning} status={status} duplicates={duplicates} />
       </CardContent>
     </Card>
   );
@@ -1190,73 +1440,234 @@ type CueScanResult = {
   blocked: number;
 };
 
-function CueSplit() {
-  const navigate = useNavigate();
+function handleCueScanEvent(
+  event: CueScanEvent,
+  setResult: React.Dispatch<React.SetStateAction<CueScanResult | undefined>>,
+  setScanStatus: React.Dispatch<React.SetStateAction<CueScanStatus | undefined>>,
+  setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>,
+  setError: React.Dispatch<React.SetStateAction<string | undefined>>,
+): void {
+  if (event.type === "result") {
+    setResult({ root: event.root, pairs: event.pairs, ready: event.ready, blocked: event.blocked });
+    setSelectedIds(new Set(event.pairs.filter((p) => !p.blocked).map((p) => p.id)));
+    setScanStatus(undefined);
+  } else if (event.type === "error") {
+    setError(event.message);
+  } else if (event.type === "progress") {
+    setScanStatus({
+      message: event.message,
+      scannedDirectories: event.scannedDirectories,
+      foundPairs: event.foundPairs,
+    });
+  } else {
+    setScanStatus({ message: event.message, scannedDirectories: 0, foundPairs: 0 });
+  }
+}
+
+function useCueScan() {
   const [scanStatus, setScanStatus] = React.useState<CueScanStatus>();
   const [result, setResult] = React.useState<CueScanResult>();
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [isScanning, setIsScanning] = React.useState(false);
   const [error, setError] = React.useState<string>();
 
-  const readyPairs = (result?.pairs ?? []).filter((pair) => !pair.blocked);
-  const selectedPairs = readyPairs.filter((pair) => selectedIds.has(pair.id));
-
-  const startScan = async () => {
+  async function startScan() {
     setIsScanning(true);
     setError(undefined);
     setResult(undefined);
     setSelectedIds(new Set());
     setScanStatus({ message: "Connecting...", scannedDirectories: 0, foundPairs: 0 });
-
     try {
       const response = await fetch("/api/cue/scan");
       const reader = response.body?.getReader();
       if (!reader) throw new Error("CUE scan stream did not open");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split("\n\n");
-        buffer = chunks.pop() ?? "";
-
-        for (const chunk of chunks) {
-          if (!chunk.startsWith("data: ")) continue;
-          const event = cueScanEventSchema.parse(JSON.parse(chunk.slice(6))) as CueScanEvent;
-          if (event.type === "result") {
-            setResult({
-              root: event.root,
-              pairs: event.pairs,
-              ready: event.ready,
-              blocked: event.blocked,
-            });
-            setSelectedIds(
-              new Set(event.pairs.filter((pair) => !pair.blocked).map((pair) => pair.id)),
-            );
-            setScanStatus(undefined);
-          } else if (event.type === "error") {
-            setError(event.message);
-          } else if (event.type === "progress") {
-            setScanStatus({
-              message: event.message,
-              scannedDirectories: event.scannedDirectories,
-              foundPairs: event.foundPairs,
-            });
-          } else {
-            setScanStatus({ message: event.message, scannedDirectories: 0, foundPairs: 0 });
-          }
-        }
-      }
+      await readSseStream(reader, (raw) => {
+        const event = cueScanEventSchema.parse(raw) as CueScanEvent;
+        handleCueScanEvent(event, setResult, setScanStatus, setSelectedIds, setError);
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setIsScanning(false);
     }
-  };
+  }
+
+  return { scanStatus, result, selectedIds, setSelectedIds, isScanning, error, startScan };
+}
+
+function CueScanProgress({ scanStatus }: { scanStatus: CueScanStatus }) {
+  return (
+    <div className="mt-8 flex flex-col items-center justify-center p-12 text-center">
+      <Loader2 size={32} className="animate-spin mb-4 text-primary" />
+      <div className="text-lg font-medium mb-1">{scanStatus.message}</div>
+      <div className="text-xs text-muted-foreground">
+        {scanStatus.scannedDirectories} directories, {scanStatus.foundPairs} pairs
+      </div>
+    </div>
+  );
+}
+
+type CuePairTableProps = {
+  pairs: CuePair[];
+  selectedIds: Set<string>;
+  togglePair: (id: string, checked: boolean) => void;
+};
+
+function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
+  return (
+    <div className="overflow-x-auto rounded-md border border-border mt-4">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-10" />
+            <TableHead>CUE</TableHead>
+            <TableHead>Audio</TableHead>
+            <TableHead className="w-28">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {pairs.map((pair) => (
+            <TableRow key={pair.id}>
+              <TableCell>
+                <Checkbox
+                  checked={selectedIds.has(pair.id)}
+                  disabled={pair.blocked}
+                  onCheckedChange={(checked) => togglePair(pair.id, checked === true)}
+                />
+              </TableCell>
+              <TableCell>
+                <div className="grid gap-1">
+                  <span className="path-truncate font-mono">{pair.cueFile}</span>
+                  <span className="text-xs text-muted-foreground path-truncate">
+                    {pair.directory}
+                  </span>
+                </div>
+              </TableCell>
+              <TableCell className="font-mono text-xs">{pair.audioFile}</TableCell>
+              <TableCell>
+                <Badge variant={pair.blocked ? "warning" : "success"}>
+                  {pair.blocked ? "Blocked" : "Ready"}
+                </Badge>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+type CueSplitBodyProps = {
+  isScanning: boolean;
+  scanStatus: CueScanStatus | undefined;
+  result: CueScanResult | undefined;
+  selectedIds: Set<string>;
+  togglePair: (id: string, checked: boolean) => void;
+};
+
+function CueSplitBody({
+  isScanning,
+  scanStatus,
+  result,
+  selectedIds,
+  togglePair,
+}: CueSplitBodyProps) {
+  if (isScanning && scanStatus) return <CueScanProgress scanStatus={scanStatus} />;
+  if (result && result.pairs.length > 0) {
+    return <CuePairTable pairs={result.pairs} selectedIds={selectedIds} togglePair={togglePair} />;
+  }
+  return (
+    <div className="empty-state">
+      <Scissors size={28} />
+      <span>Scan the FLAC library for unsplit CUE/audio pairs.</span>
+    </div>
+  );
+}
+
+type CueSplitToolbarProps = {
+  result: CueScanResult | undefined;
+  readyPairs: CuePair[];
+  selectedPairs: CuePair[];
+  isScanning: boolean;
+  fixIsPending: boolean;
+  onScan: () => void;
+  onFix: () => void;
+};
+
+function CueSplitActions({
+  readyPairs,
+  selectedPairs,
+  isScanning,
+  fixIsPending,
+  onScan,
+  onFix,
+}: {
+  readyPairs: CuePair[];
+  selectedPairs: CuePair[];
+  isScanning: boolean;
+  fixIsPending: boolean;
+  onScan: () => void;
+  onFix: () => void;
+}) {
+  return (
+    <div className="flex gap-2 items-center toolbar-actions">
+      <Button onClick={onScan} disabled={isScanning || fixIsPending} size="sm" variant="outline">
+        {isScanning ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+        <span>{isScanning ? "Scanning..." : "Scan CUE"}</span>
+      </Button>
+      {readyPairs.length > 0 ? (
+        <Button
+          onClick={onFix}
+          disabled={selectedPairs.length === 0 || isScanning || fixIsPending}
+          size="sm"
+        >
+          {fixIsPending ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
+          <span>{fixIsPending ? "Starting..." : `Fix ${selectedPairs.length}`}</span>
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function CueSplitToolbar({
+  result,
+  readyPairs,
+  selectedPairs,
+  isScanning,
+  fixIsPending,
+  onScan,
+  onFix,
+}: CueSplitToolbarProps) {
+  return (
+    <div className="toolbar">
+      <section className="summary" aria-label="CUE summary">
+        <SummaryCell label="Pairs" value={result?.pairs.length ?? 0} />
+        <SummaryCell label="Ready" value={result?.ready ?? 0} />
+        <SummaryCell
+          label="Blocked"
+          value={result?.blocked ?? 0}
+          tone={(result?.blocked ?? 0) > 0 ? "warn" : ""}
+        />
+      </section>
+      <CueSplitActions
+        readyPairs={readyPairs}
+        selectedPairs={selectedPairs}
+        isScanning={isScanning}
+        fixIsPending={fixIsPending}
+        onScan={onScan}
+        onFix={onFix}
+      />
+    </div>
+  );
+}
+
+function CueSplit() {
+  const navigate = useNavigate();
+  const { scanStatus, result, selectedIds, setSelectedIds, isScanning, error, startScan } =
+    useCueScan();
+
+  const readyPairs = (result?.pairs ?? []).filter((pair) => !pair.blocked);
+  const selectedPairs = readyPairs.filter((pair) => selectedIds.has(pair.id));
 
   const fixMutation = useMutation({
     mutationFn: async (pairs: CuePair[]) => {
@@ -1282,99 +1693,23 @@ function CueSplit() {
   return (
     <Card>
       <CardContent className="p-4">
-        <div className="toolbar">
-          <section className="summary" aria-label="CUE summary">
-            <SummaryCell label="Pairs" value={result?.pairs.length ?? 0} />
-            <SummaryCell label="Ready" value={result?.ready ?? 0} />
-            <SummaryCell
-              label="Blocked"
-              value={result?.blocked ?? 0}
-              tone={(result?.blocked ?? 0) > 0 ? "warn" : ""}
-            />
-          </section>
-          <div className="flex gap-2 items-center toolbar-actions">
-            <Button
-              onClick={startScan}
-              disabled={isScanning || fixMutation.isPending}
-              size="sm"
-              variant="outline"
-            >
-              {isScanning ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-              <span>{isScanning ? "Scanning..." : "Scan CUE"}</span>
-            </Button>
-            {readyPairs.length > 0 ? (
-              <Button
-                onClick={() => fixMutation.mutate(selectedPairs)}
-                disabled={selectedPairs.length === 0 || isScanning || fixMutation.isPending}
-                size="sm"
-              >
-                {fixMutation.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Scissors size={15} />
-                )}
-                <span>{fixMutation.isPending ? "Starting..." : `Fix ${selectedPairs.length}`}</span>
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
+        <CueSplitToolbar
+          result={result}
+          readyPairs={readyPairs}
+          selectedPairs={selectedPairs}
+          isScanning={isScanning}
+          fixIsPending={fixMutation.isPending}
+          onScan={startScan}
+          onFix={() => fixMutation.mutate(selectedPairs)}
+        />
         {error ? <IssueList issues={[{ code: "CUE_ERROR", message: error }]} /> : null}
-
-        {isScanning && scanStatus ? (
-          <div className="mt-8 flex flex-col items-center justify-center p-12 text-center">
-            <Loader2 size={32} className="animate-spin mb-4 text-primary" />
-            <div className="text-lg font-medium mb-1">{scanStatus.message}</div>
-            <div className="text-xs text-muted-foreground">
-              {scanStatus.scannedDirectories} directories, {scanStatus.foundPairs} pairs
-            </div>
-          </div>
-        ) : result && result.pairs.length > 0 ? (
-          <div className="overflow-x-auto rounded-md border border-border mt-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10" />
-                  <TableHead>CUE</TableHead>
-                  <TableHead>Audio</TableHead>
-                  <TableHead className="w-28">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {result.pairs.map((pair) => (
-                  <TableRow key={pair.id}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedIds.has(pair.id)}
-                        disabled={pair.blocked}
-                        onCheckedChange={(checked) => togglePair(pair.id, checked === true)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="grid gap-1">
-                        <span className="path-truncate font-mono">{pair.cueFile}</span>
-                        <span className="text-xs text-muted-foreground path-truncate">
-                          {pair.directory}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{pair.audioFile}</TableCell>
-                    <TableCell>
-                      <Badge variant={pair.blocked ? "warning" : "success"}>
-                        {pair.blocked ? "Blocked" : "Ready"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <Scissors size={28} />
-            <span>Scan the FLAC library for unsplit CUE/audio pairs.</span>
-          </div>
-        )}
+        <CueSplitBody
+          isScanning={isScanning}
+          scanStatus={scanStatus}
+          result={result}
+          selectedIds={selectedIds}
+          togglePair={togglePair}
+        />
       </CardContent>
     </Card>
   );
@@ -1383,6 +1718,38 @@ function CueSplit() {
 // ── PlexScanPopover ────────────────────────────────────────────
 
 type PlexSection = { key: string; title: string; type: string };
+
+type PlexSectionRowProps = {
+  section: PlexSection;
+  scanning: boolean;
+  done: boolean;
+  anyPending: boolean;
+  onScan: (key: string) => void;
+};
+
+function PlexSectionRow({ section, scanning, done, anyPending, onScan }: PlexSectionRowProps) {
+  return (
+    <button
+      key={section.key}
+      type="button"
+      className={`plex-scan-item${scanning ? " scanning" : ""}`}
+      disabled={anyPending}
+      onClick={() => onScan(section.key)}
+    >
+      <span className="plex-scan-title">{section.title}</span>
+      <span className="plex-scan-action">
+        {scanning ? (
+          <Loader2 size={12} className="animate-spin" />
+        ) : done ? (
+          <CheckCircle2 size={12} />
+        ) : (
+          <Radio size={12} />
+        )}
+        {scanning ? "Scanning…" : done ? "Scanned" : "Scan"}
+      </span>
+    </button>
+  );
+}
 
 function PlexScanPopover() {
   const [open, setOpen] = React.useState(false);
@@ -1463,25 +1830,14 @@ function PlexScanPopover() {
                   (scanOne.isPending && scanOne.variables === section.key) ||
                   (scanAll.isPending && !done);
                 return (
-                  <button
+                  <PlexSectionRow
                     key={section.key}
-                    type="button"
-                    className={`plex-scan-item${scanning ? " scanning" : ""}`}
-                    disabled={anyPending}
-                    onClick={() => scanOne.mutate(section.key)}
-                  >
-                    <span className="plex-scan-title">{section.title}</span>
-                    <span className="plex-scan-action">
-                      {scanning ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : done ? (
-                        <CheckCircle2 size={12} />
-                      ) : (
-                        <Radio size={12} />
-                      )}
-                      {scanning ? "Scanning…" : done ? "Scanned" : "Scan"}
-                    </span>
-                  </button>
+                    section={section}
+                    scanning={scanning}
+                    done={done}
+                    anyPending={anyPending}
+                    onScan={(key) => scanOne.mutate(key)}
+                  />
                 );
               })
             )}
@@ -1789,6 +2145,149 @@ type SearchResult = {
   guid: string;
 };
 
+type SearchResultRowProps = {
+  result: SearchResult;
+  isAdded: boolean;
+  isPending: boolean;
+  onAdd: (url: string) => void;
+};
+
+function SearchResultRow({ result, isAdded, isPending, onAdd }: SearchResultRowProps) {
+  const url = result.downloadUrl;
+  return (
+    <TableRow>
+      <TableCell>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="path-truncate" style={{ maxWidth: 380 }}>
+              {result.title}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-sm break-words">{result.title}</TooltipContent>
+        </Tooltip>
+      </TableCell>
+      <TableCell className="text-muted-foreground text-xs">{result.indexer}</TableCell>
+      <TableCell className="text-right tabular-nums text-sm">{result.seeders}</TableCell>
+      <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
+        {formatBytes(result.size)}
+      </TableCell>
+      <TableCell className="text-right">
+        {url ? (
+          <Button
+            size="sm"
+            variant={isAdded ? "secondary" : "default"}
+            disabled={isAdded || isPending}
+            onClick={() => onAdd(url)}
+          >
+            {isAdded ? <CheckCircle2 size={13} /> : <Plus size={13} />}
+            {isAdded ? "Added" : "Add"}
+          </Button>
+        ) : (
+          <span className="muted text-xs">no link</span>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+type SearchResultsTableProps = {
+  results: SearchResult[];
+  added: Set<string>;
+  isPending: boolean;
+  onAdd: (url: string) => void;
+};
+
+function SearchResultsTable({ results, added, isPending, onAdd }: SearchResultsTableProps) {
+  return (
+    <div className="overflow-x-auto rounded-md border border-border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Title</TableHead>
+            <TableHead className="w-36">Indexer</TableHead>
+            <TableHead className="w-16 text-right">Seeds</TableHead>
+            <TableHead className="w-24 text-right">Size</TableHead>
+            <TableHead className="w-20" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {results.map((result) => (
+            <SearchResultRow
+              key={result.guid}
+              result={result}
+              isAdded={result.downloadUrl ? added.has(result.downloadUrl) : false}
+              isPending={isPending}
+              onAdd={onAdd}
+            />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+type DownloadsSearchFormProps = {
+  query: string;
+  isPending: boolean;
+  onQueryChange: (q: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+};
+
+function DownloadsSearchForm({
+  query,
+  isPending,
+  onQueryChange,
+  onSubmit,
+}: DownloadsSearchFormProps) {
+  return (
+    <form onSubmit={onSubmit} className="flex gap-2">
+      <Input
+        value={query}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onQueryChange(e.currentTarget.value)}
+        placeholder="Artist, album, or release…"
+        className="flex-1"
+      />
+      <Button type="submit" disabled={!query.trim() || isPending} size="sm">
+        {isPending ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+        <span>{isPending ? "Searching…" : "Search"}</span>
+      </Button>
+    </form>
+  );
+}
+
+type DownloadsBodyProps = {
+  searchIsSuccess: boolean;
+  results: SearchResult[];
+  added: Set<string>;
+  isPending: boolean;
+  onAdd: (url: string) => void;
+};
+
+function DownloadsBody({ searchIsSuccess, results, added, isPending, onAdd }: DownloadsBodyProps) {
+  if (searchIsSuccess && results.length === 0) {
+    return (
+      <div className="empty-state">
+        <Search size={28} />
+        <span>No results found.</span>
+      </div>
+    );
+  }
+  if (results.length > 0) {
+    return (
+      <SearchResultsTable results={results} added={added} isPending={isPending} onAdd={onAdd} />
+    );
+  }
+  if (!searchIsSuccess) {
+    return (
+      <div className="empty-state">
+        <Download size={28} />
+        <span>Search Prowlarr indexers for lossless audio.</span>
+      </div>
+    );
+  }
+  return null;
+}
+
 function Downloads() {
   const [query, setQuery] = React.useState("");
   const [added, setAdded] = React.useState<Set<string>>(new Set());
@@ -1806,12 +2305,7 @@ function Downloads() {
   });
 
   const results = search.data ?? [];
-  const searchError =
-    search.data === undefined && search.error
-      ? String(search.error)
-      : search.isSuccess && !results.length
-        ? null
-        : null;
+  const searchError = search.data === undefined && search.error ? String(search.error) : null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1821,98 +2315,22 @@ function Downloads() {
   return (
     <Card>
       <CardContent className="p-4 flex flex-col gap-4">
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <Input
-            value={query}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.currentTarget.value)}
-            placeholder="Artist, album, or release…"
-            className="flex-1"
-          />
-          <Button type="submit" disabled={!query.trim() || search.isPending} size="sm">
-            {search.isPending ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <Search size={15} />
-            )}
-            <span>{search.isPending ? "Searching…" : "Search"}</span>
-          </Button>
-        </form>
-
+        <DownloadsSearchForm
+          query={query}
+          isPending={search.isPending}
+          onQueryChange={setQuery}
+          onSubmit={handleSubmit}
+        />
         {searchError ? (
           <IssueList issues={[{ code: "SEARCH_ERROR", message: searchError }]} />
         ) : null}
-
-        {search.isSuccess && results.length === 0 ? (
-          <div className="empty-state">
-            <Search size={28} />
-            <span>No results found.</span>
-          </div>
-        ) : results.length > 0 ? (
-          <div className="overflow-x-auto rounded-md border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead className="w-36">Indexer</TableHead>
-                  <TableHead className="w-16 text-right">Seeds</TableHead>
-                  <TableHead className="w-24 text-right">Size</TableHead>
-                  <TableHead className="w-20" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {results.map((result) => {
-                  const url = result.downloadUrl;
-                  const isAdded = url ? added.has(url) : false;
-                  return (
-                    <TableRow key={result.guid}>
-                      <TableCell>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="path-truncate" style={{ maxWidth: 380 }}>
-                              {result.title}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-sm break-words">
-                            {result.title}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">
-                        {result.indexer}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-sm">
-                        {result.seeders}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-                        {formatBytes(result.size)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {url ? (
-                          <Button
-                            size="sm"
-                            variant={isAdded ? "secondary" : "default"}
-                            disabled={isAdded || addTorrent.isPending}
-                            onClick={() => addTorrent.mutate(url)}
-                          >
-                            {isAdded ? <CheckCircle2 size={13} /> : <Plus size={13} />}
-                            {isAdded ? "Added" : "Add"}
-                          </Button>
-                        ) : (
-                          <span className="muted text-xs">no link</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        ) : !search.isSuccess ? (
-          <div className="empty-state">
-            <Download size={28} />
-            <span>Search Prowlarr indexers for lossless audio.</span>
-          </div>
-        ) : null}
+        <DownloadsBody
+          searchIsSuccess={search.isSuccess}
+          results={results}
+          added={added}
+          isPending={addTorrent.isPending}
+          onAdd={(url) => addTorrent.mutate(url)}
+        />
       </CardContent>
     </Card>
   );

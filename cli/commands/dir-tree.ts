@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import * as path from "node:path";
 import type { Command } from "commander";
 import { err, ok, ResultAsync } from "neverthrow";
@@ -105,76 +106,59 @@ function getFileColor(
     });
 }
 
+const filterEntry =
+  (options: CommandOptions) =>
+  (entry: Dirent): boolean => {
+    if (!options.showHidden && entry.name.startsWith(".")) return false;
+    if (options.exclude?.some((pattern) => entry.name.includes(pattern))) return false;
+    if (!options.showFiles && !entry.isDirectory()) return false;
+    return true;
+  };
+
+async function buildEntryLines(
+  entries: Dirent[],
+  dirPath: string,
+  prefix: string,
+  depth: number,
+  options: CommandOptions,
+): Promise<string[]> {
+  const filtered = entries.filter(filterEntry(options));
+  const lines: string[] = [];
+  for (const [i, entry] of filtered.entries()) {
+    const isLast = i === filtered.length - 1;
+    const isDir = entry.isDirectory();
+    const branchChar = isLast ? TREE_CHARS.LAST_BRANCH : TREE_CHARS.BRANCH;
+    const nextPfx = isLast ? TREE_CHARS.SPACE : TREE_CHARS.VERTICAL;
+    const icon = options.showFiles ? (isDir ? "📁" : "📄") : "";
+    lines.push(`${prefix}${branchChar}${icon} ${getFileColor(entry, entry.name.startsWith("."))}`);
+    if (isDir) {
+      const childLines = await buildTree(
+        path.join(dirPath, entry.name),
+        prefix + nextPfx,
+        depth + 1,
+        options,
+      ).unwrapOr([]);
+      lines.push(...childLines);
+    }
+  }
+  return lines;
+}
+
 // Recursively build the tree structure
 function buildTree(
   dirPath: string,
-  prefix: string = "",
-  depth: number = 0,
+  prefix = "",
+  depth = 0,
   options: CommandOptions,
 ): ResultAsync<string[], ReturnType<typeof fail>> {
-  const { maxDepth = Infinity, showHidden = false, showFiles = true, exclude = [] } = options;
-
-  if (depth >= maxDepth) {
-    return ResultAsync.fromSafePromise(Promise.resolve([] as string[]));
-  }
-
+  const { maxDepth = Infinity } = options;
+  if (depth >= maxDepth) return ResultAsync.fromSafePromise(Promise.resolve([] as string[]));
   return safeAsync(
     () => readDirectoryWithTypes(dirPath),
     `Error reading directory ${dirPath}`,
-  ).andThen((entries) => {
-    // Filter entries based on options
-    const filteredEntries = entries.filter((entry) => {
-      // Skip hidden files/folders unless showHidden is true
-      if (!showHidden && entry.name.startsWith(".")) {
-        return false;
-      }
-
-      // Skip excluded patterns
-      if (exclude.some((pattern) => entry.name.includes(pattern))) {
-        return false;
-      }
-
-      // Skip files if showFiles is false
-      if (!showFiles && !entry.isDirectory()) {
-        return false;
-      }
-
-      return true;
-    });
-
-    const lines: string[] = [];
-
-    return ResultAsync.fromSafePromise(
-      filteredEntries.reduce(async (linesPromise, entry, index) => {
-        const lines = await linesPromise;
-        const isLast = index === filteredEntries.length - 1;
-        const isDirectory = entry.isDirectory();
-
-        const currentPrefix = isLast ? TREE_CHARS.LAST_BRANCH : TREE_CHARS.BRANCH;
-        const nextPrefix = isLast ? TREE_CHARS.SPACE : TREE_CHARS.VERTICAL;
-
-        const icon = options.showFiles ? (isDirectory ? "📁" : "📄") : "";
-        const isHidden = entry.name.startsWith(".");
-        const coloredName = getFileColor(entry, isHidden);
-        lines.push(`${prefix}${currentPrefix}${icon} ${coloredName}`);
-
-        if (!isDirectory) {
-          return lines;
-        }
-
-        const childPath = path.join(dirPath, entry.name);
-        const childLines = await buildTree(
-          childPath,
-          prefix + nextPrefix,
-          depth + 1,
-          options,
-        ).unwrapOr([]);
-
-        lines.push(...childLines);
-        return lines;
-      }, Promise.resolve(lines)),
-    );
-  });
+  ).andThen((entries) =>
+    ResultAsync.fromSafePromise(buildEntryLines(entries, dirPath, prefix, depth, options)),
+  );
 }
 
 // Main function to generate and display the tree

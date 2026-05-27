@@ -129,66 +129,56 @@ export function scanCueAudioPairs(
   );
 }
 
+function getAudioBasename(audioFile: string): string {
+  return match(audioFile)
+    .when(isFlacFile, (file) => getBasename(file, FILE_EXTENSIONS.FLAC))
+    .when(isWavFile, (file) => getBasename(file, FILE_EXTENSIONS.WAV))
+    .when(isWvFile, (file) => getBasename(file, FILE_EXTENSIONS.WV))
+    .otherwise(() => "");
+}
+
+async function matchCueToAudio(
+  cueFile: string,
+  audioFiles: string[],
+  searchPath: string,
+): Promise<{ cueFile: string; audioFile: string } | null> {
+  const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE).toLowerCase();
+  for (const audioFile of audioFiles) {
+    if (getAudioBasename(audioFile).toLowerCase() !== cueBasename) continue;
+    const cuePath = joinPath(searchPath, cueFile);
+    const audioPath = joinPath(searchPath, audioFile);
+    const [cueExists, audioExists] = await Promise.all([exists(cuePath), exists(audioPath)]);
+    if (cueExists && audioExists) return { cueFile, audioFile };
+  }
+  return null;
+}
+
+async function findPairsInFiles(
+  files: string[],
+  searchPath: string,
+  options: CommandOptions,
+): Promise<CueAudioPair[]> {
+  if (options.ignoreFailed && files.includes("__temp_split")) {
+    logInfo(`Skipping directory with __temp_split: ${searchPath}`);
+    return [];
+  }
+  const cueFiles = files.filter(isProcessableCueFile);
+  const audioFiles = files.filter(isAudioFile);
+  const foundPairs: CueAudioPair[] = [];
+  for (const cueFile of cueFiles) {
+    const match = await matchCueToAudio(cueFile, audioFiles, searchPath);
+    if (match) foundPairs.push({ directory: searchPath, ...match });
+  }
+  return foundPairs;
+}
+
 // Find cue/audio pairs in a single directory
 function findCueAudioPairsInDirectory(
   searchPath: string,
   options: CommandOptions,
 ): ResultAsync<CueAudioPair[], ReturnType<typeof fail>> {
   return safeAsync(() => readDirectory(searchPath), `Could not read directory ${searchPath}`)
-    .andThen((files) =>
-      ResultAsync.fromSafePromise(
-        (async () => {
-          const foundPairs: CueAudioPair[] = [];
-          const cueFiles = files.filter(isProcessableCueFile);
-          const audioFiles = files.filter(isAudioFile);
-
-          if (options.ignoreFailed && files.includes("__temp_split")) {
-            logInfo(`Skipping directory with __temp_split: ${searchPath}`);
-            return foundPairs;
-          }
-
-          for (const cueFile of cueFiles) {
-            const cueBasename = getBasename(cueFile, FILE_EXTENSIONS.CUE);
-
-            for (const audioFile of audioFiles) {
-              const audioBasename = match(audioFile)
-                .when(isFlacFile, (file) => getBasename(file, FILE_EXTENSIONS.FLAC))
-                .when(isWavFile, (file) => getBasename(file, FILE_EXTENSIONS.WAV))
-                .when(isWvFile, (file) => getBasename(file, FILE_EXTENSIONS.WV))
-                .otherwise(() => "");
-
-              const cueBasenameLower = cueBasename.toLowerCase();
-              const audioBasenameLower = audioBasename.toLowerCase();
-
-              if (cueBasenameLower !== audioBasenameLower) {
-                continue;
-              }
-
-              const cuePath = joinPath(searchPath, cueFile);
-              const audioPath = joinPath(searchPath, audioFile);
-
-              const [cueExists, audioExists] = await Promise.all([
-                exists(cuePath),
-                exists(audioPath),
-              ]);
-
-              if (!cueExists || !audioExists) {
-                continue;
-              }
-
-              foundPairs.push({
-                directory: searchPath,
-                cueFile,
-                audioFile,
-              });
-
-              break;
-            }
-          }
-          return foundPairs;
-        })(),
-      ),
-    )
+    .andThen((files) => ResultAsync.fromSafePromise(findPairsInFiles(files, searchPath, options)))
     .orElse(() => ok([]));
 }
 

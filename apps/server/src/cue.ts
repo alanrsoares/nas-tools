@@ -21,6 +21,28 @@ type EmitCueScanProgress = (progress: CueScanProgress) => void;
 const audioPattern = /\.(flac|wav|wv)$/i;
 const cuePattern = /\.cue$/i;
 
+function buildPairsForDirectory(directory: string, names: string[]): CuePair[] {
+  const cueFiles = names.filter((n) => cuePattern.test(n)).sort();
+  const audioFiles = names.filter((n) => audioPattern.test(n)).sort();
+  const blocked = names.includes("__temp_split");
+  return cueFiles.flatMap((cueFile) => {
+    const audioFile = audioFiles.find((n) => baseName(n) === baseName(cueFile));
+    if (!audioFile) return [];
+    return [
+      {
+        id: `${directory}/${cueFile}`,
+        directory,
+        cueFile,
+        audioFile,
+        blocked,
+        risks: hasMultiDiscSignal(cueFile, audioFiles)
+          ? ["multi-disc signal; verify disc boundaries before fixing"]
+          : [],
+      },
+    ];
+  });
+}
+
 export async function findCuePairs(
   root: string,
   maxDepth: number,
@@ -32,43 +54,18 @@ export async function findCuePairs(
   async function visit(directory: string, depth: number): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
     scannedDirectories++;
-
-    const names = entries
-      .filter((entry) => !entry.name.startsWith("._"))
-      .map((entry) => entry.name);
-    const cueFiles = names.filter((name) => cuePattern.test(name)).sort();
-    const audioFiles = names.filter((name) => audioPattern.test(name)).sort();
-    const blocked = names.includes("__temp_split");
-
-    for (const cueFile of cueFiles) {
-      const cueBase = baseName(cueFile);
-      const audioFile = audioFiles.find((name) => baseName(name) === cueBase);
-      if (!audioFile) continue;
-
-      pairs.push({
-        id: `${directory}/${cueFile}`,
-        directory,
-        cueFile,
-        audioFile,
-        blocked,
-        risks: hasMultiDiscSignal(cueFile, audioFiles)
-          ? ["multi-disc signal; verify disc boundaries before fixing"]
-          : [],
-      });
-    }
-
+    const names = entries.filter((e) => !e.name.startsWith("._")).map((e) => e.name);
+    pairs.push(...buildPairsForDirectory(directory, names));
     emit?.({
       scannedDirectories,
       foundPairs: pairs.length,
       message: `Scanned ${scannedDirectories} directories`,
     });
-
     if (depth >= maxDepth) return;
-
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "__temp_split") {
-        continue;
-      }
+    const subDirs = entries.filter(
+      (e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "__temp_split",
+    );
+    for (const entry of subDirs) {
       await visit(join(directory, entry.name), depth + 1);
     }
   }

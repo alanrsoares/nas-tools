@@ -34,61 +34,60 @@ async function canAccess(path: string): Promise<boolean> {
     .unwrapOr(false);
 }
 
-function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
-  return ResultAsync.fromSafePromise(
-    (async () => {
-      const checks: DoctorReport["checks"] = [];
-      const findings: Finding[] = [];
+async function runDoctorChecks(options: CommandOptions): Promise<void> {
+  const checks: DoctorReport["checks"] = [];
+  const findings: Finding[] = [];
 
-      for (const [name, path] of Object.entries(NAS_PATHS)) {
-        const ok = await pathExists(path);
-        checks.push({ name, ok, detail: path });
-        if (!ok && ["download", "flac", "public"].includes(name)) {
-          findings.push({
-            severity: "warn",
-            message: `Expected NAS path missing: ${name}`,
-            path,
-          });
-        }
-      }
-
-      for (const tool of tools) {
-        const ok = await canAccess(tool);
-        checks.push({
-          name: `tool:${tool.split("/").pop()}`,
-          ok,
-          detail: tool,
-        });
-        if (!ok && tool !== "/usr/local/bin/docker") {
-          findings.push({
-            severity: "warn",
-            message: `Expected Entware/media tool missing: ${tool}`,
-            path: tool,
-          });
-        }
-      }
-
-      const dockerSocket = "/var/run/docker.sock";
-      const socketStat = await ResultAsync.fromPromise(
-        stat(dockerSocket),
-        () => undefined,
-      ).unwrapOr(undefined);
-      checks.push({
-        name: "docker-socket",
-        ok: Boolean(socketStat),
-        detail: dockerSocket,
+  for (const [name, path] of Object.entries(NAS_PATHS)) {
+    const ok = await pathExists(path);
+    checks.push({ name, ok, detail: path });
+    if (!ok && ["download", "flac", "public"].includes(name)) {
+      findings.push({
+        severity: "warn",
+        message: `Expected NAS path missing: ${name}`,
+        path,
       });
-      if (socketStat && !(await canAccess(dockerSocket))) {
-        findings.push({
-          severity: "info",
-          message: "Docker socket exists but current user may lack daemon access.",
-          path: dockerSocket,
-        });
-      }
+    }
+  }
 
-      printReport({ title: "NAS doctor", checks, findings }, options.json);
-    })(),
+  for (const tool of tools) {
+    const ok = await canAccess(tool);
+    checks.push({
+      name: `tool:${tool.split("/").pop()}`,
+      ok,
+      detail: tool,
+    });
+    if (!ok && tool !== "/usr/local/bin/docker") {
+      findings.push({
+        severity: "warn",
+        message: `Expected Entware/media tool missing: ${tool}`,
+        path: tool,
+      });
+    }
+  }
+
+  const dockerSocket = "/var/run/docker.sock";
+  const socketStat = await ResultAsync.fromPromise(stat(dockerSocket), () => undefined).unwrapOr(
+    undefined,
   );
+  checks.push({
+    name: "docker-socket",
+    ok: Boolean(socketStat),
+    detail: dockerSocket,
+  });
+  if (socketStat && !(await canAccess(dockerSocket))) {
+    findings.push({
+      severity: "info",
+      message: "Docker socket exists but current user may lack daemon access.",
+      path: dockerSocket,
+    });
+  }
+
+  printReport({ title: "NAS doctor", checks, findings }, options.json);
+}
+
+function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
+  return ResultAsync.fromSafePromise(runDoctorChecks(options));
 }
 
 export default function doctorCommand(program: Command): void {

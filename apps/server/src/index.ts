@@ -16,6 +16,7 @@ import {
   type NasPathConfig,
   nasPathConfigSchema,
   scoreAlbum,
+  type WalkEntry,
   walk,
 } from "@nas-tools/core";
 import { eq } from "drizzle-orm";
@@ -145,6 +146,79 @@ function loadJob(jobId: string) {
     status: jobStatusSchema.parse(row.status),
     counts: jobCountsSchema.parse(JSON.parse(row.counts)),
   };
+}
+
+type SendFn = (data: unknown) => void;
+
+function buildDedupeOutput(
+  groups: Map<string, AlbumFolder[]>,
+): { id: string; release: AlbumFolder["release"]; winner: AlbumFolder; losers: AlbumFolder[] }[] {
+  const duplicates = [];
+  for (const [id, group] of groups.entries()) {
+    group.sort((a, b) => scoreAlbum(b) - scoreAlbum(a));
+    const winner = group[0];
+    if (!winner) continue;
+    duplicates.push({ id, release: winner.release, winner, losers: group.slice(1) });
+  }
+  return duplicates;
+}
+
+async function resolveAlbumBatch(
+  folders: string[],
+  entries: WalkEntry[],
+  send: SendFn,
+): Promise<AlbumFolder[]> {
+  const albums: AlbumFolder[] = [];
+  let count = 0;
+  const batchSize = 10;
+  send({
+    type: "analyzing",
+    message: `Verifying metadata for ${folders.length} album roots...`,
+    total: folders.length,
+  });
+  for (let i = 0; i < folders.length; i += batchSize) {
+    const batch = folders.slice(i, i + batchSize);
+    await Promise.all(
+      batch.map(async (folder) => {
+        const infoResult = await getAlbumInfo(folder);
+        if (infoResult.isOk() && infoResult.value.isJust) {
+          const info = infoResult.value.value;
+          info.totalSize = entries
+            .filter((entry) => {
+              if (entry.isDirectory) return false;
+              const nestedPath = relative(folder, entry.path);
+              return nestedPath !== "" && !nestedPath.startsWith("..") && !isAbsolute(nestedPath);
+            })
+            .reduce((sum, e) => sum + e.size, 0);
+          albums.push(info);
+        }
+        count++;
+      }),
+    );
+    send({ type: "progress", current: count, total: folders.length });
+  }
+  return albums;
+}
+
+async function streamDedupeGroups(root: string, send: SendFn): Promise<void> {
+  send({ type: "indexing", message: "Scanning music directory..." });
+  const entriesResult = await walk(root, { maxDepth: 4 });
+  if (entriesResult.isErr()) throw entriesResult.error;
+  const entries = entriesResult.value;
+
+  send({ type: "analyzing", message: "Identifying album roots..." });
+  const candidates = identifyAlbumCandidates(entries, root);
+  const candidateFolders = [...new Set(candidates.map((album) => album.path))];
+
+  if (candidateFolders.length === 0) {
+    send({ type: "result", duplicates: [], moves: [] });
+    return;
+  }
+
+  const albums = await resolveAlbumBatch(candidateFolders, entries, send);
+  const groups = findDuplicates(albums);
+  const moves = identifyDedupeMoves(groups, root, join(root, "_duplicates"));
+  send({ type: "result", duplicates: buildDedupeOutput(groups), moves });
 }
 
 async function getStagingStatus(stagingDir: string) {
@@ -358,79 +432,10 @@ export const api = new Elysia({ prefix: "/api" })
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const root = config.musicDir;
-        const send = (data: unknown) => {
+        const send = (data: unknown) =>
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-        };
-
         try {
-          send({ type: "indexing", message: "Scanning music directory..." });
-          const entriesResult = await walk(root, { maxDepth: 4 });
-          if (entriesResult.isErr()) {
-            throw entriesResult.error;
-          }
-          const entries = entriesResult.value;
-
-          send({ type: "analyzing", message: "Identifying album roots..." });
-          const candidates = identifyAlbumCandidates(entries, root);
-          const candidateFolders = [...new Set(candidates.map((album) => album.path))];
-
-          if (candidateFolders.length === 0) {
-            send({ type: "result", duplicates: [], moves: [] });
-            controller.close();
-            return;
-          }
-
-          send({
-            type: "analyzing",
-            message: `Verifying metadata for ${candidateFolders.length} album roots...`,
-            total: candidateFolders.length,
-          });
-
-          const albums: AlbumFolder[] = [];
-          let count = 0;
-          const batchSize = 10;
-          for (let i = 0; i < candidateFolders.length; i += batchSize) {
-            const batch = candidateFolders.slice(i, i + batchSize);
-            const batchTasks = batch.map(async (folder) => {
-              const infoResult = await getAlbumInfo(folder);
-              if (infoResult.isOk() && infoResult.value.isJust) {
-                const info = infoResult.value.value;
-                info.totalSize = entries
-                  .filter((entry) => {
-                    if (entry.isDirectory) return false;
-                    const nestedPath = relative(folder, entry.path);
-                    return (
-                      nestedPath !== "" && !nestedPath.startsWith("..") && !isAbsolute(nestedPath)
-                    );
-                  })
-                  .reduce((sum, entry) => sum + entry.size, 0);
-                albums.push(info);
-              }
-              count++;
-            });
-            await Promise.all(batchTasks);
-            send({ type: "progress", current: count, total: candidateFolders.length });
-          }
-
-          const groups = findDuplicates(albums);
-          const duplicates = [];
-          const moves = identifyDedupeMoves(groups, root, join(root, "_duplicates"));
-
-          for (const [id, group] of groups.entries()) {
-            group.sort((a, b) => scoreAlbum(b) - scoreAlbum(a));
-            const winner = group[0];
-            if (!winner) continue;
-
-            duplicates.push({
-              id,
-              release: winner.release,
-              winner,
-              losers: group.slice(1),
-            });
-          }
-
-          send({ type: "result", duplicates, moves });
+          await streamDedupeGroups(config.musicDir, send);
           controller.close();
         } catch (e) {
           console.error("Dedupe scan stream error:", e);
@@ -438,7 +443,6 @@ export const api = new Elysia({ prefix: "/api" })
         }
       },
     });
-
     return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream",

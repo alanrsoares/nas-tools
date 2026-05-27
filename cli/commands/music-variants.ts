@@ -40,6 +40,25 @@ type VariantsReport = {
   alreadyTagged: VariantPlan[];
 };
 
+async function collectVariantPlans(
+  albumRoots: string[],
+  entries: WalkEntry[],
+): Promise<VariantPlan[]> {
+  const plans: VariantPlan[] = [];
+  const batchSize = 10;
+  for (let i = 0; i < albumRoots.length; i += batchSize) {
+    const batch = albumRoots.slice(i, i + batchSize);
+    const batchResults = await Promise.all(
+      batch.map((albumRoot) => readAlbumMetadata(albumRoot, entries)),
+    );
+    for (const metadata of batchResults) {
+      if (!metadata) continue;
+      plans.push(planAlbumVariant(metadata));
+    }
+  }
+  return plans;
+}
+
 function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return walk(options.root, { maxDepth: 4 })
     .mapErr((error) => ({ type: "fail", message: error.message }) as const)
@@ -48,38 +67,12 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
         (async () => {
           const candidates = identifyAlbumCandidates(entries, options.root);
           const albumRoots = [...new Set(candidates.map((album) => album.path))];
-          const plans: VariantPlan[] = [];
-          const batchSize = 10;
 
           if (!options.json) {
             console.log(pc.cyan(`Scanning ${albumRoots.length} album roots for variant hints...`));
           }
 
-          for (let i = 0; i < albumRoots.length; i += batchSize) {
-            const batch = albumRoots.slice(i, i + batchSize);
-            const batchPlans = await Promise.all(
-              batch.map(async (albumRoot) => readAlbumMetadata(albumRoot, entries)),
-            );
-
-            for (const metadata of batchPlans) {
-              if (!metadata) continue;
-              plans.push(
-                planAlbumVariant({
-                  path: metadata.path,
-                  album: metadata.album,
-                  releaseCountry: metadata.releaseCountry,
-                  date: metadata.date,
-                  originalDate: metadata.originalDate,
-                  catalogNumber: metadata.catalogNumber,
-                  barcode: metadata.barcode,
-                  releaseType: metadata.releaseType,
-                  musicBrainzAlbumId: metadata.musicBrainzAlbumId,
-                  musicBrainzReleaseGroupId: metadata.musicBrainzReleaseGroupId,
-                }),
-              );
-            }
-          }
-
+          const plans = await collectVariantPlans(albumRoots, entries);
           const proposals = plans.filter((plan) => plan.status === "propose");
           const alreadyTagged = plans.filter((plan) => plan.status === "already-tagged");
           const report: VariantsReport = {

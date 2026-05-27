@@ -76,49 +76,66 @@ function stripKnownVariantSuffix(album: string): string {
   return stripped.trim() || album.trim();
 }
 
+type HintResult = { label: string; reason: string };
+
+function detectEditionHint(metadata: VariantMetadata & { haystack: string }): HintResult | null {
+  if (/\bshm(?:-cd)?\b/i.test(metadata.haystack))
+    return { label: "SHM-CD", reason: "folder/tag mentions SHM-CD" };
+  if (/\b(blu-?spec)\b/i.test(metadata.haystack))
+    return { label: "Blu-spec CD", reason: "folder/tag mentions Blu-spec" };
+  if (/\b(japan(?:ese)?|jp|jpn|obi)\b/i.test(metadata.haystack) || metadata.releaseCountry === "JP")
+    return { label: "Japanese Edition", reason: "folder/tag or release country indicates Japan" };
+  return null;
+}
+
+const staticFormatPatterns: Array<[RegExp, string, string]> = [
+  [/\bmfsl\b|mobile fidelity/i, "MFSL", "folder/tag mentions MFSL"],
+  [/\bsacd\b/i, "SACD", "folder/tag mentions SACD"],
+  [/hi-?res|high resolution/i, "Hi-Res", "folder/tag mentions hi-res"],
+  [/\bdeluxe\b/i, "Deluxe Edition", "folder/tag mentions deluxe"],
+  [/\bexpanded\b/i, "Expanded Edition", "folder/tag mentions expanded"],
+  [/\banniversary\b/i, "Anniversary Edition", "folder/tag mentions anniversary"],
+  [/\bmono\b/i, "Mono", "folder/tag mentions mono"],
+  [/\bstereo\b/i, "Stereo", "folder/tag mentions stereo"],
+  [/\b(vinyl|lp rip)\b/i, "Vinyl", "folder/tag mentions vinyl"],
+];
+
+function detectFormatHints(haystack: string, remasterYear: string | undefined): HintResult[] {
+  const results: HintResult[] = staticFormatPatterns
+    .filter(([pattern]) => pattern.test(haystack))
+    .map(([, label, reason]) => ({ label, reason }));
+  if (/\b(remaster(?:ed)?)\b/i.test(haystack))
+    results.push({
+      label: remasterYear ? `${remasterYear} Remaster` : "Remaster",
+      reason: "folder/tag mentions remaster",
+    });
+  if (/\bremix\b/i.test(haystack))
+    results.push({
+      label: remasterYear ? `${remasterYear} Remix` : "Remix",
+      reason: "folder/tag mentions remix",
+    });
+  return results;
+}
+
 function collectVariantHints(metadata: VariantMetadata & { haystack: string }): {
   labels: string[];
   confidence: "high" | "medium" | "low";
   reasons: string[];
 } {
-  const labels: string[] = [];
-  const reasons: string[] = [];
-  const add = (label: string, reason: string) => {
-    if (!labels.includes(label)) labels.push(label);
-    reasons.push(reason);
-  };
-
   const releaseYear = metadata.date?.match(/\b(19|20)\d{2}\b/)?.[0];
   const originalYear = metadata.originalDate?.match(/\b(19|20)\d{2}\b/)?.[0];
   const remasterYear = releaseYear && releaseYear !== originalYear ? releaseYear : undefined;
 
-  if (/\bshm(?:-cd)?\b/i.test(metadata.haystack)) add("SHM-CD", "folder/tag mentions SHM-CD");
-  else if (/\b(blu-?spec)\b/i.test(metadata.haystack))
-    add("Blu-spec CD", "folder/tag mentions Blu-spec");
-  else if (
-    /\b(japan(?:ese)?|jp|jpn|obi)\b/i.test(metadata.haystack) ||
-    metadata.releaseCountry === "JP"
-  ) {
-    add("Japanese Edition", "folder/tag or release country indicates Japan");
-  }
+  const edition = detectEditionHint(metadata);
+  const formats = detectFormatHints(metadata.haystack, remasterYear);
+  const all = [...(edition ? [edition] : []), ...formats];
 
-  if (/\bmfsl\b|mobile fidelity/i.test(metadata.haystack)) add("MFSL", "folder/tag mentions MFSL");
-  if (/\bsacd\b/i.test(metadata.haystack)) add("SACD", "folder/tag mentions SACD");
-  if (/hi-?res|high resolution/i.test(metadata.haystack))
-    add("Hi-Res", "folder/tag mentions hi-res");
-  if (/\bdeluxe\b/i.test(metadata.haystack)) add("Deluxe Edition", "folder/tag mentions deluxe");
-  if (/\bexpanded\b/i.test(metadata.haystack))
-    add("Expanded Edition", "folder/tag mentions expanded");
-  if (/\banniversary\b/i.test(metadata.haystack))
-    add("Anniversary Edition", "folder/tag mentions anniversary");
-  if (/\b(remaster(?:ed)?)\b/i.test(metadata.haystack)) {
-    add(remasterYear ? `${remasterYear} Remaster` : "Remaster", "folder/tag mentions remaster");
+  const labels: string[] = [];
+  const reasons: string[] = [];
+  for (const { label, reason } of all) {
+    if (!labels.includes(label)) labels.push(label);
+    reasons.push(reason);
   }
-  if (/\bremix\b/i.test(metadata.haystack))
-    add(remasterYear ? `${remasterYear} Remix` : "Remix", "folder/tag mentions remix");
-  if (/\bmono\b/i.test(metadata.haystack)) add("Mono", "folder/tag mentions mono");
-  if (/\bstereo\b/i.test(metadata.haystack)) add("Stereo", "folder/tag mentions stereo");
-  if (/\b(vinyl|lp rip)\b/i.test(metadata.haystack)) add("Vinyl", "folder/tag mentions vinyl");
 
   const confidence =
     metadata.musicBrainzAlbumId || metadata.musicBrainzReleaseGroupId ? "high" : "medium";
