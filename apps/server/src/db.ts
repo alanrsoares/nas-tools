@@ -32,7 +32,7 @@ export const jobs = sqliteTable("jobs", {
   id: text("id").primaryKey(),
   type: text("type").notNull(),
   status: text("status").notNull(),
-  planId: text("plan_id").notNull(),
+  planId: text("plan_id"),
   counts: text("counts").notNull().default("{}"),
   startedAt: text("started_at"),
   completedAt: text("completed_at"),
@@ -84,7 +84,7 @@ sqlite.exec(`
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     status TEXT NOT NULL,
-    plan_id TEXT NOT NULL REFERENCES move_plans(id),
+    plan_id TEXT REFERENCES move_plans(id),
     counts TEXT NOT NULL DEFAULT '{}',
     started_at TEXT,
     completed_at TEXT,
@@ -102,6 +102,34 @@ sqlite.exec(`
     created_at TEXT NOT NULL
   );
 `);
+
+const jobPlanIdColumn = sqlite
+  .query<{ name: string; notnull: number }, []>("PRAGMA table_info(jobs)")
+  .all()
+  .find((column) => column.name === "plan_id");
+
+if (jobPlanIdColumn?.notnull === 1) {
+  sqlite.exec(`
+    PRAGMA foreign_keys = OFF;
+    ALTER TABLE jobs RENAME TO jobs_legacy_plan_required;
+    CREATE TABLE jobs (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      plan_id TEXT REFERENCES move_plans(id),
+      counts TEXT NOT NULL DEFAULT '{}',
+      started_at TEXT,
+      completed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO jobs (id, type, status, plan_id, counts, started_at, completed_at, created_at, updated_at)
+      SELECT id, type, status, plan_id, counts, started_at, completed_at, created_at, updated_at
+      FROM jobs_legacy_plan_required;
+    DROP TABLE jobs_legacy_plan_required;
+    PRAGMA foreign_keys = ON;
+  `);
+}
 
 export const db = drizzle(sqlite, {
   schema: { movePlans, movePlanItems, jobs, jobEvents },

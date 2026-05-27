@@ -26,6 +26,7 @@ import {
   Play,
   Plus,
   Radio,
+  Scissors,
   Search,
   Settings as SettingsIcon,
   Trash2,
@@ -81,6 +82,12 @@ const dedupeRoute = createRoute({
   component: () => <Dedupe />,
 });
 
+const cueRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cue",
+  component: CueSplit,
+});
+
 const jobsSearchSchema = z.object({
   jobId: z.string().optional(),
 });
@@ -108,6 +115,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   stagingRoute,
   dedupeRoute,
+  cueRoute,
   jobsRoute,
   downloadsRoute,
   settingsRoute,
@@ -121,7 +129,7 @@ declare module "@tanstack/react-router" {
   }
 }
 
-type Section = "overview" | "staging" | "dedupe" | "jobs" | "downloads" | "settings";
+type Section = "overview" | "staging" | "dedupe" | "cue" | "jobs" | "downloads" | "settings";
 
 type JobStatus =
   | "queued"
@@ -154,6 +162,7 @@ const navItems: NavItem[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "staging", label: "Staging", icon: FolderCog },
   { id: "dedupe", label: "Dedupe", icon: Copy },
+  { id: "cue", label: "CUE Split", icon: Scissors },
   { id: "jobs", label: "Jobs", icon: ListChecks },
   { id: "downloads", label: "Downloads", icon: Download },
   { id: "settings", label: "Settings", icon: SettingsIcon },
@@ -163,6 +172,7 @@ const sectionLabel: Record<Section, string> = {
   overview: "Overview",
   staging: "Download Staging Area",
   dedupe: "Library Dedupe",
+  cue: "CUE Split",
   jobs: "Jobs",
   downloads: "Downloads",
   settings: "Settings",
@@ -173,6 +183,7 @@ const sectionDescription: Record<Section, string> = {
   staging: "Scan your downloads folder, review detected media, and confirm moves to the library.",
   dedupe:
     "Index your FLAC library to identify duplicated releases and keep the best quality versions.",
+  cue: "Audit unsplit CUE/audio pairs and run split jobs with live progress.",
   jobs: "Track active and past move operations. Select a job to see its progress and event log.",
   downloads: "Search Prowlarr indexers for lossless audio and add directly to Transmission.",
   settings: "NAS library paths used when organizing media. Edit via server environment variables.",
@@ -630,6 +641,7 @@ function Staging() {
           ...(item.artistName !== undefined ? { artistName: item.artistName } : {}),
           included: item.included,
         })),
+        cueSplitEnabled: currentPlan.cueSplitEnabled,
       });
       return response;
     },
@@ -642,6 +654,7 @@ function Staging() {
   });
 
   const stats = plan ? summarizePlan(plan.items) : undefined;
+  const cuePairTotal = stats?.cuePairTotal ?? 0;
   const issues = scan.data?.data && "issues" in scan.data.data ? scan.data.data.issues : [];
 
   const confirmIssues =
@@ -663,11 +676,36 @@ function Staging() {
                 value={stats.needsCorrection}
                 tone={stats.needsCorrection > 0 ? "warn" : ""}
               />
+              {cuePairTotal > 0 ? (
+                <SummaryCell label="CUE pairs" value={cuePairTotal} tone="warn" />
+              ) : null}
             </section>
           ) : (
             <div />
           )}
           <div className="flex gap-2 items-center toolbar-actions">
+            {plan && cuePairTotal > 0 ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="cue-split-toggle">
+                    <Checkbox
+                      id="staging-cue-split"
+                      checked={plan.cueSplitEnabled}
+                      onCheckedChange={(checked: boolean | "indeterminate") =>
+                        setPlan({ ...plan, cueSplitEnabled: checked === true })
+                      }
+                    />
+                    <label htmlFor="staging-cue-split" className="cue-split-toggle-label">
+                      <Scissors size={14} />
+                      <span>Split CUE</span>
+                    </label>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Split matching CUE/audio pairs after move and before Transmission cleanup
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             {orphanedCount > 0 ||
             cleanTorrents.isPending ||
             isCleanSuccess(cleanTorrents.data?.data) ? (
@@ -822,7 +860,22 @@ function MovePlanRow({ item, onChange }: MovePlanRowProps) {
           }
         />
       </TableCell>
-      <TableCell className="font-semibold path-cell">{item.albumName}</TableCell>
+      <TableCell className="font-semibold path-cell">
+        <div className="item-title-cell">
+          <span>{item.albumName}</span>
+          {(item.cueAudioPairs ?? 0) > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="warning" className="gap-1 cursor-default">
+                  <Scissors size={12} />
+                  CUE {item.cueAudioPairs}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>Will split after move when Split CUE is enabled</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
+      </TableCell>
       <TableCell>
         <Badge variant="secondary">{mediaLabel(item.mediaType)}</Badge>
       </TableCell>
@@ -1084,6 +1137,249 @@ function Dedupe() {
   );
 }
 
+type CuePair = {
+  id: string;
+  directory: string;
+  cueFile: string;
+  audioFile: string;
+  blocked: boolean;
+  risks: string[];
+};
+
+const cuePairSchema = z.object({
+  id: z.string(),
+  directory: z.string(),
+  cueFile: z.string(),
+  audioFile: z.string(),
+  blocked: z.boolean(),
+  risks: z.array(z.string()),
+});
+
+const cueScanEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("status"), message: z.string() }),
+  z.object({
+    type: z.literal("progress"),
+    scannedDirectories: z.number(),
+    foundPairs: z.number(),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("result"),
+    root: z.string(),
+    pairs: z.array(cuePairSchema),
+    ready: z.number(),
+    blocked: z.number(),
+  }),
+  z.object({ type: z.literal("error"), message: z.string() }),
+]);
+
+const cueJobResponseSchema = z.object({ ok: z.literal(true), jobId: z.string() });
+
+type CueScanEvent = z.infer<typeof cueScanEventSchema>;
+
+type CueScanStatus = {
+  message: string;
+  scannedDirectories: number;
+  foundPairs: number;
+};
+
+type CueScanResult = {
+  root: string;
+  pairs: CuePair[];
+  ready: number;
+  blocked: number;
+};
+
+function CueSplit() {
+  const navigate = useNavigate();
+  const [scanStatus, setScanStatus] = React.useState<CueScanStatus>();
+  const [result, setResult] = React.useState<CueScanResult>();
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [isScanning, setIsScanning] = React.useState(false);
+  const [error, setError] = React.useState<string>();
+
+  const readyPairs = (result?.pairs ?? []).filter((pair) => !pair.blocked);
+  const selectedPairs = readyPairs.filter((pair) => selectedIds.has(pair.id));
+
+  const startScan = async () => {
+    setIsScanning(true);
+    setError(undefined);
+    setResult(undefined);
+    setSelectedIds(new Set());
+    setScanStatus({ message: "Connecting...", scannedDirectories: 0, foundPairs: 0 });
+
+    try {
+      const response = await fetch("/api/cue/scan");
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("CUE scan stream did not open");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+
+        for (const chunk of chunks) {
+          if (!chunk.startsWith("data: ")) continue;
+          const event = cueScanEventSchema.parse(JSON.parse(chunk.slice(6))) as CueScanEvent;
+          if (event.type === "result") {
+            setResult({
+              root: event.root,
+              pairs: event.pairs,
+              ready: event.ready,
+              blocked: event.blocked,
+            });
+            setSelectedIds(
+              new Set(event.pairs.filter((pair) => !pair.blocked).map((pair) => pair.id)),
+            );
+            setScanStatus(undefined);
+          } else if (event.type === "error") {
+            setError(event.message);
+          } else if (event.type === "progress") {
+            setScanStatus({
+              message: event.message,
+              scannedDirectories: event.scannedDirectories,
+              foundPairs: event.foundPairs,
+            });
+          } else {
+            setScanStatus({ message: event.message, scannedDirectories: 0, foundPairs: 0 });
+          }
+        }
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const fixMutation = useMutation({
+    mutationFn: async (pairs: CuePair[]) => {
+      const response = await fetch("/api/cue/fix/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pairs }),
+      });
+      return cueJobResponseSchema.parse(await response.json());
+    },
+    onSuccess: (data) => navigate({ to: "/jobs", search: { jobId: data.jobId } }),
+  });
+
+  const togglePair = (pairId: string, checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(pairId);
+      else next.delete(pairId);
+      return next;
+    });
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="toolbar">
+          <section className="summary" aria-label="CUE summary">
+            <SummaryCell label="Pairs" value={result?.pairs.length ?? 0} />
+            <SummaryCell label="Ready" value={result?.ready ?? 0} />
+            <SummaryCell
+              label="Blocked"
+              value={result?.blocked ?? 0}
+              tone={(result?.blocked ?? 0) > 0 ? "warn" : ""}
+            />
+          </section>
+          <div className="flex gap-2 items-center toolbar-actions">
+            <Button
+              onClick={startScan}
+              disabled={isScanning || fixMutation.isPending}
+              size="sm"
+              variant="outline"
+            >
+              {isScanning ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+              <span>{isScanning ? "Scanning..." : "Scan CUE"}</span>
+            </Button>
+            {readyPairs.length > 0 ? (
+              <Button
+                onClick={() => fixMutation.mutate(selectedPairs)}
+                disabled={selectedPairs.length === 0 || isScanning || fixMutation.isPending}
+                size="sm"
+              >
+                {fixMutation.isPending ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <Scissors size={15} />
+                )}
+                <span>{fixMutation.isPending ? "Starting..." : `Fix ${selectedPairs.length}`}</span>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {error ? <IssueList issues={[{ code: "CUE_ERROR", message: error }]} /> : null}
+
+        {isScanning && scanStatus ? (
+          <div className="mt-8 flex flex-col items-center justify-center p-12 text-center">
+            <Loader2 size={32} className="animate-spin mb-4 text-primary" />
+            <div className="text-lg font-medium mb-1">{scanStatus.message}</div>
+            <div className="text-xs text-muted-foreground">
+              {scanStatus.scannedDirectories} directories, {scanStatus.foundPairs} pairs
+            </div>
+          </div>
+        ) : result && result.pairs.length > 0 ? (
+          <div className="overflow-x-auto rounded-md border border-border mt-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10" />
+                  <TableHead>CUE</TableHead>
+                  <TableHead>Audio</TableHead>
+                  <TableHead className="w-28">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {result.pairs.map((pair) => (
+                  <TableRow key={pair.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(pair.id)}
+                        disabled={pair.blocked}
+                        onCheckedChange={(checked) => togglePair(pair.id, checked === true)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="grid gap-1">
+                        <span className="path-truncate font-mono">{pair.cueFile}</span>
+                        <span className="text-xs text-muted-foreground path-truncate">
+                          {pair.directory}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{pair.audioFile}</TableCell>
+                    <TableCell>
+                      <Badge variant={pair.blocked ? "warning" : "success"}>
+                        {pair.blocked ? "Blocked" : "Ready"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <Scissors size={28} />
+            <span>Scan the FLAC library for unsplit CUE/audio pairs.</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── PlexScanPopover ────────────────────────────────────────────
 
 type PlexSection = { key: string; title: string; type: string };
@@ -1202,7 +1498,7 @@ type JobRecord = {
   id: string;
   type: string;
   status: JobStatus;
-  planId: string;
+  planId: string | null;
   counts: JobCounts;
   startedAt: string | null;
   completedAt: string | null;
@@ -1270,7 +1566,9 @@ function Jobs() {
               const itemLabel =
                 job.counts.total > 0
                   ? `${job.counts.total} item${job.counts.total !== 1 ? "s" : ""}`
-                  : "Move Plan";
+                  : job.type === "cue_fix"
+                    ? "CUE fix"
+                    : "Move Plan";
               return (
                 <button
                   key={job.id}
@@ -1400,7 +1698,7 @@ function JobDetail({ job: initialJob }: JobDetailProps) {
           <div>
             <div className="flex justify-between text-xs text-muted-foreground mb-1">
               <span>
-                {counts.completed} / {counts.total} moved
+                {counts.completed} / {counts.total} {liveJob.type === "cue_fix" ? "fixed" : "moved"}
                 {counts.failed > 0 ? `, ${counts.failed} failed` : ""}
               </span>
               <span>{progress}%</span>
@@ -1702,7 +2000,8 @@ function summarizePlan(items: MovePlanItem[]) {
   const included = items.filter((i) => i.included && i.issues.length === 0).length;
   const needsCorrection = items.filter((i) => i.issues.length > 0).length;
   const excluded = items.filter((i) => !i.included && i.issues.length === 0).length;
-  return { total: items.length, included, needsCorrection, excluded };
+  const cuePairTotal = items.reduce((sum, item) => sum + (item.cueAudioPairs ?? 0), 0);
+  return { total: items.length, included, needsCorrection, excluded, cuePairTotal };
 }
 
 function updatePlanItem(plan: MovePlan, item: MovePlanItem): MovePlan {

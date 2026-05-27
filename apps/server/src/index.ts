@@ -1,7 +1,6 @@
 import { mkdir, readdir, rename } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { cors } from "@elysiajs/cors";
-import { staticPlugin } from "@elysiajs/static";
 import {
   type AlbumFolder,
   createMovePlanDraft,
@@ -22,12 +21,19 @@ import {
 import { eq } from "drizzle-orm";
 import { Elysia, t } from "elysia";
 import { z } from "zod";
-
+import { type CuePair, findCuePairs } from "./cue.js";
 import { db, jobs, movePlanItems, movePlans } from "./db.js";
 import { env } from "./env.js";
-import { cancelJob, executeJob, getJobEvents, isTerminalStatus } from "./execution.js";
+import {
+  cancelJob,
+  executeCueJob,
+  executeJob,
+  getJobEvents,
+  isTerminalStatus,
+} from "./execution.js";
 import { listPlexSections, scanAllPlexLibraries, scanPlexSection } from "./plex.js";
 import { prowlarrSearch } from "./prowlarr.js";
+import { eventStream } from "./realtime.js";
 import {
   addTorrent,
   cleanCompletedTorrents,
@@ -54,6 +60,7 @@ const jobStatusSchema = z.enum([
 
 const host = env.HOST;
 const port = env.PORT;
+const webDistDir = join(import.meta.dirname, "../../web/dist");
 
 let config: NasPathConfig = defaultNasPathConfig;
 
@@ -281,13 +288,18 @@ export const api = new Elysia({ prefix: "/api" })
       const confirmedPlan: MovePlan = {
         ...plan,
         status: "confirmed",
+        cueSplitEnabled: body.cueSplitEnabled ?? plan.cueSplitEnabled,
         items: mergedItems,
         updatedAt: now,
       };
 
       // Mark plan confirmed and update items
       db.update(movePlans)
-        .set({ status: "confirmed", updatedAt: now })
+        .set({
+          status: "confirmed",
+          cueSplitEnabled: confirmedPlan.cueSplitEnabled,
+          updatedAt: now,
+        })
         .where(eq(movePlans.id, plan.id))
         .run();
 
@@ -336,6 +348,7 @@ export const api = new Elysia({ prefix: "/api" })
             included: t.Boolean(),
           }),
         ),
+        cueSplitEnabled: t.Optional(t.Boolean()),
       }),
     },
   )
@@ -459,6 +472,70 @@ export const api = new Elysia({ prefix: "/api" })
             from: t.String(),
             to: t.String(),
             reason: t.String(),
+          }),
+        ),
+      }),
+    },
+  )
+
+  // ── CUE split audit/fix ─────────────────────────────────────
+  .get("/cue/scan", ({ query }) => {
+    const root = typeof query.root === "string" ? query.root : config.musicDir;
+    const maxDepth = Number(query.maxDepth ?? 6);
+
+    return eventStream(async (send) => {
+      send({ type: "status", message: `Scanning ${root} for unsplit CUE pairs...` });
+      const pairs = await findCuePairs(root, maxDepth, (progress) => {
+        send({ type: "progress", ...progress });
+      });
+      send({
+        type: "result",
+        root,
+        pairs,
+        ready: pairs.filter((pair) => !pair.blocked).length,
+        blocked: pairs.filter((pair) => pair.blocked).length,
+      });
+    });
+  })
+
+  .post(
+    "/cue/fix/jobs",
+    ({ body }) => {
+      const now = new Date().toISOString();
+      const pairs = body.pairs.filter((pair: CuePair) => !pair.blocked);
+      const jobId = crypto.randomUUID();
+
+      db.insert(jobs)
+        .values({
+          id: jobId,
+          type: "cue_fix",
+          status: "queued",
+          planId: null,
+          counts: JSON.stringify({
+            total: pairs.length,
+            completed: 0,
+            failed: 0,
+            skipped: 0,
+          }),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+
+      executeCueJob(jobId, pairs);
+
+      return { ok: true, jobId };
+    },
+    {
+      body: t.Object({
+        pairs: t.Array(
+          t.Object({
+            id: t.String(),
+            directory: t.String(),
+            cueFile: t.String(),
+            audioFile: t.String(),
+            blocked: t.Boolean(),
+            risks: t.Array(t.String()),
           }),
         ),
       }),
@@ -674,15 +751,9 @@ export const api = new Elysia({ prefix: "/api" })
 
 export const app = new Elysia()
   .use(cors())
-  .use(
-    staticPlugin({
-      assets: "apps/web/dist",
-      prefix: "/",
-    }),
-  )
   .use(api)
   .get("*", async ({ path }) => {
-    const filePath = join("apps/web/dist", path);
+    const filePath = join(webDistDir, path);
     const file = Bun.file(filePath);
 
     // If it's a valid file (not a directory), serve it
@@ -691,7 +762,7 @@ export const app = new Elysia()
     }
 
     // Default to index.html for SPA routing
-    return Bun.file("apps/web/dist/index.html");
+    return Bun.file(join(webDistDir, "index.html"));
   });
 
 export type App = typeof api;

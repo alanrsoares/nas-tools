@@ -343,6 +343,23 @@ h1 {
   padding-top: 2px;
 }
 
+.cue-split-toggle {
+  @apply inline-flex items-center gap-2 border border-border bg-background text-foreground cursor-pointer;
+  height: 32px;
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cue-split-toggle:hover {
+  @apply bg-muted;
+}
+
+.cue-split-toggle-label {
+  @apply inline-flex items-center gap-2 cursor-pointer;
+}
+
 /* ── Summary cells ─────────────────────────────────── */
 
 .summary {
@@ -378,6 +395,16 @@ h1 {
 .path-cell {
   @apply tabular-nums;
   max-width: 340px;
+  overflow-wrap: anywhere;
+}
+
+.item-title-cell {
+  @apply flex items-center gap-2;
+  min-width: 220px;
+}
+
+.item-title-cell > span:first-child {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 

@@ -530,7 +530,12 @@ cleanup_temp_split() {
   if [ -d "$temp_dir" ]; then
     rmdir "$temp_dir" && echo "🗑️ Removed temporary directory: $temp_dir"
   fi
-  
+
+  # Backup served its purpose; originals are gone and split tracks are in place.
+  if [ -d "$backup_dir" ]; then
+    rm -rf "$backup_dir" && echo "🗑️ Removed backup directory: $backup_dir"
+  fi
+
   echo "✅ Cleanup completed successfully"
 }
 

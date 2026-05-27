@@ -400,6 +400,8 @@ export const movePlanItemSchema = z.object({
   artistName: z.string().optional(),
   albumName: z.string(),
   isNewArtist: z.boolean().optional(),
+  cueFiles: z.number().int().nonnegative().optional(),
+  cueAudioPairs: z.number().int().nonnegative().optional(),
   included: z.boolean(),
   issues: z.array(domainIssueSchema),
 });
@@ -730,6 +732,35 @@ export function scanDownloadStagingArea(
   });
 }
 
+function countCueFiles(files: string[]): number {
+  return files.filter(isCueFile).length;
+}
+
+function countCueAudioPairs(files: string[]): number {
+  const audioByDirectory = new Map<string, Set<string>>();
+
+  for (const file of files.filter(isMusicFile)) {
+    const directory = path.dirname(file);
+    const audioNames = audioByDirectory.get(directory) ?? new Set<string>();
+    audioNames.add(
+      path
+        .basename(file)
+        .replace(/\.(flac|mp3|m4a|wav|ogg|wv)$/i, "")
+        .toLowerCase(),
+    );
+    audioByDirectory.set(directory, audioNames);
+  }
+
+  return files.filter(isCueFile).filter((file) => {
+    const directory = path.dirname(file);
+    const cueBaseName = path
+      .basename(file)
+      .replace(/\.cue$/i, "")
+      .toLowerCase();
+    return audioByDirectory.get(directory)?.has(cueBaseName) ?? false;
+  }).length;
+}
+
 function createIssue(code: string, message: string, itemId: string): DomainIssue {
   return { code, message, itemId, severity: "error" };
 }
@@ -771,6 +802,8 @@ export function createMovePlanDraft(
             sourcePath: item.path,
             targetPath: path.join(targetDir, item.name),
             artistName,
+            cueFiles: item.type === "music" ? countCueFiles(item.files) : 0,
+            cueAudioPairs: item.type === "music" ? countCueAudioPairs(item.files) : 0,
             albumName: item.name,
             included: issues.length === 0,
             issues,
