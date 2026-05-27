@@ -26,6 +26,7 @@ const optionsSchema = z.object({
   auditConflicts: z.boolean().optional().default(false),
   deleteConfirmed: z.boolean().optional().default(false),
   deleteSafeConflicts: z.boolean().optional().default(false),
+  mergeConflicts: z.boolean().optional().default(false),
   restoreFalsePositives: z.boolean().optional().default(true),
   json: z.boolean().optional().default(false),
   maxDepth: z.coerce.number().int().min(1).optional().default(8),
@@ -73,6 +74,9 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
             deleteConfirmed: options.deleteConfirmed,
             deleteSafeConflicts: options.deleteSafeConflicts,
           });
+          const mergePlans = options.mergeConflicts
+            ? await planConflictMerges(plans.filter((plan) => plan.status === "conflict"))
+            : [];
 
           if (options.json) {
             console.log(
@@ -85,6 +89,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
                   plans,
                   conflictAudits,
                   deletePlans,
+                  mergePlans,
                 },
                 null,
                 2,
@@ -99,6 +104,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
             plans,
             conflictAudits,
             deletePlans,
+            mergePlans,
           );
 
           const toRestore = options.restoreFalsePositives
@@ -107,7 +113,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
           if (!options.apply) {
             console.log(
               pc.bold(
-                `\nDry run: ${toRestore.length} folders would be restored, ${deletePlans.length} folders would be deleted.`,
+                `\nDry run: ${toRestore.length + actionableMergePlans(mergePlans).length} folders would be restored, ${deletePlans.length} folders would be deleted, ${reviewMergePlans(mergePlans).length} merge items need review.`,
               ),
             );
             console.log(pc.cyan("Use --apply to execute restore/delete actions."));
@@ -120,10 +126,21 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
             console.log(pc.green(`Restored: ${plan.restorePath}`));
           }
 
+          for (const plan of actionableMergePlans(mergePlans)) {
+            assertInsideDuplicatesRoot(plan.duplicatePath, duplicatesRoot);
+            await mkdir(path.dirname(plan.targetPath), { recursive: true });
+            await rename(plan.duplicatePath, plan.targetPath);
+            console.log(pc.green(`Merged: ${plan.duplicatePath} → ${plan.targetPath}`));
+          }
+
           for (const plan of deletePlans) {
             assertInsideDuplicatesRoot(plan.duplicatePath, duplicatesRoot);
             await rm(plan.duplicatePath, { recursive: true });
             console.log(pc.green(`Deleted duplicate: ${plan.duplicatePath}`));
+          }
+
+          for (const conflict of plans.filter((plan) => plan.status === "conflict")) {
+            await pruneEmptyDirectories(conflict.duplicatePath, duplicatesRoot);
           }
         })(),
         (cause) => ({ type: "fail", message: String(cause) }) as const,
@@ -205,6 +222,7 @@ function printReport(
   plans: ReturnType<typeof planDuplicateRestores>,
   conflictAudits: ConflictAudit[],
   deletePlans: ReturnType<typeof planDuplicateDeletes>,
+  mergePlans: MergeConflictPlan[],
 ): void {
   const falsePositives = plans.filter((plan) => plan.status === "false-positive");
   const confirmed = plans.filter((plan) => plan.status === "confirmed-duplicate");
@@ -217,6 +235,8 @@ function printReport(
   console.log(`Confirmed duplicates: ${confirmed.length}`);
   console.log(`Conflicts: ${conflicts.length}`);
   console.log(`Delete candidates: ${deletePlans.length}`);
+  console.log(`Merge restores: ${actionableMergePlans(mergePlans).length}`);
+  console.log(`Merge reviews: ${reviewMergePlans(mergePlans).length}`);
 
   for (const plan of falsePositives) {
     console.log(pc.yellow(`\n[RESTORE] ${plan.artist} - ${plan.album}`));
@@ -239,6 +259,13 @@ function printReport(
     for (const match of plan.matchingActivePaths) {
       console.log(`  kept: ${match}`);
     }
+  }
+
+  for (const plan of mergePlans) {
+    const color = plan.action === "review" ? pc.yellow : pc.green;
+    console.log(color(`\n[MERGE:${plan.action}] ${plan.duplicatePath}`));
+    console.log(`  to:  ${plan.targetPath}`);
+    console.log(`  why: ${plan.reason}`);
   }
 
   for (const audit of conflictAudits) {
@@ -320,6 +347,85 @@ type MetadataFingerprint = {
   path: string;
   key: string;
 };
+
+type MergeConflictPlan = {
+  action: "restore" | "restore-variant" | "review";
+  duplicatePath: string;
+  targetPath: string;
+  reason: string;
+};
+
+function actionableMergePlans(plans: MergeConflictPlan[]): MergeConflictPlan[] {
+  return plans.filter((plan) => plan.action === "restore" || plan.action === "restore-variant");
+}
+
+function reviewMergePlans(plans: MergeConflictPlan[]): MergeConflictPlan[] {
+  return plans.filter((plan) => plan.action === "review");
+}
+
+async function planConflictMerges(
+  conflicts: ReturnType<typeof planDuplicateRestores>,
+): Promise<MergeConflictPlan[]> {
+  const mergePlans: MergeConflictPlan[] = [];
+
+  for (const conflict of conflicts) {
+    const duplicateAlbums = await collectMetadataFingerprints(conflict.duplicatePath);
+    const targetAlbums = await collectMetadataFingerprints(conflict.restorePath);
+    const targetKeys = new Set(targetAlbums.map((album) => album.key));
+
+    for (const duplicateAlbum of duplicateAlbums) {
+      const relativeAlbumPath = path.relative(conflict.duplicatePath, duplicateAlbum.path);
+      const targetPath = path.join(conflict.restorePath, relativeAlbumPath);
+
+      if (targetKeys.has(duplicateAlbum.key)) {
+        mergePlans.push({
+          action: "review",
+          duplicatePath: duplicateAlbum.path,
+          targetPath,
+          reason: "target subtree has same track-duration fingerprint but bytes differ",
+        });
+        continue;
+      }
+
+      if (!(await pathExists(targetPath))) {
+        mergePlans.push({
+          action: "restore",
+          duplicatePath: duplicateAlbum.path,
+          targetPath,
+          reason: "leaf album missing under restore target",
+        });
+        continue;
+      }
+
+      mergePlans.push({
+        action: "restore-variant",
+        duplicatePath: duplicateAlbum.path,
+        targetPath: await nextAvailablePath(`${targetPath} [duplicate-merge]`),
+        reason: "leaf album target exists with different track-duration fingerprint",
+      });
+    }
+  }
+
+  return dedupeMergePlans(mergePlans);
+}
+
+function dedupeMergePlans(plans: MergeConflictPlan[]): MergeConflictPlan[] {
+  const seen = new Set<string>();
+  return plans.filter((plan) => {
+    if (seen.has(plan.duplicatePath)) return false;
+    seen.add(plan.duplicatePath);
+    return true;
+  });
+}
+
+async function nextAvailablePath(basePath: string): Promise<string> {
+  if (!(await pathExists(basePath))) return basePath;
+  for (let index = 2; index < 1000; index++) {
+    const candidate = `${basePath} ${index}`;
+    if (!(await pathExists(candidate))) return candidate;
+  }
+  throw new Error(`Could not find available target path for ${basePath}`);
+}
 
 async function findMetadataMatches(duplicatePath: string, restorePath: string): Promise<string[]> {
   const duplicateFingerprints = await collectMetadataFingerprints(duplicatePath);
@@ -448,6 +554,16 @@ function assertInsideDuplicatesRoot(targetPath: string, duplicatesRoot: string):
   }
 }
 
+async function pruneEmptyDirectories(root: string, duplicatesRoot: string): Promise<void> {
+  assertInsideDuplicatesRoot(root, duplicatesRoot);
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (entry.isDirectory())
+      await pruneEmptyDirectories(path.join(root, entry.name), duplicatesRoot);
+  }
+  await rm(root, { recursive: false }).catch(() => undefined);
+}
+
 function isMusicFile(name: string): boolean {
   return /\.(flac|mp3|m4a|wav|ogg|wv)$/i.test(name);
 }
@@ -470,6 +586,11 @@ export default function musicDuplicateRestoreCommand(program: Command): void {
     .option("--apply", "Actually restore false positives", false)
     .option("--audit-conflicts", "Hash conflict folders against existing targets", false)
     .option("--delete-confirmed", "Delete confirmed duplicate folders from _duplicates", false)
+    .option(
+      "--merge-conflicts",
+      "Restore leaf albums from conflict folders into existing targets",
+      false,
+    )
     .option("--no-restore-false-positives", "Skip restore actions when applying deletes")
     .option(
       "--delete-safe-conflicts",
