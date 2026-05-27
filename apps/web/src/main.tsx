@@ -1962,8 +1962,8 @@ function JobDetail({ job: initialJob }: JobDetailProps) {
   React.useEffect(() => {
     setLiveJob(initialJob);
     setEvents([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialJob.id, initialJob]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: reset on job switch only, not on every poll refetch
+  }, [initialJob.id]);
 
   // Always fetch fresh status on mount; poll while non-terminal
   useQuery({
