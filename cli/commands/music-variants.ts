@@ -1,12 +1,12 @@
 import path from "node:path";
 import { identifyAlbumCandidates, type WalkEntry, walk } from "@nas-tools/core";
+import { ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
 import { parseFile } from "music-metadata";
-import { ResultAsync } from "neverthrow";
 import pc from "picocolors";
 import { z } from "zod";
 
-import { type fail, formatError, parseWith } from "../lib/fp.js";
+import { type fail, formatError, runParsedCommand } from "../lib/fp.js";
 import { planAlbumVariant, type VariantPlan } from "../lib/music-variants.js";
 import { NAS_PATHS } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
@@ -180,14 +180,11 @@ export default function musicVariantsCommand(program: Command): void {
     .option("--all", "Show already-tagged variants too", false)
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid music-variants options",
-      ).asyncAndThen(run);
-
-      result.match(
-        () => undefined,
+        run,
         (error) => {
           logError(`Music variants failed: ${formatError(error)}`);
           process.exit(1);

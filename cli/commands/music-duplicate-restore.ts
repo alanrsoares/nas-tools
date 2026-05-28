@@ -8,13 +8,14 @@ import {
   type WalkEntry,
   walk,
 } from "@nas-tools/core";
+import { isSome } from "@onrails/maybe";
+import { isOk, ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
 import { parseFile } from "music-metadata";
-import { ResultAsync } from "neverthrow";
 import pc from "picocolors";
 import { z } from "zod";
 
-import { type fail, formatError, parseWith } from "../lib/fp.js";
+import { type fail, formatError, runParsedCommand } from "../lib/fp.js";
 import { planDuplicateDeletes, planDuplicateRestores } from "../lib/music-duplicate-restore.js";
 import { NAS_PATHS } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
@@ -158,7 +159,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
     .mapErr((error) => ({ type: "fail", message: error.message }) as const)
     .andThen(([activeAlbums, duplicateAlbums]) =>
       ResultAsync.fromPromise(
-        executeRestore(options, duplicatesRoot, activeAlbums, duplicateAlbums),
+        executeRestore(options, duplicatesRoot, activeAlbums ?? [], duplicateAlbums ?? []),
         (cause) => ({ type: "fail", message: String(cause) }) as const,
       ),
     );
@@ -182,8 +183,10 @@ function readAlbums(
         (async () => {
           const albums: AlbumFolder[] = [];
           for (const folder of candidateFolders) {
-            const maybeAlbum = await getAlbumInfo(folder).unwrapOr(undefined);
-            if (maybeAlbum?.isJust) albums.push(maybeAlbum.value);
+            const albumResult = await getAlbumInfo(folder);
+            if (isOk(albumResult) && isSome(albumResult.value)) {
+              albums.push(albumResult.value.value);
+            }
           }
           return albums;
         })(),
@@ -632,14 +635,11 @@ export default function musicDuplicateRestoreCommand(program: Command): void {
     )
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid music-duplicate-restore options",
-      ).asyncAndThen(run);
-
-      result.match(
-        () => undefined,
+        run,
         (error) => {
           logError(`Music duplicate restore failed: ${formatError(error)}`);
           process.exit(1);

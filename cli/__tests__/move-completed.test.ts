@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inferArtistNameFromFolder } from "@nas-tools/core";
+import { getOrElse } from "@onrails/maybe";
 
-import { inferArtistNameFromFolder, scanMediaItems } from "../commands/move-completed.js";
+import { scanMediaItems } from "../commands/move-completed.js";
 
 describe("move-completed media scanning", () => {
   let tempDir: string;
@@ -43,7 +45,7 @@ describe("move-completed artist inference", () => {
       "Baden Powell\u0000 - The Legendary MPS Albums [2CD] 2008 [flac]",
     );
 
-    expect(artist.unwrapOr("missing")).toBe("Baden Powell");
+    expect(getOrElse(artist, "missing")).toBe("Baden Powell");
   });
 
   it("infers artists from dated release folder names", () => {
@@ -51,12 +53,12 @@ describe("move-completed artist inference", () => {
       "Gentle Giant - 2019 - Unburied Treasure (29CD + Blu-ray Box Set Snapper Music)",
     );
 
-    expect(artist.unwrapOr("missing")).toBe("Gentle Giant");
+    expect(getOrElse(artist, "missing")).toBe("Gentle Giant");
   });
 
   it("strips common bracketed release tags from artist-only folder names", () => {
     const artist = inferArtistNameFromFolder("The National [Vinyl]");
 
-    expect(artist.unwrapOr("missing")).toBe("The National");
+    expect(getOrElse(artist, "missing")).toBe("The National");
   });
 });

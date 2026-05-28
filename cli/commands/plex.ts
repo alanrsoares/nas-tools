@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
+import { ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
 import { env } from "../lib/env.js";
-import { fail, formatError, parseWith } from "../lib/fp.js";
+import { fail, formatError, runParsedCommand } from "../lib/fp.js";
 import { type Finding, printReport } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
@@ -207,14 +207,11 @@ export default function plexCommand(program: Command): void {
     .option("--dry-run", "Preview the selected music section", false)
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         scanMusicOptionsSchema,
         options,
         "Invalid Plex scan options",
-      ).asyncAndThen(runScanMusic);
-
-      result.match(
-        () => undefined,
+        runScanMusic,
         (error) => {
           logError(`Plex music scan failed: ${formatError(error)}`);
           process.exit(1);

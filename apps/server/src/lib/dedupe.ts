@@ -9,6 +9,8 @@ import {
   type WalkEntry,
   walk,
 } from "@nas-tools/core";
+import { isSome } from "@onrails/maybe";
+import { isErr, isOk } from "@onrails/result";
 
 export type DedupeGroup = {
   id: string;
@@ -48,7 +50,7 @@ async function resolveAlbumBatch(
     await Promise.all(
       batch.map(async (folder) => {
         const infoResult = await getAlbumInfo(folder);
-        if (infoResult.isOk() && infoResult.value.isJust) {
+        if (isOk(infoResult) && isSome(infoResult.value)) {
           const info = infoResult.value.value;
           info.totalSize = entries
             .filter((entry) => {
@@ -70,7 +72,14 @@ async function resolveAlbumBatch(
 export async function streamDedupeGroups(root: string, send: SendFn): Promise<void> {
   send({ type: "indexing", message: "Scanning music directory..." });
   const entriesResult = await walk(root, { maxDepth: 4 });
-  if (entriesResult.isErr()) throw entriesResult.error;
+  if (isErr(entriesResult)) {
+    send({
+      type: "error",
+      message: entriesResult.error.message,
+    });
+    send({ type: "result", duplicates: [], moves: [] });
+    return;
+  }
   const entries = entriesResult.value;
 
   send({ type: "analyzing", message: "Identifying album roots..." });

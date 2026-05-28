@@ -1,5 +1,6 @@
 import type { JobEventSeq, JobStreamRecord } from "./job-types.js";
 import type { Maybe } from "./maybe.js";
+import { isNone } from "./maybe.js";
 import { isTerminalStatus } from "./schemas.js";
 
 export type JobEventStreamDeps = {
@@ -24,7 +25,7 @@ const flushEvents = (
 };
 
 const isJobDone = (job: Maybe<JobStreamRecord>): boolean =>
-  job.isNothing || isTerminalStatus(job.value.status);
+  isNone(job) || isTerminalStatus(job.value.status);
 
 export const streamJobEvents = async (
   deps: JobEventStreamDeps,

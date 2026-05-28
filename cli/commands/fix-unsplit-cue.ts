@@ -1,13 +1,13 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { match, when } from "@onrails/pattern";
+import { err, errAsync, ok, ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { err, ok, ResultAsync } from "neverthrow";
-import { match } from "ts-pattern";
 import { z } from "zod";
 import { $ } from "zx";
 
 import { env } from "../lib/env.js";
-import { fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
+import { fail, formatError, runParsedCommand, safeAsync } from "../lib/fp.js";
 import {
   confirm as confirmPrompt,
   displaySummary,
@@ -102,9 +102,7 @@ export function scanCueAudioPairs(
   options: CommandOptions,
 ): ResultAsync<CueAudioPair[], ReturnType<typeof fail>> {
   if (!searchPath) {
-    return err(fail("Search path is required")).asyncAndThen(() =>
-      ResultAsync.fromSafePromise(Promise.resolve([] as CueAudioPair[])),
-    );
+    return errAsync(fail("Search path is required"));
   }
 
   return findCueAudioPairsInDirectory(searchPath, options).andThen((currentDirPairs) =>
@@ -131,9 +129,9 @@ export function scanCueAudioPairs(
 
 function getAudioBasename(audioFile: string): string {
   return match(audioFile)
-    .when(isFlacFile, (file) => getBasename(file, FILE_EXTENSIONS.FLAC))
-    .when(isWavFile, (file) => getBasename(file, FILE_EXTENSIONS.WAV))
-    .when(isWvFile, (file) => getBasename(file, FILE_EXTENSIONS.WV))
+    .with(when(isFlacFile), (file) => getBasename(file, FILE_EXTENSIONS.FLAC))
+    .with(when(isWavFile), (file) => getBasename(file, FILE_EXTENSIONS.WAV))
+    .with(when(isWvFile), (file) => getBasename(file, FILE_EXTENSIONS.WV))
     .otherwise(() => "");
 }
 
@@ -283,7 +281,7 @@ function run(
           ? ok<void, ReturnType<typeof fail>>(undefined)
           : err(fail(`Directory '${folderPath}' does not exist or is not accessible`)),
       )
-      // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+      // biome-ignore lint/suspicious/useIterableCallbackReturn: Result.map for terminal side effect
       .map(() => {
         logInfo(`Scanning '${folderPath}' for unsplit cue/audio pairs...`);
         if (options.ignoreFailed) {
@@ -291,59 +289,56 @@ function run(
         }
       })
       .andThen(() => scanCueAudioPairs(folderPath, options))
-      .andThen((pairs) =>
-        match(pairs)
-          .with([], () => {
-            logInfo("No unsplit cue/audio pairs found.");
-            return ok<void, ReturnType<typeof fail>>(undefined);
-          })
-          .otherwise((foundPairs) =>
-            options.dryRun
-              ? // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
-                ok<void, ReturnType<typeof fail>>(displayCueAudioPairs(foundPairs)).map(() => {
-                  logInfo("Dry-run only. No files were changed.");
-                  logInfo(`Would process ${foundPairs.length} cue/audio pairs.`);
-                })
-              : safeAsync(() => confirmProcessing(foundPairs, ask), "Failed to confirm processing")
-                  .andThen((proceed) =>
-                    proceed
-                      ? getBashFunctionsPath().map((bashFunctionsPath) => ({
-                          bashFunctionsPath,
-                          pairs: foundPairs,
-                        }))
-                      : ok<
-                          { bashFunctionsPath: string; pairs: CueAudioPair[] },
-                          ReturnType<typeof fail>
-                        >({
-                          bashFunctionsPath: "",
-                          pairs: [],
-                        }),
-                  )
-                  .andThen(({ bashFunctionsPath, pairs }) => {
-                    if (pairs.length === 0) {
-                      logInfo("Operation cancelled.");
-                      return ok<void, ReturnType<typeof fail>>(undefined);
-                    }
+      .andThen((pairs) => {
+        if (pairs.length === 0) {
+          logInfo("No unsplit cue/audio pairs found.");
+          return ResultAsync.ok(undefined);
+        }
 
-                    logProgress("Processing files...");
+        if (options.dryRun) {
+          displayCueAudioPairs(pairs);
+          logInfo("Dry-run only. No files were changed.");
+          logInfo(`Would process ${pairs.length} cue/audio pairs.`);
+          return ResultAsync.ok(undefined);
+        }
 
-                    // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
-                    return processPairs(pairs, ask, bashFunctionsPath).map(
-                      ({ successCount, failureCount }) => {
-                        if (failureCount > 0) {
-                          logError("Stopping processing due to failure.");
-                        }
+        return safeAsync(() => confirmProcessing(pairs, ask), "Failed to confirm processing")
+          .andThen((proceed) =>
+            proceed
+              ? getBashFunctionsPath().map((bashFunctionsPath) => ({
+                  bashFunctionsPath,
+                  pairs,
+                }))
+              : ResultAsync.ok({
+                  bashFunctionsPath: "",
+                  pairs: [] as CueAudioPair[],
+                }),
+          )
+          .andThen(({ bashFunctionsPath, pairs: confirmedPairs }) => {
+            if (confirmedPairs.length === 0) {
+              logInfo("Operation cancelled.");
+              return ResultAsync.ok(undefined);
+            }
 
-                        displaySummary(successCount, failureCount, pairs.length);
+            logProgress("Processing files...");
 
-                        if (failureCount > 0) {
-                          process.exitCode = 1;
-                        }
-                      },
-                    );
-                  }),
-          ),
-      )
+            return processPairs(confirmedPairs, ask, bashFunctionsPath).andThen(
+              ({ successCount, failureCount }) => {
+                if (failureCount > 0) {
+                  logError("Stopping processing due to failure.");
+                }
+
+                displaySummary(successCount, failureCount, confirmedPairs.length);
+
+                if (failureCount > 0) {
+                  process.exitCode = 1;
+                }
+
+                return ResultAsync.ok(undefined);
+              },
+            );
+          });
+      })
   );
 }
 
@@ -362,14 +357,11 @@ export default function fixUnsplitCueCommand(program: Command): void {
     )
     .option("-y, --yes", 'Assume "yes" to all confirmations', false)
     .action(async (folderPath: string, options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid fix-unsplit-cue options",
-      ).asyncAndThen((parsedOptions) => run(folderPath, parsedOptions));
-
-      result.match(
-        () => undefined,
+        (parsedOptions) => run(folderPath, parsedOptions),
         (error) => {
           logError(`Script failed: ${formatError(error)}`);
           process.exit(1);

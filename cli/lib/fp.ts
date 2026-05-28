@@ -1,4 +1,13 @@
-import { err, ok, type Result, ResultAsync } from "neverthrow";
+import {
+  err,
+  fromPromise,
+  fromResult,
+  match as matchResult,
+  ok,
+  type Result,
+  type ResultAsync,
+  trySync,
+} from "@onrails/result";
 import { z } from "zod";
 
 export interface AppError {
@@ -19,15 +28,11 @@ export function fail(message: string, cause?: unknown): AppError {
 }
 
 export function safe<T>(fn: () => T, message: string): Result<T, AppError> {
-  try {
-    return ok(fn());
-  } catch (cause) {
-    return err(toAppError(cause, message));
-  }
+  return trySync(fn, (cause) => toAppError(cause, message))();
 }
 
 export function safeAsync<T>(fn: () => Promise<T>, message: string): ResultAsync<T, AppError> {
-  return ResultAsync.fromPromise(fn(), (cause) => toAppError(cause, message));
+  return fromPromise(fn(), (cause) => toAppError(cause, message));
 }
 
 export function parseWith<T extends z.ZodType>(
@@ -36,7 +41,6 @@ export function parseWith<T extends z.ZodType>(
   message = "Invalid input",
 ): Result<z.infer<T>, AppError> {
   const parsed = schema.safeParse(value);
-
   if (parsed.success) {
     return ok(parsed.data);
   }
@@ -49,4 +53,21 @@ export function parseWith<T extends z.ZodType>(
 
 export function formatError(error: AppError): string {
   return error.message;
+}
+
+/** Lift sync {@link Result} into {@link ResultAsync} (replaces neverthrow `.asyncAndThen` on `Result`). */
+export const asyncAfter = <T, U, E, F>(
+  result: Result<T, E>,
+  fn: (value: T) => ResultAsync<U, F>,
+): ResultAsync<U, E | F> => fromResult(result).flatMap(fn);
+
+export async function runParsedCommand<T>(
+  schema: z.ZodType<T>,
+  rawOptions: Record<string, unknown>,
+  parseMessage: string,
+  run: (parsed: T) => ResultAsync<void, AppError>,
+  onFailure: (error: AppError) => void,
+): Promise<void> {
+  const result = await asyncAfter(parseWith(schema, rawOptions, parseMessage), run);
+  matchResult(result, () => undefined, onFailure);
 }

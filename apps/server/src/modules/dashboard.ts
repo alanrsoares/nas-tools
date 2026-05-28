@@ -1,11 +1,12 @@
-import { Maybe } from "../lib/maybe.js";
+import type { Maybe } from "../lib/maybe.js";
+import { getOrElse, none, some } from "../lib/maybe.js";
 import { getStagingStatus } from "../lib/staging.js";
 import { publicSubrouter } from "../lib/subrouter.js";
 import { getTorrentDashboard } from "../transmission.js";
 import type { Deps } from "../types/deps.js";
 
 const settledValue = <T extends object>(result: PromiseSettledResult<T>): Maybe<T> =>
-  result.status === "fulfilled" ? Maybe.just(result.value) : Maybe.nothing<T>();
+  result.status === "fulfilled" ? some(result.value) : none<T>();
 
 export function dashboardModule(deps: Deps) {
   return publicSubrouter(deps).get("/dashboard", async ({ config }) => {
@@ -16,8 +17,8 @@ export function dashboardModule(deps: Deps) {
     ]);
     return {
       ok: true,
-      transmission: settledValue(transmissionResult).unwrapOr(null),
-      staging: settledValue(stagingResult).unwrapOr(null),
+      transmission: getOrElse(settledValue(transmissionResult), null),
+      staging: getOrElse(settledValue(stagingResult), null),
     };
   });
 }

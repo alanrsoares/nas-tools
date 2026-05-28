@@ -4,9 +4,10 @@ import {
   getMusicTargetDirectory,
   type MovePlan,
 } from "@nas-tools/core";
+import { isErr } from "@onrails/result";
 import { t } from "elysia";
-
 import { toIssues } from "../lib/errors.js";
+import { isNone } from "../lib/maybe.js";
 import { publicSubrouter } from "../lib/subrouter.js";
 import type { Deps } from "../types/deps.js";
 
@@ -14,20 +15,16 @@ export function moveCompletedModule(deps: Deps) {
   return publicSubrouter(deps)
     .post("/move-completed/scan", async ({ config, repos, set }) => {
       const result = await createMovePlanDraft(config.get());
-      return result.match(
-        (plan) => {
-          repos.plans.persist(plan);
-          return { ok: true, plan };
-        },
-        (error) => {
-          set.status = 422;
-          return { ok: false, issues: toIssues(error) };
-        },
-      );
+      if (isErr(result)) {
+        set.status = 422;
+        return { ok: false, issues: toIssues(result.error) };
+      }
+      repos.plans.persist(result.value);
+      return { ok: true, plan: result.value };
     })
     .get("/move-completed/plans/:id", ({ repos, params, set }) => {
       const plan = repos.plans.load(params.id);
-      if (plan.isNothing) {
+      if (isNone(plan)) {
         set.status = 404;
         return {
           ok: false,
@@ -40,7 +37,7 @@ export function moveCompletedModule(deps: Deps) {
       "/move-completed/plans/:id/confirm",
       ({ repos, execution, params, body, set }) => {
         const plan = repos.plans.load(params.id);
-        if (plan.isNothing) {
+        if (isNone(plan)) {
           set.status = 404;
           return {
             ok: false,

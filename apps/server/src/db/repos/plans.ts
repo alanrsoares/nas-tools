@@ -1,7 +1,7 @@
 import type { MovePlan, NasPathConfig } from "@nas-tools/core";
 import { eq } from "drizzle-orm";
-
-import { Maybe } from "../../lib/maybe.js";
+import type { Maybe } from "../../lib/maybe.js";
+import { none, some } from "../../lib/maybe.js";
 import type { Db } from "../client.js";
 import { movePlanItems, movePlans } from "../schema.js";
 
@@ -46,11 +46,11 @@ export const createPlansRepo = (db: Db): PlansRepo => ({
 
   load(planId) {
     const row = db.select().from(movePlans).where(eq(movePlans.id, planId)).get();
-    if (!row) return Maybe.nothing<MovePlan>();
+    if (!row) return none<MovePlan>();
 
     const items = db.select().from(movePlanItems).where(eq(movePlanItems.planId, planId)).all();
 
-    return Maybe.just({
+    return some({
       id: row.id,
       status: row.status as MovePlan["status"],
       // biome-ignore lint: config is written by this app and matches NasPathConfig; add Zod schema when NasPathConfig stabilises

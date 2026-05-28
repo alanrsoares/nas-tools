@@ -1,10 +1,10 @@
 import { copyFile, mkdir, rm } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
+import { ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { type fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
+import { type fail, formatError, runParsedCommand, safeAsync } from "../lib/fp.js";
 import {
   type Finding,
   isAppleJunk,
@@ -91,7 +91,7 @@ async function deleteCandidate(
     return false;
   }
 
-  // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+  // biome-ignore lint/suspicious/useIterableCallbackReturn: Result.map for terminal side effect
   await safeAsync(() => rm(candidate.path, { force: true }), `delete ${candidate.path}`).map(() => {
     findings.push({
       severity: "info",
@@ -212,14 +212,11 @@ export default function nasCommand(program: Command): void {
     .option("-y, --yes", "Confirm deletion", false)
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         cleanOptionsSchema,
         options,
         "Invalid nas clean options",
-      ).asyncAndThen(runClean);
-
-      result.match(
-        () => undefined,
+        runClean,
         (error) => {
           logError(`NAS clean failed: ${formatError(error)}`);
           process.exit(1);

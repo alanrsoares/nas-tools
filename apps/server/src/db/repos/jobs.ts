@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-
-import { Maybe } from "../../lib/maybe.js";
+import type { Maybe } from "../../lib/maybe.js";
+import { none, some } from "../../lib/maybe.js";
 import type { CreateJobInput, JobCounts, JobStatus, JobStatusExtra } from "../../lib/schemas.js";
 import { jobCountsSchema, jobStatusSchema } from "../../lib/schemas.js";
 import type { Db } from "../client.js";
@@ -40,8 +40,8 @@ export const createJobsRepo = (db: Db): JobsRepo => ({
 
   load(jobId) {
     const row = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
-    if (!row) return Maybe.nothing<ParsedJob>();
-    return Maybe.just({
+    if (!row) return none<ParsedJob>();
+    return some({
       ...row,
       status: jobStatusSchema.parse(row.status),
       counts: jobCountsSchema.parse(JSON.parse(row.counts)),

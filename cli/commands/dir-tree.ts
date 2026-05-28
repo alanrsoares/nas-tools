@@ -1,12 +1,11 @@
 import type { Dirent } from "node:fs";
 import * as path from "node:path";
+import { err, ok, ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { err, ok, ResultAsync } from "neverthrow";
 import pc from "picocolors";
-import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
+import { fail, formatError, runParsedCommand, safeAsync } from "../lib/fp.js";
 import { exists, logError, readDirectoryWithTypes } from "../lib/utils.js";
 
 const optionsSchema = z.object({
@@ -87,23 +86,18 @@ function getFileColor(
 ): string {
   const name = entry.name;
 
-  return match({ entry, isHidden })
-    .with({ isHidden: true }, () => colors.hidden(name))
-    .when(
-      ({ entry }) => entry.isDirectory(),
-      () => colors.directory(name),
-    )
-    .when(
-      ({ entry }) => Boolean(entry.isSymbolicLink?.()),
-      () => colors.symlink(name),
-    )
-    .otherwise(() => {
-      const category = extensionTypes.find((type) =>
-        hasExtension(name, extensionsByCategory[type]),
-      );
+  if (isHidden) {
+    return colors.hidden(name);
+  }
+  if (entry.isDirectory()) {
+    return colors.directory(name);
+  }
+  if (entry.isSymbolicLink?.()) {
+    return colors.symlink(name);
+  }
 
-      return category ? colors[category](name) : colors.file(name);
-    });
+  const category = extensionTypes.find((type) => hasExtension(name, extensionsByCategory[type]));
+  return category ? colors[category](name) : colors.file(name);
 }
 
 const filterEntry =
@@ -175,12 +169,10 @@ function run(dirPath: string, options: CommandOptions): ResultAsync<void, Return
       .andThen((isValid) =>
         isValid
           ? ok<void, ReturnType<typeof fail>>(undefined)
-          : ok<void, ReturnType<typeof fail>>(undefined).andThen(() =>
-              err(fail(`Directory '${dirPath}' does not exist or is not accessible`)),
-            ),
+          : err(fail(`Directory '${dirPath}' does not exist or is not accessible`)),
       )
       .andThen(() => buildTree(dirPath, "", 0, options))
-      // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+      // biome-ignore lint/suspicious/useIterableCallbackReturn: Result.map for terminal side effect
       .map((treeLines) => {
         console.log(`📁 ${pc.blue(dirPath)}`);
 
@@ -205,14 +197,11 @@ export default function dirTreeCommand(program: Command): void {
     .option("-f, --show-files", "Show files (default: false)")
     .option("-e, --exclude <patterns...>", "Exclude files/directories matching patterns")
     .action(async (path: string, options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid dir-tree options",
-      ).asyncAndThen((parsedOptions) => run(path, parsedOptions));
-
-      result.match(
-        () => undefined,
+        (parsedOptions) => run(path, parsedOptions),
         (error) => {
           logError(`Failed to generate tree: ${formatError(error)}`);
           process.exit(1);

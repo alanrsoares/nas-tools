@@ -1,9 +1,9 @@
 import { dirname } from "node:path";
+import { ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { type fail, formatError, parseWith } from "../lib/fp.js";
+import { type fail, formatError, runParsedCommand } from "../lib/fp.js";
 import {
   type Finding,
   isAppleJunk,
@@ -189,14 +189,11 @@ export default function musicAuditCommand(program: Command): void {
     .option("--root <path>", "Music library root", NAS_PATHS.flac)
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid music-audit options",
-      ).asyncAndThen(run);
-
-      result.match(
-        () => undefined,
+        run,
         (error) => {
           logError(`Music audit failed: ${formatError(error)}`);
           process.exit(1);

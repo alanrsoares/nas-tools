@@ -1,6 +1,7 @@
 import { buildConflictsList } from "../lib/conflicts.js";
 import { createJobEventStream } from "../lib/job-event-stream.js";
 import { isTerminalStatus } from "../lib/job-types.js";
+import { isNone, map, matchMaybe } from "../lib/maybe.js";
 import { resolveJobConflict } from "../lib/resolve-job-conflict.js";
 import { resolveConflictBodySchema } from "../lib/schemas.js";
 import { publicSubrouter } from "../lib/subrouter.js";
@@ -11,7 +12,7 @@ export function jobsModule(deps: Deps) {
     .get("/jobs", ({ repos }) => ({ ok: true, jobs: repos.jobs.list() }))
     .get("/jobs/:id", ({ repos, params, set }) => {
       const job = repos.jobs.load(params.id);
-      if (job.isNothing) {
+      if (isNone(job)) {
         set.status = 404;
         return {
           ok: false,
@@ -27,10 +28,11 @@ export function jobsModule(deps: Deps) {
       return {
         ok: true,
         events,
-        done: job.match({
-          Nothing: () => true,
-          Just: (loaded) => isTerminalStatus(loaded.status),
-        }),
+        done: matchMaybe(
+          job,
+          (loaded) => isTerminalStatus(loaded.status),
+          () => true,
+        ),
       };
     })
     .get("/jobs/:id/events/stream", ({ repos, execution, params }) => {
@@ -38,7 +40,7 @@ export function jobsModule(deps: Deps) {
       const stream = createJobEventStream(
         {
           getEvents: (id, after) => execution.getJobEvents(id, after),
-          loadJob: (id) => repos.jobs.load(id).map((job) => ({ status: job.status })),
+          loadJob: (id) => map(repos.jobs.load(id), (job) => ({ status: job.status })),
         },
         jobId,
       );
@@ -52,7 +54,7 @@ export function jobsModule(deps: Deps) {
     })
     .post("/jobs/:id/cancel", ({ repos, execution, params, set }) => {
       const job = repos.jobs.load(params.id);
-      if (job.isNothing) {
+      if (isNone(job)) {
         set.status = 404;
         return {
           ok: false,
@@ -77,7 +79,7 @@ export function jobsModule(deps: Deps) {
     })
     .get("/jobs/:id/conflicts", async ({ repos, params, set }) => {
       const job = repos.jobs.load(params.id);
-      if (job.isNothing) {
+      if (isNone(job)) {
         set.status = 404;
         return { ok: false, issues: [{ path: [], code: "NOT_FOUND", message: "Job not found" }] };
       }

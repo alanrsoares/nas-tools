@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
+    },
+    "./result": {
+      "types": "./src/result.ts",
+      "import": "./src/result.ts"
     }
   },
   "scripts": {
@@ -15,9 +19,9 @@
   },
   "dependencies": {
     "music-metadata": "^11.12.3",
-    "neverthrow": "^8.2.0",
-    "true-myth": "^9.3.1",
-    "ts-pattern": "^5.9.0",
+    "@onrails/maybe": "catalog:",
+    "@onrails/pattern": "catalog:",
+    "@onrails/result": "catalog:",
     "zod": "^4.4.3"
   },
   "devDependencies": {

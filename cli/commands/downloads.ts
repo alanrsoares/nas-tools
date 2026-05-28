@@ -1,10 +1,10 @@
 import { join, normalize } from "node:path";
+import { ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
 import { env } from "../lib/env.js";
-import { type AppError, fail, formatError, parseWith } from "../lib/fp.js";
+import { type AppError, fail, formatError, runParsedCommand } from "../lib/fp.js";
 import {
   type Finding,
   isAppleJunk,
@@ -448,14 +448,11 @@ export default function downloadsCommand(program: Command): void {
     .option("--stale-days <days>", "Incomplete age threshold", "14")
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid downloads triage options",
-      ).asyncAndThen(runTriage);
-
-      result.match(
-        () => undefined,
+        runTriage,
         (error) => {
           logError(`Downloads triage failed: ${formatError(error)}`);
           process.exit(1);
@@ -487,14 +484,11 @@ export default function downloadsCommand(program: Command): void {
     .option("--yes", "Confirm removal when --no-dry-run is set", false)
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         cleanTransmissionOptionsSchema,
         options,
         "Invalid Transmission cleanup options",
-      ).asyncAndThen(runCleanTransmission);
-
-      result.match(
-        () => undefined,
+        runCleanTransmission,
         (error) => {
           logError(formatError(error));
           process.exit(1);
@@ -519,13 +513,11 @@ export default function downloadsCommand(program: Command): void {
     )
     .option("--paused", "Add torrent in paused state", false)
     .action(async (torrent: string, options: Record<string, unknown>) => {
-      const result = await parseWith(addTorrentOptionsSchema, {
-        ...options,
-        torrent,
-      }).asyncAndThen(runAddTorrent);
-
-      result.match(
-        () => undefined,
+      await runParsedCommand(
+        addTorrentOptionsSchema,
+        { ...options, torrent },
+        "Invalid add-torrent options",
+        runAddTorrent,
         (error) => {
           logError(formatError(error));
           process.exit(1);

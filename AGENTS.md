@@ -12,10 +12,11 @@ Guidance for coding agents working in this repo. Keep changes small, typed, and 
 ## Functional Error Style
 
 - Prefer railway-style workflows inside command implementations:
-  - Use `Result` / `ResultAsync` from `neverthrow` for fallible logic.
+  - Use `Result` / `ResultAsync` from `@onrails/result` for fallible logic (`asyncAfter` / `runParsedCommand` in `cli/lib/fp.ts` lift sync `Result` into `ResultAsync` at command boundaries).
+  - Prefer `pipe` / `flow` from `@onrails/result` and `@onrails/result/pipe` for multi-step sync pipelines and reusable parsers (see onrails `RECIPES.md`).
   - Use helpers in `cli/lib/fp.ts` (`safe`, `safeAsync`, `parseWith`, `fail`, `formatError`) instead of ad hoc `try/catch`.
-  - Use `Maybe` from `true-myth` for optional values when absence is part of normal control flow.
-  - Use `ts-pattern` for multi-branch domain decisions where it improves clarity.
+  - Use `Maybe` from `@onrails/maybe` for optional values when absence is part of normal control flow.
+  - Use `@onrails/pattern` for multi-branch domain decisions where it improves clarity.
 - Keep `process.exit` and `process.exitCode` at the Commander action boundary or final command outcome boundary. Inner functions should return typed results, not terminate the process.
 - Avoid mixing raw thrown errors, `null`, and booleans into new command pipelines unless interacting with existing Node/Bun APIs. Convert those boundaries into typed results early.
 - Zod parsing should happen at CLI boundaries through `parseWith`. Avoid unsafe transforms that can produce `NaN`; prefer `z.coerce.number().int()` plus bounds.
@@ -38,7 +39,7 @@ Guidance for coding agents working in this repo. Keep changes small, typed, and 
 
 - Dependency upgrades are acceptable when requested, but keep `package.json` and `bun.lock` consistent by running `bun install`.
 - Do not edit generated `dist/` files manually. Build output can change via `bun run build`, but source changes belong in `cli/`.
-- Avoid adding new abstraction libraries; this repo already standardizes on `neverthrow`, `true-myth`, `ts-pattern`, and `zod`.
+- Avoid adding new abstraction libraries; this repo already standardizes on `@onrails/result`, `@onrails/maybe`, `@onrails/pattern`, and `zod`.
 
 ## Git
 

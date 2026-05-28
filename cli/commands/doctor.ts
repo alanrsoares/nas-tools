@@ -1,9 +1,9 @@
 import { access, stat } from "node:fs/promises";
+import { ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
-import { type fail, formatError, parseWith } from "../lib/fp.js";
+import { type fail, formatError, runParsedCommand } from "../lib/fp.js";
 import { type Finding, NAS_PATHS, pathExists, printReport } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
@@ -96,16 +96,9 @@ export default function doctorCommand(program: Command): void {
     .description("Report ADM NAS paths, Entware tools, and app prerequisites")
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(optionsSchema, options, "Invalid doctor options").asyncAndThen(
-        run,
-      );
-
-      result.match(
-        () => undefined,
-        (error) => {
-          logError(`Doctor failed: ${formatError(error)}`);
-          process.exit(1);
-        },
-      );
+      await runParsedCommand(optionsSchema, options, "Invalid doctor options", run, (error) => {
+        logError(`Doctor failed: ${formatError(error)}`);
+        process.exit(1);
+      });
     });
 }

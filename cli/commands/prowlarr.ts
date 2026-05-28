@@ -1,10 +1,10 @@
+import { ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
 import got from "got";
-import { ResultAsync } from "neverthrow";
 import { z } from "zod";
 
 import { env } from "../lib/env.js";
-import { type AppError, fail, formatError, parseWith } from "../lib/fp.js";
+import { type AppError, fail, formatError, runParsedCommand } from "../lib/fp.js";
 import { type Finding, printReport } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
@@ -117,13 +117,11 @@ export default function prowlarrCommand(program: Command): void {
     .option("--json", "Print JSON report", false)
     .option("--categories <ids...>", "Prowlarr category IDs (default: 3040 for Lossless Audio)")
     .action(async (query: string, options: Record<string, unknown>) => {
-      const result = await parseWith(searchOptionsSchema, {
-        ...options,
-        query,
-      }).asyncAndThen(runSearch);
-
-      result.match(
-        () => undefined,
+      await runParsedCommand(
+        searchOptionsSchema,
+        { ...options, query },
+        "Invalid Prowlarr search options",
+        runSearch,
         (error) => {
           logError(`Prowlarr search failed: ${formatError(error)}`);
           process.exit(1);

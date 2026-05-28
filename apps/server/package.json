@@ -20,8 +20,9 @@
     "@nas-tools/core": "workspace:*",
     "drizzle-orm": "latest",
     "elysia": "latest",
-    "true-myth": "^9.3.1",
-    "ts-pattern": "^5.9.0",
+    "@onrails/maybe": "catalog:",
+    "@onrails/pattern": "catalog:",
+    "@onrails/result": "catalog:",
     "zod": "^4.4.3"
   },
   "devDependencies": {

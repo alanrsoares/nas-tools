@@ -1,7 +1,8 @@
 import { fieldIssueSchema } from "@nas-tools/core";
+import { isErr, trySync } from "@onrails/result";
 import { z } from "zod";
-
-import { Maybe } from "./maybe.js";
+import type { Maybe } from "./maybe.js";
+import { fromNullable, none } from "./maybe.js";
 
 export type { FieldIssue } from "@nas-tools/core";
 export { fieldIssueSchema };
@@ -112,12 +113,15 @@ export const appendJobEventInputSchema = z.object({
 export type AppendJobEventInput = z.infer<typeof appendJobEventInputSchema>;
 
 export function parseEventItemId(data: string | null | undefined): Maybe<string> {
-  try {
-    const itemId = jobEventDataSchema.parse(JSON.parse(data ?? "{}")).itemId;
-    return itemId == null ? Maybe.nothing<string>() : Maybe.just(itemId);
-  } catch {
-    return Maybe.nothing<string>();
+  const parsed = trySync(
+    () => jobEventDataSchema.parse(JSON.parse(data ?? "{}")),
+    () => undefined,
+  )();
+  if (isErr(parsed)) {
+    return none<string>();
   }
+
+  return fromNullable(parsed.value.itemId);
 }
 
 export const TERMINAL_JOB_STATUSES = new Set<JobStatus>([

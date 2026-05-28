@@ -9,12 +9,13 @@ import {
   scoreAlbum,
   walk,
 } from "@nas-tools/core";
+import { isSome } from "@onrails/maybe";
+import { ok, ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { ok, ResultAsync } from "neverthrow";
 import pc from "picocolors";
 import { z } from "zod";
 
-import { type fail, formatError, parseWith } from "../lib/fp.js";
+import { type fail, formatError, runParsedCommand } from "../lib/fp.js";
 import { NAS_PATHS } from "../lib/report.js";
 import { logError } from "../lib/utils.js";
 
@@ -93,7 +94,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
             const tasks = batch.map((folder) =>
               getAlbumInfo(folder)
                 .map((maybeAlbum) => {
-                  if (maybeAlbum.isJust) {
+                  if (isSome(maybeAlbum)) {
                     const album = maybeAlbum.value;
                     album.totalSize = entries
                       .filter((entry) => {
@@ -112,7 +113,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
                 })
                 .orElse((error) => {
                   logError(`Skipping album at ${folder}: ${error.message}`);
-                  return ok(undefined);
+                  return ResultAsync.ok(undefined);
                 }),
             );
 
@@ -134,7 +135,7 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
 
       if (groups.size === 0) {
         console.log(pc.green("No duplicates found after duration verification."));
-        return ok(undefined);
+        return ResultAsync.ok(undefined);
       }
 
       printDuplicateGroups(groups);
@@ -143,13 +144,13 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
 
       if (toMove.length === 0) {
         console.log(pc.green("\nNo folders to move."));
-        return ok(undefined);
+        return ResultAsync.ok(undefined);
       }
 
       if (!options.apply) {
         console.log(pc.bold(`\nDry run: ${toMove.length} folders would be moved to ${trashRoot}`));
         console.log(pc.cyan("Use --apply to perform the move."));
-        return ok(undefined);
+        return ResultAsync.ok(undefined);
       }
 
       console.log(pc.bold(`\nMoving ${toMove.length} folders...`));
@@ -165,14 +166,11 @@ export default function musicDedupeCommand(program: Command): void {
     .option("--apply", "Actually move folders to _duplicates", false)
     .option("--json", "Print JSON report", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid music-dedupe options",
-      ).asyncAndThen(run);
-
-      result.match(
-        () => undefined,
+        run,
         (error) => {
           logError(`Music dedupe failed: ${formatError(error)}`);
           process.exit(1);

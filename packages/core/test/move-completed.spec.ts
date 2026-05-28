@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { getOrElse } from "@onrails/maybe";
+
 import {
   createMovePlanDraft,
   inferArtistNameFromFolder,
@@ -10,7 +12,7 @@ import {
 
 describe("inferArtistNameFromFolder", () => {
   it("infers artist from common release folder names", () => {
-    expect(inferArtistNameFromFolder("Boris - 2005 - Pink [FLAC]").unwrapOr("missing")).toBe(
+    expect(getOrElse(inferArtistNameFromFolder("Boris - 2005 - Pink [FLAC]"), "missing")).toBe(
       "Boris",
     );
   });

@@ -3,7 +3,8 @@ import type { MovePlan } from "@nas-tools/core";
 
 import type { JobEventsRepo } from "../db/index.js";
 import type { Deps } from "../types/deps.js";
-import { compactMaybes, Maybe } from "./maybe.js";
+import type { Maybe } from "./maybe.js";
+import { andThen, compactMaybes, fromNullable, isNone, isSome, none, some } from "./maybe.js";
 import { parseEventItemId } from "./schemas.js";
 
 export type ConflictEntry = {
@@ -22,23 +23,25 @@ async function resolveConflictEntry(
   resolvedItemIds: Set<string>,
   plan: Maybe<MovePlan>,
 ): Promise<Maybe<ConflictEntry>> {
-  if (e.type !== "item_failed") return Maybe.nothing();
+  if (e.type !== "item_failed") return none();
   const match = e.message.match(/Merge conflict — files already exist in target: (.+)$/);
-  if (!match) return Maybe.nothing();
+  if (!match) return none();
 
   const itemId = parseEventItemId(e.data);
-  if (itemId.isNothing || resolvedItemIds.has(itemId.value)) return Maybe.nothing();
+  if (isNone(itemId) || resolvedItemIds.has(itemId.value)) return none();
 
-  const item = plan.andThen((loaded) => Maybe.of(loaded.items.find((i) => i.id === itemId.value)));
-  if (item.isNothing) return Maybe.nothing();
+  const item = andThen(plan, (loaded) =>
+    fromNullable(loaded.items.find((i) => i.id === itemId.value)),
+  );
+  if (isNone(item)) return none();
 
   const sourceExists = await access(item.value.sourcePath)
     .then(() => true)
     .catch(() => false);
-  if (!sourceExists) return Maybe.nothing();
+  if (!sourceExists) return none();
 
   const albumName = e.message.replace(/^Failed: /, "").replace(/ — Merge conflict.*$/, "");
-  return Maybe.just({
+  return some({
     itemId: itemId.value,
     albumName,
     conflictingFiles: (match[1] ?? "").split(", ").filter(Boolean),
@@ -57,10 +60,10 @@ export async function buildConflictsList(
       .filter((e) => RESOLVED_EVENT_TYPES.has(e.type))
       .flatMap((e) => {
         const id = parseEventItemId(e.data);
-        return id.isJust ? [id.value] : [];
+        return isSome(id) ? [id.value] : [];
       }),
   );
-  const plan = planId ? deps.repos.plans.load(planId) : Maybe.nothing<MovePlan>();
+  const plan = planId ? deps.repos.plans.load(planId) : none<MovePlan>();
   const entries = await Promise.all(
     events.map((e) => resolveConflictEntry(e, resolvedItemIds, plan)),
   );

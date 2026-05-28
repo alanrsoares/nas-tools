@@ -1,12 +1,23 @@
 import * as path from "node:path";
+import {
+  getMusicTargetDirectory,
+  inferArtistNameForStagedItem,
+  inferArtistNameFromFolder,
+  type MovePlanError,
+  type NasPathConfig,
+  type StagedMediaItem,
+  scanDownloadStagingArea,
+} from "@nas-tools/core";
+import type { Maybe } from "@onrails/maybe";
+import { getOrElse, isNone, isSome, none, some } from "@onrails/maybe";
+import { match } from "@onrails/pattern";
+import { err, ok, ResultAsync } from "@onrails/result";
 import type { Command } from "commander";
-import { parseFile } from "music-metadata";
-import { err, ok, ResultAsync } from "neverthrow";
-import { Maybe } from "true-myth";
-import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { fail, formatError, parseWith, safeAsync } from "../lib/fp.js";
+export { inferArtistNameFromFolder };
+
+import { fail, formatError, runParsedCommand, safeAsync } from "../lib/fp.js";
 import {
   confirm,
   displaySummary,
@@ -14,11 +25,6 @@ import {
   exists,
   getBasename,
   getDirname,
-  isAudiobookFile,
-  isCueFile,
-  isMovieFile,
-  isMusicFile,
-  isTvFile,
   joinPath,
   logError,
   logInfo,
@@ -31,7 +37,6 @@ import {
 } from "../lib/utils.js";
 import { getBashFunctionsPath, processPairs, scanCueAudioPairs } from "./fix-unsplit-cue.js";
 
-// Constants
 const DEFAULT_SOURCE_DIR = "/volmain/Download/Transmission/complete/";
 const DEFAULT_TARGET_DIR = "/volmain/Public/FLAC/";
 const DEFAULT_TV_DIR = "/volmain/Public/TV Series & Documentaries/";
@@ -39,37 +44,17 @@ const DEFAULT_MOVIE_DIR = "/volmain/Public/Movies/";
 const DEFAULT_AUDIOBOOK_DIR = "/volmain/Public/Audiobooks/";
 const DEFAULT_BACKUP_DIR = "/volmain/Download/Transmission/backup/";
 
-const ALPHABETICAL_RANGES = [
-  { name: "A-D", pattern: /^[A-D]/i },
-  { name: "E-F", pattern: /^[E-F]/i },
-  { name: "G-I", pattern: /^[G-I]/i },
-  { name: "J-M", pattern: /^[J-M]/i },
-  { name: "N-Q", pattern: /^[N-Q]/i },
-  { name: "R-T", pattern: /^[R-T]/i },
-  { name: "U-Z", pattern: /^[U-Z]/i },
-] as const;
-
-// Types
-type MediaType = "tv" | "audiobook" | "music" | "movie";
-
-interface MediaItem {
-  path: string;
-  name: string;
-  type: MediaType;
-  files: string[];
-  musicFiles: string[];
-}
+type MediaItem = Omit<StagedMediaItem, "id">;
 
 interface MoveOperation {
   sourcePath: string;
   targetPath: string;
-  type: MediaType;
+  type: MediaItem["type"];
   artistName?: string;
   albumName: string;
   isNewArtist?: boolean;
 }
 
-// schema: strings are optional and have defaults
 const optionsSchema = z.object({
   sourceDir: z.string().optional().default(DEFAULT_SOURCE_DIR),
   targetDir: z.string().optional().default(DEFAULT_TARGET_DIR),
@@ -84,7 +69,32 @@ const optionsSchema = z.object({
 
 type CommandOptions = z.infer<typeof optionsSchema>;
 
-// Utility functions
+function movePlanErrorToFail(error: MovePlanError): ReturnType<typeof fail> {
+  if (error.type === "VALIDATION_ERROR") {
+    return fail(error.issues.map((issue) => issue.message).join("; "));
+  }
+
+  return fail("message" in error ? error.message : error.type);
+}
+
+function scanConfig(sourceDir: string): NasPathConfig {
+  return {
+    stagingDir: sourceDir,
+    musicDir: "",
+    tvDir: "",
+    movieDir: "",
+    audiobookDir: "",
+    backupDir: "",
+  };
+}
+
+export function scanMediaItems(
+  sourceDir: string,
+): ResultAsync<MediaItem[], ReturnType<typeof fail>> {
+  return scanDownloadStagingArea(scanConfig(sourceDir))
+    .mapErr(movePlanErrorToFail)
+    .map((items) => items.map(({ id: _id, ...item }) => item));
+}
 
 async function promptForArtistName(folderName: string, suggestions: string[]): Promise<string> {
   return await promptForInput(
@@ -99,181 +109,13 @@ async function promptForArtistName(folderName: string, suggestions: string[]): P
   );
 }
 
-// Detect the media type of a directory based on its contents
-function detectMediaType(dirName: string, files: string[], path: string): MediaType | undefined {
-  // Priority: TV > Audiobook > Music > Movie
-
-  // 1. TV Check
-  if (isTvFile(dirName) || files.some(isTvFile)) {
-    return "tv";
-  }
-
-  // 2. Audiobook Check
-  if (isAudiobookFile(dirName, path) || files.some((f) => isAudiobookFile(f))) {
-    return "audiobook";
-  }
-
-  // 3. Music Check (including CUE files)
-  if (files.some((f) => isMusicFile(f) || isCueFile(f))) {
-    return "music";
-  }
-
-  // 4. Movie Check
-  if (files.some(isMovieFile)) {
-    return "movie";
-  }
-
-  return undefined;
-}
-
-async function collectRelativeFiles(rootDir: string, currentDir = rootDir): Promise<string[]> {
-  const entries = await readDirectoryWithTypes(currentDir).catch(() => []);
-
-  return await entries.reduce(
-    async (filesPromise, entry) => {
-      const files = await filesPromise;
-      const entryPath = joinPath(currentDir, entry.name);
-
-      if (entry.isDirectory()) {
-        const childFiles = await collectRelativeFiles(rootDir, entryPath);
-        return [...files, ...childFiles];
-      }
-
-      if (!entry.isFile()) {
-        return files;
-      }
-
-      return [...files, path.relative(rootDir, entryPath)];
-    },
-    Promise.resolve([] as string[]),
-  );
-}
-
-// Scan for media items in the source directory
-export function scanMediaItems(
-  sourceDir: string,
-): ResultAsync<MediaItem[], ReturnType<typeof fail>> {
-  return safeAsync(
-    () => readDirectoryWithTypes(sourceDir),
-    `Error scanning source directory ${sourceDir}`,
-  ).andThen((entries) =>
-    ResultAsync.fromSafePromise(
-      entries
-        .filter((dirent) => dirent.isDirectory())
-        .map((dirent) => joinPath(sourceDir, dirent.name))
-        .reduce(
-          async (itemsPromise, dir) => {
-            const items = await itemsPromise;
-            const files = await collectRelativeFiles(dir);
-            const type = detectMediaType(getBasename(dir), files, dir);
-
-            if (!type) {
-              return items;
-            }
-
-            return [
-              ...items,
-              {
-                path: dir,
-                name: getBasename(dir),
-                type,
-                files,
-                musicFiles: files.filter(isMusicFile),
-              },
-            ];
-          },
-          Promise.resolve([] as MediaItem[]),
-        ),
-    ),
-  );
-}
-
-function sanitizeArtistName(artistName: string): Maybe<string> {
-  const sanitized = artistName
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: intentional control char range sanitization
-    .replace(/[\u0000-\u001f\u007f]/g, "")
-    .replace(/[\\/]+/g, " ")
-    .replace(/[:*?"<>|]+/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[. ]+$/g, "");
-
-  return sanitized ? Maybe.just(sanitized) : Maybe.nothing<string>();
-}
-
-function stripReleaseTags(name: string): string {
-  return name
-    .replace(
-      /\s*[[({][^\])}]*?(?:flac|mp3|m4a|24bit|16[./-]?44|vinyl|web|cd|discography|pmedia|h33t|japan|eu|uk)[^\])}]*?[\])}]/gi,
-      "",
-    )
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function inferArtistNameFromFolder(folderName: string): Maybe<string> {
-  const cleaned = stripReleaseTags(folderName);
-  const patterns = [
-    /^(.+?)\s+-\s+\d{4}\s+-\s+.+$/i,
-    /^(.+?)\s+-\s+.+$/i,
-    /^(.+?)\s+_\s+.+$/i,
-    /^(.+?)\s+\/\s+.+$/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = cleaned.match(pattern);
-    if (match?.[1]) {
-      return sanitizeArtistName(match[1]);
-    }
-  }
-
-  return sanitizeArtistName(cleaned);
-}
-
-// Infer artist name from music files metadata, falling back to release folder.
 function inferArtistName(
   mediaItem: MediaItem,
 ): ResultAsync<Maybe<string>, ReturnType<typeof fail>> {
-  return ResultAsync.fromSafePromise(
-    mediaItem.musicFiles
-      .reduce(
-        async (artistPromise, file) => {
-          const current = await artistPromise;
-          if (current.isJust) {
-            return current;
-          }
-
-          const filePath = joinPath(mediaItem.path, file);
-          const metadata = await safeAsync(
-            () => parseFile(filePath),
-            `Could not read metadata for ${file}`,
-          ).unwrapOr(undefined);
-          const artist = metadata?.common.artist?.trim();
-
-          return artist ? sanitizeArtistName(artist) : Maybe.nothing<string>();
-        },
-        Promise.resolve(Maybe.nothing<string>() as Maybe<string>),
-      )
-      .then((artist) => (artist.isJust ? artist : inferArtistNameFromFolder(mediaItem.name))),
-  );
+  const staged: StagedMediaItem = { ...mediaItem, id: crypto.randomUUID() };
+  return inferArtistNameForStagedItem(staged).mapErr(movePlanErrorToFail);
 }
 
-// Get target directory based on artist name
-function getTargetDirectory(artistName: string, targetDir: string): string {
-  const firstChar = artistName.charAt(0).toUpperCase();
-
-  // Find the appropriate alphabetical range
-  const range = ALPHABETICAL_RANGES.find((r) => r.pattern.test(firstChar));
-
-  if (range) {
-    return joinPath(targetDir, range.name, artistName);
-  }
-
-  // Fallback to the target directory
-  return joinPath(targetDir, artistName);
-}
-
-// Check if artist directory already exists
 function checkArtistExists(artistPath: string): ResultAsync<boolean, ReturnType<typeof fail>> {
   return safeAsync(() => exists(artistPath), `Failed to access ${artistPath}`)
     .andThen((artistExists) =>
@@ -292,7 +134,6 @@ function checkArtistExists(artistPath: string): ResultAsync<boolean, ReturnType<
     .orElse(() => ok(false));
 }
 
-// Handle naming conflicts
 function resolveNamingConflict(
   targetPath: string,
   options: CommandOptions,
@@ -324,14 +165,8 @@ function resolveNamingConflict(
   );
 }
 
-// Generate suggestions for artist name
 function generateArtistSuggestions(folderName: string): string[] {
-  const suggestions: string[] = [];
-
-  // Add folder name as first suggestion
-  suggestions.push(folderName);
-
-  // Add common patterns
+  const suggestions: string[] = [folderName];
   const patterns = [/^(.+?)\s*-\s*(.+?)$/i, /^(.+?)\s*\/\s*(.+?)$/i, /^(.+?)\s*_\s*(.+?)$/i];
 
   for (const pattern of patterns) {
@@ -341,11 +176,86 @@ function generateArtistSuggestions(folderName: string): string[] {
     }
   }
 
-  // Remove duplicates and empty strings
   return [...new Set(suggestions.filter((s) => s.trim()))];
 }
 
-// Process media items and determine move operations
+async function resolveArtistNameForItem(
+  item: MediaItem,
+  options: CommandOptions,
+): Promise<string | undefined> {
+  if (options.interactive) {
+    return promptForArtistName(item.name, generateArtistSuggestions(item.name));
+  }
+
+  const inferredArtist = await inferArtistName(item).unwrapOr(none<string>());
+  if (isSome(inferredArtist)) {
+    return getOrElse(inferredArtist, "");
+  }
+
+  logWarning(`⚠️  Could not infer artist name for: ${item.name}`);
+  return undefined;
+}
+
+async function appendMusicMoveOperation(
+  moveOperations: MoveOperation[],
+  item: MediaItem,
+  options: CommandOptions,
+): Promise<MoveOperation[]> {
+  const artistName = await resolveArtistNameForItem(item, options);
+  if (!artistName) {
+    return moveOperations;
+  }
+
+  const artistDir = getMusicTargetDirectory(artistName, options.targetDir);
+  const isNewArtist = !(await checkArtistExists(artistDir).unwrapOr(false));
+  const operation: MoveOperation = {
+    sourcePath: item.path,
+    targetPath: joinPath(artistDir, item.name),
+    type: "music",
+    artistName,
+    albumName: item.name,
+    isNewArtist,
+  };
+
+  logInfo(`[Music] ${item.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`);
+  return [...moveOperations, operation];
+}
+
+function targetDirForMediaType(
+  type: MediaItem["type"],
+  options: CommandOptions,
+): string | undefined {
+  if (type === "tv") return options.tvDir;
+  if (type === "movie") return options.movieDir;
+  if (type === "audiobook") return options.audiobookDir;
+  return undefined;
+}
+
+async function appendMediaMoveOperation(
+  moveOperations: MoveOperation[],
+  item: MediaItem,
+  options: CommandOptions,
+): Promise<MoveOperation[]> {
+  if (item.type === "music") {
+    return appendMusicMoveOperation(moveOperations, item, options);
+  }
+
+  const targetDir = targetDirForMediaType(item.type, options);
+  if (!targetDir) {
+    return moveOperations;
+  }
+
+  const operation: MoveOperation = {
+    sourcePath: item.path,
+    targetPath: joinPath(targetDir, item.name),
+    type: item.type,
+    albumName: item.name,
+  };
+
+  logInfo(`[${item.type.toUpperCase()}] ${item.name} → ${targetDir}`);
+  return [...moveOperations, operation];
+}
+
 function processMediaItems(
   mediaItems: MediaItem[],
   options: CommandOptions,
@@ -354,68 +264,13 @@ function processMediaItems(
     mediaItems.reduce(
       async (operationsPromise, item) => {
         const moveOperations = await operationsPromise;
-
-        // Routing logic based on media type
-        if (item.type === "music") {
-          const inferredArtist = await inferArtistName(item).unwrapOr(Maybe.nothing<string>());
-
-          const artistName = await match(options.interactive)
-            .when(
-              () => inferredArtist.isJust,
-              () => Promise.resolve(inferredArtist.unwrapOr("")),
-            )
-            .with(true, () => promptForArtistName(item.name, generateArtistSuggestions(item.name)))
-            .otherwise(() => {
-              logWarning(`⚠️  Could not infer artist name for: ${item.name}`);
-              return Promise.resolve(undefined);
-            });
-
-          if (!artistName) {
-            return moveOperations;
-          }
-
-          const artistDir = getTargetDirectory(artistName, options.targetDir);
-          const isNewArtist = !(await checkArtistExists(artistDir).unwrapOr(false));
-          const operation: MoveOperation = {
-            sourcePath: item.path,
-            targetPath: joinPath(artistDir, item.name),
-            type: "music",
-            artistName,
-            albumName: item.name,
-            isNewArtist,
-          };
-
-          logInfo(`[Music] ${item.name} → ${artistName} ${isNewArtist ? "(new artist)" : ""}`);
-          return [...moveOperations, operation];
-        }
-
-        // Generic move for other types
-        const targetDir = match(item.type)
-          .with("tv", () => options.tvDir)
-          .with("movie", () => options.movieDir)
-          .with("audiobook", () => options.audiobookDir)
-          .otherwise(() => undefined);
-
-        if (!targetDir) {
-          return moveOperations;
-        }
-
-        const operation: MoveOperation = {
-          sourcePath: item.path,
-          targetPath: joinPath(targetDir, item.name),
-          type: item.type,
-          albumName: item.name,
-        };
-
-        logInfo(`[${item.type.toUpperCase()}] ${item.name} → ${targetDir}`);
-        return [...moveOperations, operation];
+        return appendMediaMoveOperation(moveOperations, item, options);
       },
       Promise.resolve([] as MoveOperation[]),
     ),
   );
 }
 
-// Display summary and get user confirmation
 async function confirmProcessing(
   operations: MoveOperation[],
   options: CommandOptions,
@@ -446,7 +301,6 @@ async function confirmProcessing(
   return await confirm("Proceed with moving these items?");
 }
 
-// Create backup of source folder. A failed backup must block the move.
 function createBackup(
   sourcePath: string,
   backupDir: string,
@@ -484,7 +338,6 @@ function createBackup(
   );
 }
 
-// Post-processing: split CUE if present
 function runCueSplit(targetPath: string): ResultAsync<void, ReturnType<typeof fail>> {
   return scanCueAudioPairs(targetPath, {
     dryRun: false,
@@ -503,7 +356,6 @@ function runCueSplit(targetPath: string): ResultAsync<void, ReturnType<typeof fa
   });
 }
 
-// Move media item to target location
 function moveMediaItem(
   operation: MoveOperation,
   options: CommandOptions,
@@ -532,7 +384,6 @@ function moveMediaItem(
     .andThen((finalTargetPath) => {
       logSuccess(`✓ Moved: ${albumName}`);
 
-      // Post-processing for music
       if (type === "music" && !options.dryRun) {
         return runCueSplit(finalTargetPath).map(() => true);
       }
@@ -550,8 +401,8 @@ function validateRequiredDirectory(
   label: string,
 ): ResultAsync<void, ReturnType<typeof fail>> {
   return safeAsync(() => exists(dirPath), `Failed to access ${label} directory`).andThen(
-    (exists) =>
-      exists
+    (dirExists) =>
+      dirExists
         ? ok<void, ReturnType<typeof fail>>(undefined)
         : err(fail(`${label} directory '${dirPath}' does not exist or is not accessible`)),
   );
@@ -614,20 +465,18 @@ function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>
     )
     .andThen((moveOperations) =>
       moveOperations.length === 0
-        ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(Maybe.nothing<MoveOperation[]>())
+        ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(none<MoveOperation[]>())
         : options.yes
-          ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(Maybe.just(moveOperations))
+          ? ok<Maybe<MoveOperation[]>, ReturnType<typeof fail>>(some(moveOperations))
           : safeAsync(
               () => confirmProcessing(moveOperations, options),
               "Failed to confirm processing",
-            ).map((proceed) =>
-              proceed ? Maybe.just(moveOperations) : Maybe.nothing<MoveOperation[]>(),
-            ),
+            ).map((proceed) => (proceed ? some(moveOperations) : none<MoveOperation[]>())),
     )
     .andThen((maybeOperations) =>
-      maybeOperations.isNothing
+      isNone(maybeOperations)
         ? ok<void, ReturnType<typeof fail>>(undefined)
-        : // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+        : // biome-ignore lint/suspicious/useIterableCallbackReturn: Result.map for terminal side effect
           processMoveOperations(maybeOperations.value, options).map(
             ({ successCount, failureCount }) => {
               logProgress("🔄 Processing items...");
@@ -657,14 +506,11 @@ export default function moveCompletedCommand(program: Command): void {
     .option("-y, --yes", "Assume yes to all confirmations", false)
     .option("-i, --interactive", "Prompt for artist name when inference fails", false)
     .action(async (options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid move-completed options",
-      ).asyncAndThen(run);
-
-      result.match(
-        () => undefined,
+        run,
         (error) => {
           logError(`Script failed: ${formatError(error)}`);
           process.exit(1);

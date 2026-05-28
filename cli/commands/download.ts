@@ -1,13 +1,20 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { fromNullable, isNone } from "@onrails/maybe";
+import {
+  err,
+  fromResult,
+  ok,
+  pipe,
+  type Result,
+  type ResultAsync,
+  unwrapOr,
+} from "@onrails/result";
 import type { Command } from "commander";
 import got, { type Headers, type Response } from "got";
-import { err, ok, type Result, type ResultAsync } from "neverthrow";
-import { Maybe } from "true-myth";
-import { match } from "ts-pattern";
 import { z } from "zod";
 
-import { fail, formatError, parseWith, safe, safeAsync } from "../lib/fp.js";
+import { fail, formatError, runParsedCommand, safe, safeAsync } from "../lib/fp.js";
 
 const DEFAULT_DEST = "/volmain/Download/ignore";
 const DEFAULT_UA =
@@ -28,11 +35,33 @@ const RFC5987_RE = /filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i;
 const RFC5987_RE_2 = /filename\s*=\s*("?)([^";]+)\1/i;
 
 const decodeFilename = (value: string): string =>
-  safe(() => decodeURIComponent(value), "Failed to decode filename").unwrapOr(value);
+  unwrapOr(
+    safe(() => decodeURIComponent(value), "Failed to decode filename"),
+    value,
+  );
 
 function sanitizeFilename(filename: string, fallbackName: string): string {
   const sanitized = basename(filename.replace(/\\/g, "/")).trim();
   return sanitized && sanitized !== "." && sanitized !== ".." ? sanitized : fallbackName;
+}
+
+function parseContentDisposition(
+  cd: string | string[] | undefined,
+  fallbackName: string,
+): Result<string, ReturnType<typeof fail>> {
+  const header = pipe(cd, (raw) => fromNullable(Array.isArray(raw) ? raw[0] : raw));
+  if (isNone(header)) {
+    return ok(fallbackName);
+  }
+
+  const star = header.value.match(RFC5987_RE)?.[1];
+  if (star) {
+    const trimmed = star.replace(/^["']|["']$/g, "").trim();
+    return ok(sanitizeFilename(decodeFilename(trimmed), fallbackName));
+  }
+
+  const plain = header.value.match(RFC5987_RE_2)?.[2];
+  return plain ? ok(sanitizeFilename(decodeFilename(plain), fallbackName)) : ok(fallbackName);
 }
 
 function filenameFromHeaders(
@@ -40,36 +69,15 @@ function filenameFromHeaders(
   headers: Headers,
 ): Result<string, ReturnType<typeof fail>> {
   const fallbackName = sanitizeFilename(decodeFilename(new URL(url).pathname), "download.bin");
-
   const cd = headers["content-disposition"];
-  if (!cd) {
-    return ok(fallbackName);
-  }
-
-  const cdStr = Maybe.of(Array.isArray(cd) ? cd[0] : cd);
-  if (cdStr.isNothing) {
-    return ok(fallbackName);
-  }
-
-  const star = Maybe.of(cdStr.value.match(RFC5987_RE)?.[1]);
-  if (star.isJust) {
-    return ok(
-      sanitizeFilename(decodeFilename(star.value.replace(/^["']|["']$/g, "").trim()), fallbackName),
-    );
-  }
-
-  const plain = Maybe.of(cdStr.value.match(RFC5987_RE_2)?.[2]);
-
-  return ok(plain.mapOr(fallbackName, (p) => sanitizeFilename(decodeFilename(p), fallbackName)));
+  return cd ? parseContentDisposition(cd, fallbackName) : ok(fallbackName);
 }
 
 function validateResponse(res: Response): Result<Response, ReturnType<typeof fail>> {
-  return match(res.statusCode)
-    .when(
-      (status) => status >= 200 && status < 300,
-      () => ok(res),
-    )
-    .otherwise(() => err(fail(`HTTP ${res.statusCode} ${res.statusMessage}`)));
+  if (res.statusCode >= 200 && res.statusCode < 300) {
+    return ok(res);
+  }
+  return err(fail(`HTTP ${res.statusCode} ${res.statusMessage}`));
 }
 
 async function fetchOnce(
@@ -92,8 +100,6 @@ function buildHeaders(options: CommandOptions): Record<string, string> {
     "User-Agent": options.ua,
     Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    // got handles compression automatically; sending Accept-Encoding
-    // explicitly can sometimes confuse certain servers, so we omit it.
   };
   if (options.referer) headers.Referer = options.referer;
   if (options.cookie) headers.Cookie = options.cookie;
@@ -109,14 +115,14 @@ function run(url: string, options: CommandOptions): ResultAsync<void, ReturnType
     return safeAsync(async () => {
       if (attempt > 0) {
         console.log(`Retry ${attempt}/${options.retries}…`);
-        await new Promise((r) => setTimeout(r, 500 * attempt)); // tiny backoff
+        await new Promise((r) => setTimeout(r, 500 * attempt));
       }
       console.log(`📥 GET ${url}`);
       return await fetchOnce(url, headers, options.timeout);
     }, "Download request failed")
       .andThen((res) => validateResponse(res))
       .andThen((res) =>
-        filenameFromHeaders(url, res.headers).asyncAndThen((filename) => {
+        fromResult(filenameFromHeaders(url, res.headers)).flatMap((filename) => {
           const filePath = join(options.dest, filename);
           console.log(`→ Saving as ${filePath}`);
 
@@ -139,7 +145,7 @@ function run(url: string, options: CommandOptions): ResultAsync<void, ReturnType
       `Failed to create destination ${options.dest}`,
     )
       .andThen(download)
-      // biome-ignore lint/suspicious/useIterableCallbackReturn: neverthrow Result.map for terminal side effect
+      // biome-ignore lint/suspicious/useIterableCallbackReturn: Result.map for terminal side effect
       .map(() => {
         console.log("✅ Done");
       })
@@ -158,14 +164,11 @@ export default function downloadCommand(program: Command): void {
     .option("--retries <number>", "Number of retries", "3")
     .option("--timeout <ms>", "Timeout in milliseconds", "30000")
     .action(async (url: string, options: Record<string, unknown>) => {
-      const result = await parseWith(
+      await runParsedCommand(
         optionsSchema,
         options,
         "Invalid download options",
-      ).asyncAndThen((parsedOptions) => run(url, parsedOptions));
-
-      result.match(
-        () => undefined,
+        (parsedOptions) => run(url, parsedOptions),
         (error) => {
           console.error(`Download failed: ${formatError(error)}`);
           process.exit(1);
