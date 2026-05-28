@@ -5,7 +5,7 @@ export type ConfigState = {
   set: (config: NasPathConfig) => void;
 };
 
-export const createConfigState = (initial = defaultNasPathConfig): ConfigState => {
+export function createConfigState(initial = defaultNasPathConfig): ConfigState {
   let config: NasPathConfig = initial;
   return {
     get: () => config,
@@ -13,4 +13,4 @@ export const createConfigState = (initial = defaultNasPathConfig): ConfigState =
       config = next;
     },
   };
-};
+}

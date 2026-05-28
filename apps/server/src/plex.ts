@@ -21,11 +21,22 @@ async function resolvePlexToken(): Promise<string> {
   return token;
 }
 
-interface PlexSection {
+export type PlexSection = {
   key: string;
   title: string;
   type: string;
-}
+};
+
+export type PlexSectionRef = Pick<PlexSection, "key" | "title">;
+
+export type PlexSectionsPayload = {
+  token: string;
+  sections: PlexSection[];
+};
+
+export type PlexScanAllResult = {
+  scanned: PlexSection[];
+};
 
 function parseSections(xml: string): PlexSection[] {
   const sections: PlexSection[] = [];
@@ -45,10 +56,7 @@ function parseSections(xml: string): PlexSection[] {
   return sections;
 }
 
-async function getPlexSections(): Promise<{
-  token: string;
-  sections: PlexSection[];
-}> {
+async function getPlexSections(): Promise<PlexSectionsPayload> {
   const token = await resolvePlexToken();
   const res = await fetch(plexApiUrl("/library/sections", token));
   if (!res.ok) throw new Error(`Plex /library/sections responded HTTP ${res.status}`);
@@ -75,20 +83,18 @@ export async function triggerPlexMusicScan(): Promise<string> {
   return section.title;
 }
 
-export async function scanAllPlexLibraries(): Promise<{
-  scanned: { key: string; title: string; type: string }[];
-}> {
+export async function scanAllPlexLibraries(): Promise<PlexScanAllResult> {
   const { token, sections } = await getPlexSections();
   await Promise.all(sections.map((s) => refreshSection(s.key, token)));
   return { scanned: sections };
 }
 
-export async function listPlexSections(): Promise<{ key: string; title: string; type: string }[]> {
+export async function listPlexSections(): Promise<PlexSection[]> {
   const { sections } = await getPlexSections();
   return sections;
 }
 
-export async function scanPlexSection(key: string): Promise<{ key: string; title: string }> {
+export async function scanPlexSection(key: string): Promise<PlexSectionRef> {
   const { token, sections } = await getPlexSections();
   const section = sections.find((s) => s.key === key);
   if (!section) throw new Error(`Plex section "${key}" not found`);

@@ -2,6 +2,7 @@ import { buildConflictsList } from "../lib/conflicts.js";
 import { createJobEventStream } from "../lib/job-event-stream.js";
 import { isTerminalStatus } from "../lib/job-types.js";
 import { resolveJobConflict } from "../lib/resolve-job-conflict.js";
+import { resolveConflictBodySchema } from "../lib/schemas.js";
 import { publicSubrouter } from "../lib/subrouter.js";
 import type { Deps } from "../types/deps.js";
 
@@ -10,14 +11,14 @@ export function jobsModule(deps: Deps) {
     .get("/jobs", ({ repos }) => ({ ok: true, jobs: repos.jobs.list() }))
     .get("/jobs/:id", ({ repos, params, set }) => {
       const job = repos.jobs.load(params.id);
-      if (!job) {
+      if (job.isNothing) {
         set.status = 404;
         return {
           ok: false,
           issues: [{ path: [], code: "NOT_FOUND", message: "Job not found" }],
         };
       }
-      return { ok: true, job };
+      return { ok: true, job: job.value };
     })
     .get("/jobs/:id/events", ({ repos, execution, params, query }) => {
       const after = Number(query.after ?? -1);
@@ -26,7 +27,10 @@ export function jobsModule(deps: Deps) {
       return {
         ok: true,
         events,
-        done: job ? isTerminalStatus(job.status) : true,
+        done: job.match({
+          Nothing: () => true,
+          Just: (loaded) => isTerminalStatus(loaded.status),
+        }),
       };
     })
     .get("/jobs/:id/events/stream", ({ repos, execution, params }) => {
@@ -34,7 +38,7 @@ export function jobsModule(deps: Deps) {
       const stream = createJobEventStream(
         {
           getEvents: (id, after) => execution.getJobEvents(id, after),
-          loadJob: (id) => repos.jobs.load(id) ?? null,
+          loadJob: (id) => repos.jobs.load(id).map((job) => ({ status: job.status })),
         },
         jobId,
       );
@@ -48,14 +52,14 @@ export function jobsModule(deps: Deps) {
     })
     .post("/jobs/:id/cancel", ({ repos, execution, params, set }) => {
       const job = repos.jobs.load(params.id);
-      if (!job) {
+      if (job.isNothing) {
         set.status = 404;
         return {
           ok: false,
           issues: [{ path: [], code: "NOT_FOUND", message: "Job not found" }],
         };
       }
-      if (isTerminalStatus(job.status)) {
+      if (isTerminalStatus(job.value.status)) {
         set.status = 409;
         return {
           ok: false,
@@ -73,16 +77,33 @@ export function jobsModule(deps: Deps) {
     })
     .get("/jobs/:id/conflicts", async ({ repos, params, set }) => {
       const job = repos.jobs.load(params.id);
-      if (!job) {
+      if (job.isNothing) {
         set.status = 404;
         return { ok: false, issues: [{ path: [], code: "NOT_FOUND", message: "Job not found" }] };
       }
-      const conflicts = await buildConflictsList(deps, params.id, job.planId);
+      const conflicts = await buildConflictsList(deps, params.id, job.value.planId);
       return { ok: true, conflicts };
     })
     .post("/jobs/:id/resolve-conflict", async ({ repos, execution, params, body, set }) => {
-      const { itemId, resolution } = body as { itemId: string; resolution: "skip" | "overwrite" };
-      const result = await resolveJobConflict(repos, execution, params.id, itemId, resolution);
+      const parsed = resolveConflictBodySchema.safeParse(body);
+      if (!parsed.success) {
+        set.status = 422;
+        return {
+          ok: false,
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.map(String),
+            code: issue.code,
+            message: issue.message,
+          })),
+        };
+      }
+      const result = await resolveJobConflict(
+        repos,
+        execution,
+        params.id,
+        parsed.data.itemId,
+        parsed.data.resolution,
+      );
       if (!result.ok) {
         set.status = result.status;
         return { ok: false, issues: result.issues };

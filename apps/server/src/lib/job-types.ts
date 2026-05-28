@@ -1,27 +1,32 @@
-export type JobStatus =
-  | "queued"
-  | "running"
-  | "completed"
-  | "completed_with_failures"
-  | "failed"
-  | "canceled"
-  | "interrupted";
+import type { JobCounts, JobEventLevel, JobStatus, JobStatusExtra } from "./schemas.js";
 
-export type JobCounts = {
-  total: number;
-  completed: number;
-  failed: number;
-  skipped: number;
-};
+export type {
+  AppendJobEventInput,
+  ConflictResolution,
+  CuePairOutcome,
+  FieldIssue,
+  JobCounts,
+  JobEventData,
+  JobEventLevel,
+  JobEventSeq,
+  JobStatus,
+  JobStatusExtra,
+  JobStreamRecord,
+  ResolveConflictBody,
+  ResolveConflictResult,
+} from "./schemas.js";
 
-const TERMINAL_STATUSES = new Set<JobStatus>([
-  "completed",
-  "completed_with_failures",
-  "failed",
-  "canceled",
-  "interrupted",
-]);
+export type JobEmitter = (
+  type: string,
+  level: JobEventLevel,
+  message: string,
+  data?: unknown,
+) => void;
 
-export function isTerminalStatus(status: JobStatus): boolean {
-  return TERMINAL_STATUSES.has(status);
-}
+export type JobStatusUpdater = (
+  status: JobStatus,
+  counts: JobCounts,
+  extra?: JobStatusExtra,
+) => void;
+
+export { isTerminalStatus } from "./schemas.js";

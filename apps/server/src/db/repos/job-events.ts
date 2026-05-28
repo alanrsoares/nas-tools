@@ -1,17 +1,10 @@
 import { and, eq, gt } from "drizzle-orm";
+
+import type { AppendJobEventInput } from "../../lib/schemas.js";
 import type { Db } from "../client.js";
 import { jobEvents } from "../schema.js";
 
-export type JobEventLevel = "info" | "warning" | "error";
-
-export type AppendJobEventInput = {
-  jobId: string;
-  seq: number;
-  type: string;
-  level: JobEventLevel;
-  message: string;
-  data?: unknown;
-};
+export type { AppendJobEventInput, JobEventLevel } from "../../lib/schemas.js";
 
 export type JobEventsRepo = {
   append: (input: AppendJobEventInput) => void;

@@ -1,5 +1,9 @@
 import { access } from "node:fs/promises";
+import type { MovePlan } from "@nas-tools/core";
+
+import type { JobEventsRepo } from "../db/index.js";
 import type { Deps } from "../types/deps.js";
+import { compactMaybes, Maybe } from "./maybe.js";
 import { parseEventItemId } from "./schemas.js";
 
 export type ConflictEntry = {
@@ -9,50 +13,56 @@ export type ConflictEntry = {
   sourcePath: string;
 };
 
+type StoredJobEvent = ReturnType<JobEventsRepo["listAfter"]>[number];
+
 const RESOLVED_EVENT_TYPES = new Set(["conflict_skipped", "merge_replaced", "merge_kept"]);
 
-type JobEvent = ReturnType<Deps["execution"]["getJobEvents"]>[number];
-
 async function resolveConflictEntry(
-  e: JobEvent,
+  e: StoredJobEvent,
   resolvedItemIds: Set<string>,
-  plan: ReturnType<Deps["repos"]["plans"]["load"]>,
-): Promise<ConflictEntry | null> {
-  if (e.type !== "item_failed") return null;
+  plan: Maybe<MovePlan>,
+): Promise<Maybe<ConflictEntry>> {
+  if (e.type !== "item_failed") return Maybe.nothing();
   const match = e.message.match(/Merge conflict — files already exist in target: (.+)$/);
-  if (!match) return null;
+  if (!match) return Maybe.nothing();
+
   const itemId = parseEventItemId(e.data);
-  if (!itemId || resolvedItemIds.has(itemId)) return null;
-  const item = plan?.items.find((i) => i.id === itemId);
-  if (!item) return null;
-  const sourceExists = await access(item.sourcePath)
+  if (itemId.isNothing || resolvedItemIds.has(itemId.value)) return Maybe.nothing();
+
+  const item = plan.andThen((loaded) => Maybe.of(loaded.items.find((i) => i.id === itemId.value)));
+  if (item.isNothing) return Maybe.nothing();
+
+  const sourceExists = await access(item.value.sourcePath)
     .then(() => true)
     .catch(() => false);
-  if (!sourceExists) return null;
+  if (!sourceExists) return Maybe.nothing();
+
   const albumName = e.message.replace(/^Failed: /, "").replace(/ — Merge conflict.*$/, "");
-  return {
-    itemId,
+  return Maybe.just({
+    itemId: itemId.value,
     albumName,
     conflictingFiles: (match[1] ?? "").split(", ").filter(Boolean),
-    sourcePath: item.sourcePath,
-  };
+    sourcePath: item.value.sourcePath,
+  });
 }
 
 export async function buildConflictsList(
   deps: Deps,
   jobId: string,
-  planId: string | undefined | null,
+  planId: string | null | undefined,
 ): Promise<ConflictEntry[]> {
   const events = deps.execution.getJobEvents(jobId);
   const resolvedItemIds = new Set(
     events
       .filter((e) => RESOLVED_EVENT_TYPES.has(e.type))
-      .map((e) => parseEventItemId(e.data))
-      .filter((id): id is string => id !== undefined),
+      .flatMap((e) => {
+        const id = parseEventItemId(e.data);
+        return id.isJust ? [id.value] : [];
+      }),
   );
-  const plan = planId ? deps.repos.plans.load(planId) : undefined;
+  const plan = planId ? deps.repos.plans.load(planId) : Maybe.nothing<MovePlan>();
   const entries = await Promise.all(
     events.map((e) => resolveConflictEntry(e, resolvedItemIds, plan)),
   );
-  return entries.filter((c): c is ConflictEntry => c !== null);
+  return compactMaybes(entries);
 }

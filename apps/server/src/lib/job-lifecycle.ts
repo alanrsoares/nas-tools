@@ -1,17 +1,8 @@
-import type { JobCounts, JobStatus } from "./job-types.js";
-
-type JobEventLevel = "info" | "warning" | "error";
-type JobEmitter = (type: string, level: JobEventLevel, message: string, data?: unknown) => void;
-
-type StatusUpdater = (
-  status: JobStatus,
-  counts: JobCounts,
-  extra?: Partial<{ startedAt: string; completedAt: string }>,
-) => void;
+import type { JobCounts, JobEmitter, JobStatusUpdater } from "./job-types.js";
 
 export const finalizeJob = (
   counts: JobCounts,
-  setJobStatus: StatusUpdater,
+  setJobStatus: JobStatusUpdater,
   emit: JobEmitter,
   summary: string,
 ): void => {
@@ -23,7 +14,7 @@ export const finalizeJob = (
 export const cancelJobIfAborted = (
   signal: AbortSignal,
   counts: JobCounts,
-  setJobStatus: StatusUpdater,
+  setJobStatus: JobStatusUpdater,
   emit: JobEmitter,
 ): boolean => {
   if (!signal.aborted) return false;

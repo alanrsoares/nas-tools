@@ -5,7 +5,14 @@ import type { MovePlan } from "@nas-tools/core";
 import { type CuePair, findCuePairs, getBashFunctionsPath, splitCuePair } from "./cue.js";
 import type { JobEventsRepo, JobsRepo } from "./db/index.js";
 import { errorMessage } from "./lib/job-lifecycle.js";
-import type { JobCounts, JobStatus } from "./lib/job-types.js";
+import type {
+  ConflictResolution,
+  CuePairOutcome,
+  JobCounts,
+  JobEmitter,
+  JobStatusExtra,
+  JobStatusUpdater,
+} from "./lib/job-types.js";
 import { mergeIntoExistingTarget } from "./lib/merge-into-target.js";
 import { runCueJob } from "./lib/run-cue-job.js";
 import { runMoveJob } from "./lib/run-move-job.js";
@@ -20,9 +27,6 @@ type ExecutionRepos = {
   jobEvents: JobEventsRepo;
 };
 
-type JobEventLevel = "info" | "warning" | "error";
-type JobEmitter = (type: string, level: JobEventLevel, message: string, data?: unknown) => void;
-
 export type ExecutionService = {
   executeJob: (jobId: string, plan: MovePlan) => void;
   executeCueJob: (jobId: string, pairs: CuePair[]) => void;
@@ -32,7 +36,7 @@ export type ExecutionService = {
     jobId: string,
     item: MovePlan["items"][number],
     plan: MovePlan,
-    resolution: "skip" | "overwrite",
+    resolution: ConflictResolution,
   ) => Promise<void>;
 };
 
@@ -46,12 +50,8 @@ export const createExecutionService = (repos: ExecutionRepos): ExecutionService 
     };
   };
 
-  const makeJobStatusUpdater = (jobId: string) => {
-    return (
-      status: JobStatus,
-      counts: JobCounts,
-      extra: Partial<{ startedAt: string; completedAt: string }> = {},
-    ) => {
+  const makeJobStatusUpdater = (jobId: string): JobStatusUpdater => {
+    return (status, counts, extra: JobStatusExtra = {}) => {
       repos.jobs.updateStatus(jobId, status, counts, extra);
     };
   };
@@ -67,7 +67,7 @@ export const createExecutionService = (repos: ExecutionRepos): ExecutionService 
     jobId: string,
     item: MovePlan["items"][number],
     plan: MovePlan,
-    resolution: "skip" | "overwrite",
+    resolution: ConflictResolution,
   ): Promise<void> => {
     const emit = makeEmitter(jobId);
     if (resolution === "skip") {
@@ -171,7 +171,7 @@ export const createExecutionService = (repos: ExecutionRepos): ExecutionService 
     pair: CuePair,
     bashFunctionsPath: string,
     emit: JobEmitter,
-  ): Promise<"completed" | "failed"> {
+  ): Promise<CuePairOutcome> {
     emit("item_started", "info", `Splitting: ${pair.cueFile}`, pair);
     try {
       await splitCuePair({

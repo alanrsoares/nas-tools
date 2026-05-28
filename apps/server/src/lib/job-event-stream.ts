@@ -1,18 +1,17 @@
-import { isTerminalStatus, type JobStatus } from "./job-types.js";
+import type { JobEventSeq, JobStreamRecord } from "./job-types.js";
+import type { Maybe } from "./maybe.js";
+import { isTerminalStatus } from "./schemas.js";
 
-type JobEvent = { seq: number };
-type JobRecord = { status: JobStatus };
-
-type StreamDeps = {
-  getEvents: (jobId: string, after: number) => JobEvent[];
-  loadJob: (jobId: string) => JobRecord | null;
+export type JobEventStreamDeps = {
+  getEvents: (jobId: string, after: number) => JobEventSeq[];
+  loadJob: (jobId: string) => Maybe<JobStreamRecord>;
 };
 
-const encodeSse = (encoder: TextEncoder, event: JobEvent): Uint8Array =>
+const encodeSse = (encoder: TextEncoder, event: JobEventSeq): Uint8Array =>
   encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
 
 const flushEvents = (
-  events: JobEvent[],
+  events: JobEventSeq[],
   lastSeq: number,
   encoder: TextEncoder,
   controller: ReadableStreamDefaultController<Uint8Array>,
@@ -24,10 +23,11 @@ const flushEvents = (
   return lastSeq;
 };
 
-const isJobDone = (job: JobRecord | null): boolean => !job || isTerminalStatus(job.status);
+const isJobDone = (job: Maybe<JobStreamRecord>): boolean =>
+  job.isNothing || isTerminalStatus(job.value.status);
 
 export const streamJobEvents = async (
-  deps: StreamDeps,
+  deps: JobEventStreamDeps,
   jobId: string,
   controller: ReadableStreamDefaultController<Uint8Array>,
 ): Promise<void> => {
@@ -48,7 +48,10 @@ export const streamJobEvents = async (
   }
 };
 
-export const createJobEventStream = (deps: StreamDeps, jobId: string): ReadableStream<Uint8Array> =>
+export const createJobEventStream = (
+  deps: JobEventStreamDeps,
+  jobId: string,
+): ReadableStream<Uint8Array> =>
   new ReadableStream({
     start(controller) {
       void streamJobEvents(deps, jobId, controller);

@@ -1,21 +1,24 @@
 import type { MovePlan } from "@nas-tools/core";
-import { cancelJobIfAborted, errorMessage, finalizeJob } from "./job-lifecycle.js";
-import type { JobCounts } from "./job-types.js";
 
-type JobEventLevel = "info" | "warning" | "error";
-type JobEmitter = (type: string, level: JobEventLevel, message: string, data?: unknown) => void;
-type StatusUpdater = (
-  status: import("./job-types.js").JobStatus,
-  counts: JobCounts,
-  extra?: Partial<{ startedAt: string; completedAt: string }>,
-) => void;
+import { cancelJobIfAborted, errorMessage, finalizeJob } from "./job-lifecycle.js";
+import type { JobCounts, JobEmitter, JobStatusUpdater } from "./job-types.js";
+
+export type RunMoveJobOptions = {
+  items: MovePlan["items"];
+  signal: AbortSignal;
+  move: (item: MovePlan["items"][number]) => Promise<void>;
+  emit: JobEmitter;
+  setJobStatus: JobStatusUpdater;
+  counts: JobCounts;
+  afterComplete: () => Promise<void>;
+};
 
 const runSingleMoveItem = async (
   item: MovePlan["items"][number],
   move: (item: MovePlan["items"][number]) => Promise<void>,
   emit: JobEmitter,
   counts: JobCounts,
-  setJobStatus: StatusUpdater,
+  setJobStatus: JobStatusUpdater,
 ): Promise<void> => {
   emit("item_started", "info", `Moving: ${item.albumName}`, { itemId: item.id });
   try {
@@ -33,15 +36,7 @@ const runSingleMoveItem = async (
   setJobStatus("running", counts);
 };
 
-export const runMoveJob = async (options: {
-  items: MovePlan["items"];
-  signal: AbortSignal;
-  move: (item: MovePlan["items"][number]) => Promise<void>;
-  emit: JobEmitter;
-  setJobStatus: StatusUpdater;
-  counts: JobCounts;
-  afterComplete: () => Promise<void>;
-}): Promise<void> => {
+export const runMoveJob = async (options: RunMoveJobOptions): Promise<void> => {
   const { items, signal, move, emit, setJobStatus, counts, afterComplete } = options;
 
   setJobStatus("running", counts, { startedAt: new Date().toISOString() });

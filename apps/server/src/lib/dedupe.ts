@@ -10,11 +10,16 @@ import {
   walk,
 } from "@nas-tools/core";
 
+export type DedupeGroup = {
+  id: string;
+  release: AlbumFolder["release"];
+  winner: AlbumFolder;
+  losers: AlbumFolder[];
+};
+
 type SendFn = (data: unknown) => void;
 
-function buildDedupeOutput(
-  groups: Map<string, AlbumFolder[]>,
-): { id: string; release: AlbumFolder["release"]; winner: AlbumFolder; losers: AlbumFolder[] }[] {
+function buildDedupeOutput(groups: Map<string, AlbumFolder[]>): DedupeGroup[] {
   const duplicates = [];
   for (const [id, group] of groups.entries()) {
     group.sort((a, b) => scoreAlbum(b) - scoreAlbum(a));

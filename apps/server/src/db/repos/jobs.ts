@@ -1,5 +1,7 @@
 import { eq } from "drizzle-orm";
-import type { JobCounts, JobStatus } from "../../lib/job-types.js";
+
+import { Maybe } from "../../lib/maybe.js";
+import type { CreateJobInput, JobCounts, JobStatus, JobStatusExtra } from "../../lib/schemas.js";
 import { jobCountsSchema, jobStatusSchema } from "../../lib/schemas.js";
 import type { Db } from "../client.js";
 import { jobEvents, jobs } from "../schema.js";
@@ -11,25 +13,17 @@ export type ParsedJob = Omit<JobRow, "status" | "counts"> & {
   counts: JobCounts;
 };
 
-export type CreateJobInput = {
-  id: string;
-  type: string;
-  status: JobStatus;
-  planId: string | null;
-  counts: JobCounts;
-  createdAt: string;
-  updatedAt: string;
-};
+export type { CreateJobInput } from "../../lib/schemas.js";
 
 export type JobsRepo = {
   list: () => ParsedJob[];
-  load: (jobId: string) => ParsedJob | undefined;
+  load: (jobId: string) => Maybe<ParsedJob>;
   create: (input: CreateJobInput) => void;
   updateStatus: (
     jobId: string,
     status: JobStatus,
     counts: JobCounts,
-    extra?: Partial<{ startedAt: string; completedAt: string }>,
+    extra?: JobStatusExtra,
   ) => void;
   markRunningInterrupted: (error: unknown) => void;
 };
@@ -46,12 +40,12 @@ export const createJobsRepo = (db: Db): JobsRepo => ({
 
   load(jobId) {
     const row = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
-    if (!row) return undefined;
-    return {
+    if (!row) return Maybe.nothing<ParsedJob>();
+    return Maybe.just({
       ...row,
       status: jobStatusSchema.parse(row.status),
       counts: jobCountsSchema.parse(JSON.parse(row.counts)),
-    };
+    });
   },
 
   create(input) {

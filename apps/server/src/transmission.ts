@@ -33,10 +33,12 @@ export interface ActiveTorrent {
   status: number;
 }
 
+export type TorrentRef = Pick<ActiveTorrent, "id" | "name">;
+
 export interface TorrentDashboard {
   downloading: ActiveTorrent[];
   seeding: number;
-  orphaned: { id: number; name: string }[];
+  orphaned: TorrentRef[];
   total: number;
 }
 
@@ -48,8 +50,15 @@ interface RpcResponse<T> {
 export interface CleanResult {
   totalTorrents: number;
   removed: number;
-  candidates: { id: number; name: string }[];
+  candidates: TorrentRef[];
 }
+
+type TorrentAddEntry = TorrentRef;
+
+type TorrentAddRpcResult = {
+  "torrent-added"?: TorrentAddEntry;
+  "torrent-duplicate"?: TorrentAddEntry;
+};
 
 async function pathExists(p: string): Promise<boolean> {
   return access(p)
@@ -106,10 +115,7 @@ export interface AddResult {
 }
 
 export async function addTorrent(url: string): Promise<AddResult> {
-  const res = await rpc<{
-    "torrent-added"?: { id: number; name: string };
-    "torrent-duplicate"?: { id: number; name: string };
-  }>("torrent-add", { filename: url, paused: false });
+  const res = await rpc<TorrentAddRpcResult>("torrent-add", { filename: url, paused: false });
 
   const added = res.arguments["torrent-added"];
   const dup = res.arguments["torrent-duplicate"];
@@ -149,7 +155,7 @@ export async function getTorrentDashboard(completeDir: string): Promise<TorrentD
   const seeding = torrents.filter((t) => t.status === 6).length;
   const completed = torrents.filter((t) => t.percentDone === 1 || t.isFinished === true);
 
-  const orphaned: { id: number; name: string }[] = [];
+  const orphaned: TorrentRef[] = [];
   for (const torrent of completed) {
     if (torrent.files.length === 0) continue;
     const paths = torrent.files.map((f) => mapPath(torrent.downloadDir, f.name, completeDir));
@@ -167,7 +173,7 @@ export async function cleanCompletedTorrents(completeDir: string): Promise<Clean
     fields: ["id", "name", "percentDone", "isFinished", "downloadDir", "totalSize", "files"],
   });
 
-  const candidates: { id: number; name: string }[] = [];
+  const candidates: TorrentRef[] = [];
 
   for (const torrent of torrents) {
     const done = torrent.percentDone === 1 || torrent.isFinished === true;

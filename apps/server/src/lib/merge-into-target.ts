@@ -1,14 +1,8 @@
 import { readdir, rm } from "node:fs/promises";
 import type { MovePlan } from "@nas-tools/core";
 
+import type { JobEmitter } from "./job-types.js";
 import { smartMerge } from "./smart-merge.js";
-
-type JobEmitter = (
-  type: string,
-  level: "info" | "warning" | "error",
-  message: string,
-  data?: unknown,
-) => void;
 
 export async function mergeIntoExistingTarget(
   item: MovePlan["items"][number],

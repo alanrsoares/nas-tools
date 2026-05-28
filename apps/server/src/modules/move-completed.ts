@@ -27,27 +27,27 @@ export function moveCompletedModule(deps: Deps) {
     })
     .get("/move-completed/plans/:id", ({ repos, params, set }) => {
       const plan = repos.plans.load(params.id);
-      if (!plan) {
+      if (plan.isNothing) {
         set.status = 404;
         return {
           ok: false,
           issues: [{ path: [], code: "NOT_FOUND", message: "Plan not found" }],
         };
       }
-      return { ok: true, plan };
+      return { ok: true, plan: plan.value };
     })
     .post(
       "/move-completed/plans/:id/confirm",
       ({ repos, execution, params, body, set }) => {
         const plan = repos.plans.load(params.id);
-        if (!plan) {
+        if (plan.isNothing) {
           set.status = 404;
           return {
             ok: false,
             issues: [{ path: [], code: "NOT_FOUND", message: "Plan not found" }],
           };
         }
-        if (plan.status !== "draft") {
+        if (plan.value.status !== "draft") {
           set.status = 409;
           return {
             ok: false,
@@ -61,10 +61,11 @@ export function moveCompletedModule(deps: Deps) {
           };
         }
 
+        const loadedPlan = plan.value;
         const editMap = new Map(body.items.map((edit) => [edit.id, edit]));
 
         const issues: FieldIssue[] = [];
-        const mergedItems = plan.items.map((item) => {
+        const mergedItems = loadedPlan.items.map((item) => {
           const edit = editMap.get(item.id);
           const artistName = edit?.artistName ?? item.artistName;
           const included = edit?.included ?? item.included;
@@ -79,7 +80,7 @@ export function moveCompletedModule(deps: Deps) {
 
           const targetPath =
             item.mediaType === "music" && artistName && artistName !== item.artistName
-              ? `${getMusicTargetDirectory(artistName, plan.config.musicDir)}/${item.albumName}`
+              ? `${getMusicTargetDirectory(artistName, loadedPlan.config.musicDir)}/${item.albumName}`
               : item.targetPath;
 
           return { ...item, artistName, included, targetPath };
@@ -92,9 +93,9 @@ export function moveCompletedModule(deps: Deps) {
 
         const now = new Date().toISOString();
         const confirmedPlan: MovePlan = {
-          ...plan,
+          ...loadedPlan,
           status: "confirmed",
-          cueSplitEnabled: body.cueSplitEnabled ?? plan.cueSplitEnabled,
+          cueSplitEnabled: body.cueSplitEnabled ?? loadedPlan.cueSplitEnabled,
           items: mergedItems,
           updatedAt: now,
         };
@@ -106,7 +107,7 @@ export function moveCompletedModule(deps: Deps) {
           id: jobId,
           type: "move_completed",
           status: "queued",
-          planId: plan.id,
+          planId: loadedPlan.id,
           counts: { total: 0, completed: 0, failed: 0, skipped: 0 },
           createdAt: now,
           updatedAt: now,

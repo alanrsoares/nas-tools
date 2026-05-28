@@ -1,18 +1,8 @@
 import type { CuePair } from "../cue.js";
 import { cancelJobIfAborted, finalizeJob } from "./job-lifecycle.js";
-import type { JobCounts } from "./job-types.js";
+import type { CuePairOutcome, JobCounts, JobEmitter, JobStatusUpdater } from "./job-types.js";
 
-type JobEventLevel = "info" | "warning" | "error";
-type JobEmitter = (type: string, level: JobEventLevel, message: string, data?: unknown) => void;
-type StatusUpdater = (
-  status: import("./job-types.js").JobStatus,
-  counts: JobCounts,
-  extra?: Partial<{ startedAt: string; completedAt: string }>,
-) => void;
-
-type CuePairOutcome = "completed" | "failed";
-
-export const runCueJob = async (options: {
+export type RunCueJobOptions = {
   pairs: CuePair[];
   signal: AbortSignal;
   bashFunctionsPath: string;
@@ -22,9 +12,11 @@ export const runCueJob = async (options: {
     emit: JobEmitter,
   ) => Promise<CuePairOutcome>;
   emit: JobEmitter;
-  setJobStatus: StatusUpdater;
+  setJobStatus: JobStatusUpdater;
   counts: JobCounts;
-}): Promise<void> => {
+};
+
+export const runCueJob = async (options: RunCueJobOptions): Promise<void> => {
   const { pairs, signal, bashFunctionsPath, processPair, emit, setJobStatus, counts } = options;
 
   setJobStatus("running", counts, { startedAt: new Date().toISOString() });
