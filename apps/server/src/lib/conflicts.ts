@@ -1,6 +1,5 @@
 import { access } from "node:fs/promises";
-import { getJobEvents } from "../execution.js";
-import { loadPlan } from "./plans.js";
+import type { Deps } from "../types/deps.js";
 import { parseEventItemId } from "./schemas.js";
 
 export type ConflictEntry = {
@@ -12,12 +11,12 @@ export type ConflictEntry = {
 
 const RESOLVED_EVENT_TYPES = new Set(["conflict_skipped", "merge_replaced", "merge_kept"]);
 
-type JobEvent = ReturnType<typeof getJobEvents>[number];
+type JobEvent = ReturnType<Deps["execution"]["getJobEvents"]>[number];
 
 async function resolveConflictEntry(
   e: JobEvent,
   resolvedItemIds: Set<string>,
-  plan: ReturnType<typeof loadPlan>,
+  plan: ReturnType<Deps["repos"]["plans"]["load"]>,
 ): Promise<ConflictEntry | null> {
   if (e.type !== "item_failed") return null;
   const match = e.message.match(/Merge conflict — files already exist in target: (.+)$/);
@@ -40,17 +39,18 @@ async function resolveConflictEntry(
 }
 
 export async function buildConflictsList(
+  deps: Deps,
   jobId: string,
   planId: string | undefined | null,
 ): Promise<ConflictEntry[]> {
-  const events = getJobEvents(jobId);
+  const events = deps.execution.getJobEvents(jobId);
   const resolvedItemIds = new Set(
     events
       .filter((e) => RESOLVED_EVENT_TYPES.has(e.type))
       .map((e) => parseEventItemId(e.data))
       .filter((id): id is string => id !== undefined),
   );
-  const plan = planId ? loadPlan(planId) : undefined;
+  const plan = planId ? deps.repos.plans.load(planId) : undefined;
   const entries = await Promise.all(
     events.map((e) => resolveConflictEntry(e, resolvedItemIds, plan)),
   );

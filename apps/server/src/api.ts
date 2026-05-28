@@ -1,25 +1,32 @@
 import { Elysia } from "elysia";
-import { configRoutes } from "./routes/config.js";
-import { cueRoutes } from "./routes/cue.js";
-import { dashboardRoutes } from "./routes/dashboard.js";
-import { healthRoutes } from "./routes/health.js";
-import { jobRoutes } from "./routes/jobs.js";
-import { moveCompletedRoutes } from "./routes/move-completed.js";
-import { musicDedupeRoutes } from "./routes/music-dedupe.js";
-import { plexRoutes } from "./routes/plex.js";
-import { searchRoutes } from "./routes/search.js";
-import { transmissionRoutes } from "./routes/transmission.js";
 
-export const api = new Elysia({ prefix: "/api" })
-  .use(healthRoutes)
-  .use(dashboardRoutes)
-  .use(configRoutes)
-  .use(moveCompletedRoutes)
-  .use(musicDedupeRoutes)
-  .use(cueRoutes)
-  .use(jobRoutes)
-  .use(transmissionRoutes)
-  .use(plexRoutes)
-  .use(searchRoutes);
+import { configModule } from "./modules/config.js";
+import { cueModule } from "./modules/cue.js";
+import { dashboardModule } from "./modules/dashboard.js";
+import { healthModule } from "./modules/health.js";
+import { jobsModule } from "./modules/jobs.js";
+import { moveCompletedModule } from "./modules/move-completed.js";
+import { musicDedupeModule } from "./modules/music-dedupe.js";
+import { plexModule } from "./modules/plex.js";
+import { searchModule } from "./modules/search.js";
+import { transmissionModule } from "./modules/transmission.js";
+import type { Deps } from "./types/deps.js";
 
-export type App = typeof api;
+/**
+ * API router. Each module is a subrouter with {@link depsPlugin} on the same chain
+ * so handlers get typed `config`, `repos`, and `execution` from context.
+ */
+export const createApi = (deps: Deps) =>
+  new Elysia({ prefix: "/api" })
+    .use(healthModule(deps))
+    .use(dashboardModule(deps))
+    .use(configModule(deps))
+    .use(moveCompletedModule(deps))
+    .use(musicDedupeModule(deps))
+    .use(cueModule(deps))
+    .use(jobsModule(deps))
+    .use(transmissionModule(deps))
+    .use(plexModule(deps))
+    .use(searchModule(deps));
+
+export type App = ReturnType<typeof createApi>;

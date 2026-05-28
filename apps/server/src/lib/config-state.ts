@@ -1,11 +1,16 @@
 import { defaultNasPathConfig, type NasPathConfig } from "@nas-tools/core";
 
-let config: NasPathConfig = defaultNasPathConfig;
+export type ConfigState = {
+  get: () => NasPathConfig;
+  set: (config: NasPathConfig) => void;
+};
 
-export function getNasConfig(): NasPathConfig {
-  return config;
-}
-
-export function setNasConfig(next: NasPathConfig): void {
-  config = next;
-}
+export const createConfigState = (initial = defaultNasPathConfig): ConfigState => {
+  let config: NasPathConfig = initial;
+  return {
+    get: () => config,
+    set: (next) => {
+      config = next;
+    },
+  };
+};

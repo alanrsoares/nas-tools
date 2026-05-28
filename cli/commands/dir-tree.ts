@@ -115,6 +115,13 @@ const filterEntry =
     return true;
   };
 
+const sortEntries = (entries: Dirent[]): Dirent[] =>
+  [...entries].sort((a, b) => {
+    const dirOrder = Number(b.isDirectory()) - Number(a.isDirectory());
+    if (dirOrder !== 0) return dirOrder;
+    return a.name.localeCompare(b.name);
+  });
+
 async function buildEntryLines(
   entries: Dirent[],
   dirPath: string,
@@ -122,7 +129,7 @@ async function buildEntryLines(
   depth: number,
   options: CommandOptions,
 ): Promise<string[]> {
-  const filtered = entries.filter(filterEntry(options));
+  const filtered = sortEntries(entries.filter(filterEntry(options)));
   const lines: string[] = [];
   for (const [i, entry] of filtered.entries()) {
     const isLast = i === filtered.length - 1;

@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Command } from "commander";
 import { env } from "../../apps/server/src/env.js";
-import { app } from "../../apps/server/src/index.js";
 
 export default function cockpitCommand(program: Command) {
   program
@@ -20,7 +19,8 @@ export default function cockpitCommand(program: Command) {
         console.warn("Run 'bun run build' to compile the frontend.");
       }
 
-      app.listen({ hostname: host, port });
+      const { getApp } = await import("../../apps/server/src/index.js");
+      getApp().listen({ hostname: host, port });
       console.log(`NAS Tools Cockpit listening on http://${host}:${port}`);
     });
 }

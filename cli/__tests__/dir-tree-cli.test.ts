@@ -79,9 +79,9 @@ describe("dir-tree CLI integration", () => {
     // Verify the output matches expected structure
     expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
       "📁 <test-dir-tree>
-      ├──  folder2
-      │   └──  subfolder
-      └──  folder1
+      ├──  folder1
+      └──  folder2
+          └──  subfolder
       "
     `);
   });
@@ -95,12 +95,12 @@ describe("dir-tree CLI integration", () => {
     // Verify the output contains files
     expect(normalizeTestDir(result1.text())).toMatchInlineSnapshot(`
       "📁 <test-dir-tree>
+      ├── 📁 folder1
+      │   └── 📄 file3.txt
       ├── 📁 folder2
       │   ├── 📁 subfolder
       │   │   └── 📄 file5.txt
       │   └── 📄 file4.txt
-      ├── 📁 folder1
-      │   └── 📄 file3.txt
       ├── 📄 file1.txt
       └── 📄 file2.txt
       "
@@ -121,10 +121,10 @@ describe("dir-tree CLI integration", () => {
     // Verify the output contains hidden files
     expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
       "📁 <test-dir-tree>
-      ├──  folder2
-      │   └──  subfolder
+      ├──  .hidden
       ├──  folder1
-      └──  .hidden
+      └──  folder2
+          └──  subfolder
       "
     `);
   });
@@ -139,8 +139,8 @@ describe("dir-tree CLI integration", () => {
     // Verify the output matches expected structure (subfolders of folder2 hidden)
     expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
       "📁 <test-dir-tree>
-      ├──  folder2
-      └──  folder1
+      ├──  folder1
+      └──  folder2
       "
     `);
   });
