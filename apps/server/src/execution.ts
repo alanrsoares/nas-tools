@@ -1,6 +1,6 @@
-import { cp, mkdir, rename } from "node:fs/promises";
+import { cp, mkdir, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import type { MovePlan } from "@nas-tools/core";
+import { getAudioQualityScore, isAudioFile, type MovePlan } from "@nas-tools/core";
 import { and, eq, gt } from "drizzle-orm";
 
 import { type CuePair, findCuePairs, getBashFunctionsPath, splitCuePair } from "./cue.js";
@@ -43,6 +43,30 @@ export function cancelJob(jobId: string): boolean {
   if (!controller) return false;
   controller.abort();
   return true;
+}
+
+export async function resolveConflictItem(
+  jobId: string,
+  item: MovePlan["items"][number],
+  plan: MovePlan,
+  resolution: "skip" | "overwrite",
+): Promise<void> {
+  const emit = makeEmitter(jobId);
+  if (resolution === "skip") {
+    emit("conflict_skipped", "warning", `Conflict skipped: ${item.albumName}`, { itemId: item.id });
+    return;
+  }
+  emit("item_started", "info", `Retrying (force merge): ${item.albumName}`, { itemId: item.id });
+  try {
+    await moveItem(item, plan, emit, true);
+    emit("item_completed", "info", `Done: ${item.albumName} → ${item.targetPath}`, {
+      itemId: item.id,
+    });
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    emit("item_failed", "error", `Failed: ${item.albumName} — ${message}`, { itemId: item.id });
+    throw cause;
+  }
 }
 
 export function executeJob(jobId: string, plan: MovePlan): void {
@@ -94,10 +118,60 @@ function makeJobStatusUpdater(jobId: string) {
   };
 }
 
+async function smartMerge(
+  srcDir: string,
+  destDir: string,
+): Promise<{ kept: string[]; replaced: string[] }> {
+  const kept: string[] = [];
+  const replaced: string[] = [];
+
+  const [srcEntries, destEntries] = await Promise.all([
+    readdir(srcDir, { withFileTypes: true }),
+    readdir(destDir, { withFileTypes: true }),
+  ]);
+  const destNames = new Set(destEntries.map((e) => e.name));
+
+  for (const entry of srcEntries) {
+    const srcPath = path.join(srcDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+
+    if (!destNames.has(entry.name)) {
+      // No conflict — just copy
+      await cp(srcPath, destPath, { recursive: true });
+      continue;
+    }
+
+    if (entry.isDirectory()) {
+      // Recurse into sub-directories
+      const sub = await smartMerge(srcPath, destPath);
+      kept.push(...sub.kept);
+      replaced.push(...sub.replaced);
+      continue;
+    }
+
+    if (isAudioFile(entry.name)) {
+      const [srcScore, destScore] = await Promise.all([
+        getAudioQualityScore(srcPath),
+        getAudioQualityScore(destPath),
+      ]);
+      if (srcScore > destScore) {
+        await cp(srcPath, destPath);
+        replaced.push(entry.name);
+      } else {
+        kept.push(entry.name);
+      }
+    }
+    // Non-audio conflicting files (cover art, etc.) — keep existing target
+  }
+
+  return { kept, replaced };
+}
+
 async function moveItem(
   item: MovePlan["items"][number],
   plan: MovePlan,
   emit: JobEmitter,
+  force = false,
 ): Promise<void> {
   const backupDest = path.join(plan.config.backupDir, item.albumName);
   emit("backup_started", "info", `Backing up: ${item.albumName}`, { itemId: item.id });
@@ -108,7 +182,35 @@ async function moveItem(
   });
   await mkdir(path.dirname(item.targetPath), { recursive: true });
   emit("move_started", "info", `Moving: ${item.albumName}`, { itemId: item.id });
-  await rename(item.sourcePath, item.targetPath);
+  try {
+    await rename(item.sourcePath, item.targetPath);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== "ENOTEMPTY") throw cause;
+    // Target dir exists — check for conflicts before merging
+    const [srcFiles, destFiles] = await Promise.all([
+      readdir(item.sourcePath),
+      readdir(item.targetPath),
+    ]);
+    const destSet = new Set(destFiles);
+    const conflicts = srcFiles.filter((f) => destSet.has(f));
+    if (conflicts.length > 0 && !force) {
+      throw new Error(`Merge conflict — files already exist in target: ${conflicts.join(", ")}`);
+    }
+    emit("move_merge", "warning", `Target exists, merging: ${item.albumName}`, { itemId: item.id });
+    const { kept, replaced } = await smartMerge(item.sourcePath, item.targetPath);
+    if (kept.length > 0)
+      emit("merge_kept", "info", `Kept higher-quality existing: ${kept.join(", ")}`, {
+        itemId: item.id,
+      });
+    if (replaced.length > 0)
+      emit(
+        "merge_replaced",
+        "info",
+        `Replaced with higher-quality source: ${replaced.join(", ")}`,
+        { itemId: item.id },
+      );
+    await rm(item.sourcePath, { recursive: true, force: true });
+  }
   emit("move_completed", "info", `Move complete: ${item.albumName}`, {
     itemId: item.id,
     targetPath: item.targetPath,

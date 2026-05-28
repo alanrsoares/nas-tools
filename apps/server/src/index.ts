@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename } from "node:fs/promises";
+import { access, mkdir, readdir, rename } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { cors } from "@elysiajs/cors";
 import {
@@ -31,6 +31,7 @@ import {
   executeJob,
   getJobEvents,
   isTerminalStatus,
+  resolveConflictItem,
 } from "./execution.js";
 import { listPlexSections, scanAllPlexLibraries, scanPlexSection } from "./plex.js";
 import { prowlarrSearch } from "./prowlarr.js";
@@ -48,6 +49,16 @@ const jobCountsSchema = z.object({
   failed: z.number(),
   skipped: z.number(),
 });
+
+const jobEventDataSchema = z.object({ itemId: z.string().optional() });
+
+function parseEventItemId(data: string | null | undefined): string | undefined {
+  try {
+    return jobEventDataSchema.parse(JSON.parse(data ?? "{}")).itemId;
+  } catch {
+    return undefined;
+  }
+}
 
 const jobStatusSchema = z.enum([
   "queued",
@@ -146,6 +157,60 @@ function loadJob(jobId: string) {
     status: jobStatusSchema.parse(row.status),
     counts: jobCountsSchema.parse(JSON.parse(row.counts)),
   };
+}
+
+type ConflictEntry = {
+  itemId: string;
+  albumName: string;
+  conflictingFiles: string[];
+  sourcePath: string;
+};
+
+const RESOLVED_EVENT_TYPES = new Set(["conflict_skipped", "merge_replaced", "merge_kept"]);
+
+type JobEvent = ReturnType<typeof getJobEvents>[number];
+
+async function resolveConflictEntry(
+  e: JobEvent,
+  resolvedItemIds: Set<string>,
+  plan: ReturnType<typeof loadPlan>,
+): Promise<ConflictEntry | null> {
+  if (e.type !== "item_failed") return null;
+  const match = e.message.match(/Merge conflict — files already exist in target: (.+)$/);
+  if (!match) return null;
+  const itemId = parseEventItemId(e.data);
+  if (!itemId || resolvedItemIds.has(itemId)) return null;
+  const item = plan?.items.find((i) => i.id === itemId);
+  if (!item) return null;
+  const sourceExists = await access(item.sourcePath)
+    .then(() => true)
+    .catch(() => false);
+  if (!sourceExists) return null;
+  const albumName = e.message.replace(/^Failed: /, "").replace(/ — Merge conflict.*$/, "");
+  return {
+    itemId,
+    albumName,
+    conflictingFiles: (match[1] ?? "").split(", ").filter(Boolean),
+    sourcePath: item.sourcePath,
+  };
+}
+
+async function buildConflictsList(
+  jobId: string,
+  planId: string | undefined | null,
+): Promise<ConflictEntry[]> {
+  const events = getJobEvents(jobId);
+  const resolvedItemIds = new Set(
+    events
+      .filter((e) => RESOLVED_EVENT_TYPES.has(e.type))
+      .map((e) => parseEventItemId(e.data))
+      .filter((id): id is string => id !== undefined),
+  );
+  const plan = planId ? loadPlan(planId) : undefined;
+  const entries = await Promise.all(
+    events.map((e) => resolveConflictEntry(e, resolvedItemIds, plan)),
+  );
+  return entries.filter((c): c is ConflictEntry => c !== null);
 }
 
 type SendFn = (data: unknown) => void;
@@ -639,6 +704,47 @@ export const api = new Elysia({ prefix: "/api" })
     }
     cancelJob(params.id);
     return { ok: true };
+  })
+
+  .get("/jobs/:id/conflicts", async ({ params, set }) => {
+    const job = loadJob(params.id);
+    if (!job) {
+      set.status = 404;
+      return { ok: false, issues: [{ path: [], code: "NOT_FOUND", message: "Job not found" }] };
+    }
+    const conflicts = await buildConflictsList(params.id, job.planId);
+    return { ok: true, conflicts };
+  })
+
+  .post("/jobs/:id/resolve-conflict", async ({ params, body, set }) => {
+    const job = loadJob(params.id);
+    if (!job) {
+      set.status = 404;
+      return { ok: false, issues: [{ path: [], code: "NOT_FOUND", message: "Job not found" }] };
+    }
+    if (!job.planId) {
+      set.status = 400;
+      return { ok: false, issues: [{ path: [], code: "NO_PLAN", message: "Job has no plan" }] };
+    }
+    const { itemId, resolution } = body as { itemId: string; resolution: "skip" | "overwrite" };
+    const plan = loadPlan(job.planId);
+    if (!plan) {
+      set.status = 404;
+      return { ok: false, issues: [{ path: [], code: "NOT_FOUND", message: "Plan not found" }] };
+    }
+    const item = plan.items.find((i) => i.id === itemId);
+    if (!item) {
+      set.status = 404;
+      return { ok: false, issues: [{ path: [], code: "NOT_FOUND", message: "Item not found" }] };
+    }
+    try {
+      await resolveConflictItem(job.id, item, plan, resolution);
+      return { ok: true };
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      set.status = 500;
+      return { ok: false, issues: [{ path: [], code: "RESOLVE_FAILED", message }] };
+    }
   })
 
   // ── Transmission ─────────────────────────────────────────────

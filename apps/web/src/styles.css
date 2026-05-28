@@ -600,6 +600,24 @@ h1 {
   color: oklch(0.78 0.13 60);
 }
 
+/* ── Conflict resolution ───────────────────────────── */
+
+.conflict-card {
+  @apply rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30;
+}
+
+.conflict-album {
+  @apply font-medium text-foreground mb-1 truncate;
+}
+
+.conflict-files {
+  @apply flex flex-wrap gap-1;
+}
+
+.conflict-file-tag {
+  @apply rounded bg-amber-100 px-1.5 py-0.5 font-mono text-xs text-amber-800 dark:bg-amber-900/50 dark:text-amber-300;
+}
+
 /* ── Plex scan popover ─────────────────────────────── */
 
 .plex-scan-popover {

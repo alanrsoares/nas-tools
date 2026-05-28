@@ -803,3 +803,21 @@ export function createMovePlanDraft(
       } satisfies MovePlan;
     });
 }
+
+const AUDIO_EXTS = new Set(musicExtensions as readonly string[]);
+
+export function isAudioFile(filePath: string): boolean {
+  return AUDIO_EXTS.has(path.extname(filePath).toLowerCase());
+}
+
+export async function getAudioQualityScore(filePath: string): Promise<number> {
+  try {
+    const meta = await parseFile(filePath, { duration: false });
+    const bits = meta.format.bitsPerSample ?? 0;
+    const rate = meta.format.sampleRate ?? 0;
+    const { size } = await stat(filePath);
+    return bits * 1_000_000 + rate * 10 + size / 1_000_000;
+  } catch {
+    return 0;
+  }
+}

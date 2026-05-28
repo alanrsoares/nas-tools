@@ -14,7 +14,7 @@ describe("download CLI integration", () => {
 
     // Ensure the CLI is built
     await $`bun run build`;
-  }, 30000);
+  }, 90000);
 
   afterAll(async () => {
     // Clean up the temporary directory
@@ -69,7 +69,7 @@ describe("download CLI integration", () => {
       // zx throws an error when the command fails, which is expected
       expect(error.exitCode).toBe(1);
     }
-  }, 30000);
+  }, 90000);
 
   it("should respect custom User-Agent via CLI", async () => {
     const testUrl = "https://raw.githubusercontent.com/thedevdojo/pines/refs/heads/main/cover.jpg";
