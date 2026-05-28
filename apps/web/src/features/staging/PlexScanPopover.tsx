@@ -16,6 +16,26 @@ type PlexSectionRowProps = {
   onScan: (key: string) => void;
 };
 
+type PlexScanPopoverProps = {
+  renderTrigger?: (state: { anyPending: boolean }) => React.ReactNode;
+};
+
+type PlexScanTriggerProps = {
+  renderTrigger: PlexScanPopoverProps["renderTrigger"];
+  anyPending: boolean;
+  open: boolean;
+};
+
+type PlexScanListProps = {
+  isLoading: boolean;
+  sections: PlexSection[];
+  scanned: Set<string>;
+  anyPending: boolean;
+  scanAllPending: boolean;
+  scanningKey: string | undefined;
+  onScan: (key: string) => void;
+};
+
 export function PlexSectionRow({
   section,
   scanning,
@@ -46,7 +66,69 @@ export function PlexSectionRow({
   );
 }
 
-export function PlexScanPopover() {
+function PlexScanTrigger({ renderTrigger, anyPending, open }: PlexScanTriggerProps) {
+  if (renderTrigger) {
+    return <PopoverTrigger asChild>{renderTrigger({ anyPending })}</PopoverTrigger>;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <PopoverTrigger asChild>
+          <Button size="sm" variant="ghost" disabled={anyPending && !open}>
+            {anyPending ? <Loader2 size={15} className="animate-spin" /> : <Radio size={15} />}
+            <span>{anyPending ? "Scanning…" : "Plex scan"}</span>
+          </Button>
+        </PopoverTrigger>
+      </TooltipTrigger>
+      <TooltipContent>Trigger a Plex library refresh</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function PlexScanList({
+  isLoading,
+  sections,
+  scanned,
+  anyPending,
+  scanAllPending,
+  scanningKey,
+  onScan,
+}: PlexScanListProps) {
+  if (isLoading) {
+    return (
+      <div className="plex-scan-loading">
+        <Loader2 size={14} className="animate-spin" />
+        <span>Loading libraries…</span>
+      </div>
+    );
+  }
+
+  if (sections.length === 0) {
+    return (
+      <div className="plex-scan-loading">
+        <span>No libraries found</span>
+      </div>
+    );
+  }
+
+  return sections.map((section) => {
+    const done = scanned.has(section.key);
+    const scanning = (scanningKey === section.key && anyPending) || (scanAllPending && !done);
+    return (
+      <PlexSectionRow
+        key={section.key}
+        section={section}
+        scanning={scanning}
+        done={done}
+        anyPending={anyPending}
+        onScan={onScan}
+      />
+    );
+  });
+}
+
+export function PlexScanPopover({ renderTrigger }: PlexScanPopoverProps) {
   const [open, setOpen] = React.useState(false);
   const [scanned, setScanned] = React.useState<Set<string>>(new Set());
 
@@ -78,17 +160,7 @@ export function PlexScanPopover() {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button size="sm" variant="ghost" disabled={anyPending && !open}>
-              {anyPending ? <Loader2 size={15} className="animate-spin" /> : <Radio size={15} />}
-              <span>{anyPending ? "Scanning…" : "Plex scan"}</span>
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Trigger a Plex library refresh</TooltipContent>
-      </Tooltip>
+      <PlexScanTrigger renderTrigger={renderTrigger} anyPending={anyPending} open={open} />
       <PopoverContent align="end" className="w-64 p-0">
         <div className="plex-scan-popover">
           <div className="plex-scan-header">
@@ -109,33 +181,15 @@ export function PlexScanPopover() {
             </Button>
           </div>
           <div className="plex-scan-list">
-            {sectionsQuery.isLoading ? (
-              <div className="plex-scan-loading">
-                <Loader2 size={14} className="animate-spin" />
-                <span>Loading libraries…</span>
-              </div>
-            ) : sections.length === 0 ? (
-              <div className="plex-scan-loading">
-                <span>No libraries found</span>
-              </div>
-            ) : (
-              sections.map((section) => {
-                const done = scanned.has(section.key);
-                const scanning =
-                  (scanOne.isPending && scanOne.variables === section.key) ||
-                  (scanAll.isPending && !done);
-                return (
-                  <PlexSectionRow
-                    key={section.key}
-                    section={section}
-                    scanning={scanning}
-                    done={done}
-                    anyPending={anyPending}
-                    onScan={(key) => scanOne.mutate(key)}
-                  />
-                );
-              })
-            )}
+            <PlexScanList
+              isLoading={sectionsQuery.isLoading}
+              sections={sections}
+              scanned={scanned}
+              anyPending={anyPending}
+              scanAllPending={scanAll.isPending}
+              scanningKey={scanOne.variables}
+              onScan={(key) => scanOne.mutate(key)}
+            />
           </div>
         </div>
       </PopoverContent>

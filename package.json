@@ -13,7 +13,7 @@
     "nas-tools": "./cli/index.ts"
   },
   "scripts": {
-    "build": "tsc && bun run --filter @nas-tools/core build && bun run --filter @nas-tools/server build && bun run --filter @nas-tools/web build",
+    "build": "tsc && bun run --filter @nas-tools/web build",
     "dev": "bun scripts/dev.ts",
     "dev:cli": "bun run cli",
     "dev:server": "bun run --filter @nas-tools/server start",

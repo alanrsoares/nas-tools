@@ -29,7 +29,6 @@ import { api, queryClient } from "../../api";
 import { IssueList, SummaryCell } from "../../components/IssueList";
 import type { StagingPreviewItem } from "../../types";
 import { mediaLabel, summarizePlan, updatePlanItem } from "../../utils";
-import { PlexScanPopover } from "./PlexScanPopover";
 
 type TransmissionStatus = {
   downloading: unknown[];
@@ -235,7 +234,6 @@ function StagingActions({
       {showClean ? (
         <StagingCleanButton cleanTorrents={cleanTorrents} orphanedCount={orphanedCount} />
       ) : null}
-      <PlexScanPopover />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

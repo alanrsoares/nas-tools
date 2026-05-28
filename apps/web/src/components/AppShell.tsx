@@ -10,8 +10,8 @@ import {
   Scissors,
   Settings as SettingsIcon,
 } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "../api";
+import { PlexScanPopover } from "../features/staging/PlexScanPopover";
 import type { NavItem, Section } from "../types";
 
 export const navItems: NavItem[] = [
@@ -73,15 +73,23 @@ export function ServerStatus() {
 
   const connected = query.data?.data?.ok;
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={connected ? "status ok" : "status"}>
-          <Activity size={14} />
-          Server
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{connected ? "Connected" : "Offline or unreachable"}</TooltipContent>
-    </Tooltip>
+    <PlexScanPopover
+      renderTrigger={({ anyPending }) => (
+        <button
+          type="button"
+          className={connected ? "server-pulse-badge ok" : "server-pulse-badge"}
+          disabled={anyPending}
+          title={`${connected ? "Connected" : "Offline or unreachable"}. Trigger a Plex library refresh.`}
+        >
+          <span className="server-pulse-status">
+            <Activity size={14} />
+            Server
+          </span>
+          <span className="server-pulse-divider" aria-hidden="true" />
+          <span className="server-pulse-action">{anyPending ? "Scanning…" : "Plex scan"}</span>
+        </button>
+      )}
+    />
   );
 }
 

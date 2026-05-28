@@ -199,28 +199,49 @@ h1 {
   line-height: 1.45;
 }
 
-/* ── Server status ─────────────────────────────────── */
+/* ── Server pulse badge ────────────────────────────── */
 
-.status {
-  @apply border border-border rounded-full bg-muted text-muted-foreground inline-flex items-center gap-1.5 whitespace-nowrap font-medium;
+.server-pulse-badge {
+  @apply border border-border rounded-full bg-muted text-muted-foreground inline-flex items-center gap-1.5 whitespace-nowrap font-medium cursor-pointer;
+  min-height: 28px;
   padding: 4px 10px;
   font-size: 12px;
   letter-spacing: 0.01em;
 }
 
-.status svg {
-  opacity: 0.7;
+.server-pulse-badge:hover {
+  @apply bg-accent text-foreground;
 }
 
-.status.ok {
+.server-pulse-badge:disabled {
+  @apply cursor-default opacity-80;
+}
+
+.server-pulse-badge.ok {
   border-color: oklch(0.42 0.09 155);
   color: oklch(0.74 0.13 155);
   background: oklch(0.21 0.05 155);
 }
 
-.status.ok svg {
+.server-pulse-status,
+.server-pulse-action {
+  @apply inline-flex items-center gap-1.5;
+}
+
+.server-pulse-status svg {
+  opacity: 0.7;
+}
+
+.server-pulse-badge.ok .server-pulse-status svg {
   opacity: 1;
   animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.server-pulse-divider {
+  width: 1px;
+  height: 16px;
+  background: currentColor;
+  opacity: 0.28;
 }
 
 /* ── Overview ──────────────────────────────────────── */
