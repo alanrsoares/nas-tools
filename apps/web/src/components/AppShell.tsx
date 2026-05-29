@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet } from "@tanstack/react-router";
+import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import {
   Activity,
   Copy,
@@ -7,6 +7,7 @@ import {
   FolderCog,
   LayoutDashboard,
   ListChecks,
+  Music2,
   Scissors,
   Settings as SettingsIcon,
 } from "lucide-react";
@@ -21,6 +22,7 @@ export const navItems: NavItem[] = [
   { id: "cue", label: "CUE Split", icon: Scissors },
   { id: "jobs", label: "Jobs", icon: ListChecks },
   { id: "downloads", label: "Downloads", icon: Download },
+  { id: "player", label: "Player", icon: Music2 },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -31,6 +33,7 @@ export const sectionLabel: Record<Section, string> = {
   cue: "CUE Split",
   jobs: "Jobs",
   downloads: "Downloads",
+  player: "Player",
   settings: "Settings",
 };
 
@@ -42,6 +45,7 @@ export const sectionDescription: Record<Section, string> = {
   cue: "Audit unsplit CUE/audio pairs and run split jobs with live progress.",
   jobs: "Track active and past move operations. Select a job to see its progress and event log.",
   downloads: "Search Prowlarr indexers for lossless audio and add directly to Transmission.",
+  player: "Browse and play FLAC files directly via ALSA — bit-perfect output to USB DAC.",
   settings: "NAS library paths used when organizing media. Edit via server environment variables.",
 };
 
@@ -94,7 +98,7 @@ export function ServerStatus() {
 }
 
 export function AppShell() {
-  const { pathname } = window.location;
+  const { pathname } = useLocation();
 
   const currentSection = (pathname === "/" ? "overview" : pathname.slice(1)) as Section;
 

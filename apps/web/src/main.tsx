@@ -10,6 +10,7 @@ import { Dedupe } from "./features/dedupe/Dedupe";
 import { Downloads } from "./features/downloads/Downloads";
 import { Jobs } from "./features/jobs/Jobs";
 import { Overview } from "./features/overview/Overview";
+import { Player } from "./features/player/Player";
 import { Settings } from "./features/settings/Settings";
 import { Staging } from "./features/staging/Staging";
 
@@ -62,6 +63,12 @@ const downloadsRoute = createRoute({
   component: () => <Downloads />,
 });
 
+const playerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/player",
+  component: () => <Player />,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -75,6 +82,7 @@ const routeTree = rootRoute.addChildren([
   cueRoute,
   jobsRoute,
   downloadsRoute,
+  playerRoute,
   settingsRoute,
 ]);
 

@@ -1,6 +1,14 @@
 import type React from "react";
 
-export type Section = "overview" | "staging" | "dedupe" | "cue" | "jobs" | "downloads" | "settings";
+export type Section =
+  | "overview"
+  | "staging"
+  | "dedupe"
+  | "cue"
+  | "jobs"
+  | "downloads"
+  | "settings"
+  | "player";
 
 export type JobStatus =
   | "queued"
@@ -74,4 +82,30 @@ export type ActiveDownload = {
 export type OrphanedTorrent = {
   id: number;
   name: string;
+};
+
+export type PlayerStatus = "idle" | "playing" | "paused";
+
+export type PlayerState = {
+  status: PlayerStatus;
+  currentTrack: string | null;
+  device: string;
+  positionMs: number;
+  durationMs: number | null;
+  sampleRate: number | null;
+  bitDepth: number | null;
+  channels: number | null;
+};
+
+export type AudioFileType = "flac" | "alac" | "dsd";
+
+export type BrowseEntry = {
+  name: string;
+  path: string;
+  type: "dir" | AudioFileType;
+};
+
+export type BrowseResult = {
+  path: string;
+  entries: BrowseEntry[];
 };

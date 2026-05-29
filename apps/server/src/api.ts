@@ -7,6 +7,7 @@ import { healthModule } from "./modules/health.js";
 import { jobsModule } from "./modules/jobs.js";
 import { moveCompletedModule } from "./modules/move-completed.js";
 import { musicDedupeModule } from "./modules/music-dedupe.js";
+import { playerModule } from "./modules/player.js";
 import { plexModule } from "./modules/plex.js";
 import { searchModule } from "./modules/search.js";
 import { transmissionModule } from "./modules/transmission.js";
@@ -27,6 +28,7 @@ export const createApi = (deps: Deps) =>
     .use(jobsModule(deps))
     .use(transmissionModule(deps))
     .use(plexModule(deps))
-    .use(searchModule(deps));
+    .use(searchModule(deps))
+    .use(playerModule(deps));
 
 export type App = ReturnType<typeof createApi>;

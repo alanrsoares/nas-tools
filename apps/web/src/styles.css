@@ -695,6 +695,58 @@ h1 {
   padding: 10px 12px;
 }
 
+/* ── Player ────────────────────────────────────────── */
+
+.player-now-playing {
+  position: relative;
+}
+
+.player-now-playing[data-state="playing"],
+.player-now-playing[data-state="paused"] {
+  background: linear-gradient(
+    160deg,
+    var(--card),
+    oklch(from var(--primary) calc(l - 0.26) calc(c * 0.35) h / 0.42)
+  );
+  border-top-color: var(--primary);
+}
+
+.player-now-playing-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 0%,
+    oklch(from var(--primary) l c h / 0.12),
+    transparent 70%
+  );
+  animation: player-warm-breathe 3s ease-in-out infinite;
+}
+
+@keyframes player-warm-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes player-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.player-progress-dot {
+  animation: player-dot-pulse 1.8s ease-in-out infinite;
+}
+
 /* ── Responsive ────────────────────────────────────── */
 
 @media (max-width: 760px) {

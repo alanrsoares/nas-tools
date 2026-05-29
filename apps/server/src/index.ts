@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import type { Deps } from "./deps.js";
 import { closeDeps, createDeps } from "./deps.js";
 import { env } from "./env.js";
+import { logger } from "./logger.js";
 
 export type { CreateDepsOptions, Deps } from "./deps.js";
 export type { ApiApp as App };
@@ -39,13 +40,13 @@ if (import.meta.main) {
   };
 
   process.on("uncaughtException", (error) => {
-    console.error("[nas-tools] uncaughtException:", error);
+    logger.fatal({ err: error }, "uncaughtException");
     activeDeps.repos.jobs.markRunningInterrupted(error);
     shutdown();
   });
 
   process.on("unhandledRejection", (reason) => {
-    console.error("[nas-tools] unhandledRejection:", reason);
+    logger.fatal({ reason }, "unhandledRejection");
     activeDeps.repos.jobs.markRunningInterrupted(reason);
     shutdown();
   });
@@ -54,5 +55,5 @@ if (import.meta.main) {
   process.on("SIGINT", shutdown);
 
   activeApp.listen({ hostname: host, port });
-  console.log(`NAS Tools server listening on http://${host}:${port}`);
+  logger.info({ host, port }, "NAS Tools server listening");
 }

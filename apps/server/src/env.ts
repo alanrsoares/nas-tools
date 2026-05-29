@@ -14,6 +14,8 @@ const envSchema = z.object({
   TRANSMISSION_RPC_URL: z.string().default("http://127.0.0.1:29091/transmission/rpc"),
   TRANSMISSION_RPC_USERNAME: z.string().default("trsmadmin"),
   TRANSMISSION_RPC_PASSWORD: z.string().default(""),
+  MUSIC_LIBRARY_PATH: z.string().default("/volume1/music"),
+  ALSA_DEVICE: z.string().default("hw:1,0"),
 });
 
 const parsed = envSchema.parse(process.env);
