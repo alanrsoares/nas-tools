@@ -11,6 +11,22 @@ import {
   Scissors,
   Settings as SettingsIcon,
 } from "lucide-react";
+import {
+  Brand,
+  Content,
+  Nav,
+  navLinkActiveClass,
+  navLinkClass,
+  PageTitle,
+  SectionDesc,
+  ServerPulseAction,
+  ServerPulseBadge,
+  ServerPulseDivider,
+  ServerPulseStatus,
+  Shell,
+  Sidebar,
+  Topbar,
+} from "@/components/styled";
 import { api } from "../api";
 import { PlexScanPopover } from "../features/staging/PlexScanPopover";
 import type { NavItem, Section } from "../types";
@@ -79,19 +95,20 @@ export function ServerStatus() {
   return (
     <PlexScanPopover
       renderTrigger={({ anyPending }) => (
-        <button
-          type="button"
-          className={connected ? "server-pulse-badge ok" : "server-pulse-badge"}
+        <ServerPulseBadge
+          $connected={!!connected}
           disabled={anyPending}
           title={`${connected ? "Connected" : "Offline or unreachable"}. Trigger a Plex library refresh.`}
         >
-          <span className="server-pulse-status">
+          <ServerPulseStatus
+            className={connected ? "[&_svg]:animate-pulse [&_svg]:opacity-100" : ""}
+          >
             <Activity size={14} />
             Server
-          </span>
-          <span className="server-pulse-divider" aria-hidden="true" />
-          <span className="server-pulse-action">{anyPending ? "Scanning…" : "Plex scan"}</span>
-        </button>
+          </ServerPulseStatus>
+          <ServerPulseDivider aria-hidden="true" />
+          <ServerPulseAction>{anyPending ? "Scanning…" : "Plex scan"}</ServerPulseAction>
+        </ServerPulseBadge>
       )}
     />
   );
@@ -103,35 +120,40 @@ export function AppShell() {
   const currentSection = (pathname === "/" ? "overview" : pathname.slice(1)) as Section;
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">
+    <Shell>
+      <Sidebar>
+        <Brand>
           <BrandIcon />
           NAS Tools
-        </div>
-        <nav className="nav" aria-label="Cockpit sections">
+        </Brand>
+        <Nav aria-label="Cockpit sections">
           {navItems.map((item) => {
             const Icon = item.icon;
             const to = item.id === "overview" ? "/" : `/${item.id}`;
             return (
-              <Link key={item.id} to={to} activeProps={{ className: "active" }}>
+              <Link
+                key={item.id}
+                to={to}
+                className={navLinkClass}
+                activeProps={{ className: navLinkActiveClass }}
+              >
                 <Icon size={17} />
                 <span>{item.label}</span>
               </Link>
             );
           })}
-        </nav>
-      </aside>
-      <main className="content">
-        <header className="topbar">
+        </Nav>
+      </Sidebar>
+      <Content>
+        <Topbar>
           <div>
-            <h1>{sectionLabel[currentSection]}</h1>
-            <p className="section-desc">{sectionDescription[currentSection]}</p>
+            <PageTitle>{sectionLabel[currentSection]}</PageTitle>
+            <SectionDesc>{sectionDescription[currentSection]}</SectionDesc>
           </div>
           <ServerStatus />
-        </header>
+        </Topbar>
         <Outlet />
-      </main>
-    </div>
+      </Content>
+    </Shell>
   );
 }

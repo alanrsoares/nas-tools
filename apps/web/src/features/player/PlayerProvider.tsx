@@ -88,7 +88,11 @@ const runKeyboardShortcut = (
   }
 };
 
-export function PlayerProvider({ children }: { children: ReactNode }) {
+type PlayerProviderProps = {
+  children: ReactNode;
+};
+
+export function PlayerProvider({ children }: PlayerProviderProps) {
   const [playerState, setPlayerState] = useState<PlayerState>(DEFAULT_STATE);
   const [browse, setBrowse] = useState<BrowseResult | null>(null);
   const [browseError, setBrowseError] = useState<string | null>(null);

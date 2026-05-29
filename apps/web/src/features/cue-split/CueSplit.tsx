@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Scissors, Search } from "lucide-react";
 import React from "react";
 import { z } from "zod";
+import { EmptyState, PathTruncate, Toolbar } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { IssueList, SummaryCell } from "../../components/IssueList";
+import { IssueList, Summary, SummaryCell } from "../../components/IssueList";
 import { readSseStream } from "../../utils";
 
 type CuePair = {
@@ -126,7 +127,11 @@ function useCueScan() {
   return { scanStatus, result, selectedIds, setSelectedIds, isScanning, error, startScan };
 }
 
-function CueScanProgress({ scanStatus }: { scanStatus: CueScanStatus }) {
+type CueScanProgressProps = {
+  scanStatus: CueScanStatus;
+};
+
+function CueScanProgress({ scanStatus }: CueScanProgressProps) {
   return (
     <div className="mt-8 flex flex-col items-center justify-center p-12 text-center">
       <Loader2 size={32} className="animate-spin mb-4 text-primary" />
@@ -168,10 +173,10 @@ function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
               </TableCell>
               <TableCell>
                 <div className="grid gap-1">
-                  <span className="path-truncate font-mono">{pair.cueFile}</span>
-                  <span className="text-xs text-muted-foreground path-truncate">
+                  <PathTruncate className="font-mono">{pair.cueFile}</PathTruncate>
+                  <PathTruncate className="text-xs text-muted-foreground">
                     {pair.directory}
-                  </span>
+                  </PathTruncate>
                 </div>
               </TableCell>
               <TableCell className="font-mono text-xs">{pair.audioFile}</TableCell>
@@ -208,15 +213,24 @@ function CueSplitBody({
     return <CuePairTable pairs={result.pairs} selectedIds={selectedIds} togglePair={togglePair} />;
   }
   return (
-    <div className="empty-state">
+    <EmptyState>
       <Scissors size={28} />
       <span>Scan the FLAC library for unsplit CUE/audio pairs.</span>
-    </div>
+    </EmptyState>
   );
 }
 
 type CueSplitToolbarProps = {
   result: CueScanResult | undefined;
+  readyPairs: CuePair[];
+  selectedPairs: CuePair[];
+  isScanning: boolean;
+  fixIsPending: boolean;
+  onScan: () => void;
+  onFix: () => void;
+};
+
+type CueSplitActionsProps = {
   readyPairs: CuePair[];
   selectedPairs: CuePair[];
   isScanning: boolean;
@@ -232,14 +246,7 @@ function CueSplitActions({
   fixIsPending,
   onScan,
   onFix,
-}: {
-  readyPairs: CuePair[];
-  selectedPairs: CuePair[];
-  isScanning: boolean;
-  fixIsPending: boolean;
-  onScan: () => void;
-  onFix: () => void;
-}) {
+}: CueSplitActionsProps) {
   return (
     <div className="flex gap-2 items-center toolbar-actions">
       <Button onClick={onScan} disabled={isScanning || fixIsPending} size="sm" variant="outline">
@@ -270,8 +277,8 @@ function CueSplitToolbar({
   onFix,
 }: CueSplitToolbarProps) {
   return (
-    <div className="toolbar">
-      <section className="summary" aria-label="CUE summary">
+    <Toolbar>
+      <Summary aria-label="CUE summary">
         <SummaryCell label="Pairs" value={result?.pairs.length ?? 0} />
         <SummaryCell label="Ready" value={result?.ready ?? 0} />
         <SummaryCell
@@ -279,7 +286,7 @@ function CueSplitToolbar({
           value={result?.blocked ?? 0}
           tone={(result?.blocked ?? 0) > 0 ? "warn" : ""}
         />
-      </section>
+      </Summary>
       <CueSplitActions
         readyPairs={readyPairs}
         selectedPairs={selectedPairs}
@@ -288,7 +295,7 @@ function CueSplitToolbar({
         onScan={onScan}
         onFix={onFix}
       />
-    </div>
+    </Toolbar>
   );
 }
 

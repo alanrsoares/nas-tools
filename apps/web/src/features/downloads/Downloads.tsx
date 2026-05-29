@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { CheckCircle2, Download, Loader2, Plus, Search } from "lucide-react";
 import React from "react";
+import { EmptyState, MutedText, PathTruncate } from "@/components/styled";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,9 +43,7 @@ function SearchResultRow({ result, isAdded, isPending, onAdd }: SearchResultRowP
       <TableCell>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="path-truncate" style={{ maxWidth: 380 }}>
-              {result.title}
-            </span>
+            <PathTruncate className="max-w-[380px]">{result.title}</PathTruncate>
           </TooltipTrigger>
           <TooltipContent className="max-w-sm break-words">{result.title}</TooltipContent>
         </Tooltip>
@@ -66,7 +65,7 @@ function SearchResultRow({ result, isAdded, isPending, onAdd }: SearchResultRowP
             {isAdded ? "Added" : "Add"}
           </Button>
         ) : (
-          <span className="muted text-xs">no link</span>
+          <MutedText className="text-xs">no link</MutedText>
         )}
       </TableCell>
     </TableRow>
@@ -149,10 +148,10 @@ type DownloadsBodyProps = {
 function DownloadsBody({ searchIsSuccess, results, added, isPending, onAdd }: DownloadsBodyProps) {
   if (searchIsSuccess && results.length === 0) {
     return (
-      <div className="empty-state">
+      <EmptyState>
         <Search size={28} />
         <span>No results found.</span>
-      </div>
+      </EmptyState>
     );
   }
   if (results.length > 0) {
@@ -162,10 +161,10 @@ function DownloadsBody({ searchIsSuccess, results, added, isPending, onAdd }: Do
   }
   if (!searchIsSuccess) {
     return (
-      <div className="empty-state">
+      <EmptyState>
         <Download size={28} />
         <span>Search Prowlarr indexers for lossless audio.</span>
-      </div>
+      </EmptyState>
     );
   }
   return null;

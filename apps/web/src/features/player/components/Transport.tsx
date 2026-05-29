@@ -18,7 +18,7 @@ type TransportButtonProps = {
   disabled?: boolean;
   title?: string;
   children: React.ReactNode;
-  large?: boolean;
+  primary?: boolean;
 };
 
 function TransportButton({
@@ -26,21 +26,19 @@ function TransportButton({
   disabled,
   title,
   children,
-  large = false,
+  primary = false,
 }: TransportButtonProps) {
   return (
     <Button
       type="button"
-      variant={large ? "secondary" : "ghost"}
+      variant={primary ? "default" : "ghost"}
       size="icon"
       onClick={onClick}
       disabled={disabled}
       title={title}
       className={cn(
         "rounded-full",
-        large
-          ? "size-11 border border-primary/20 bg-primary/10 text-primary hover:bg-primary/15"
-          : "size-9",
+        primary ? "size-11" : "size-9 text-muted-foreground hover:text-foreground",
       )}
     >
       {children}
@@ -58,17 +56,17 @@ export function Transport() {
 
   const PlayPause = match(state.status)
     .with("idle", () => (
-      <TransportButton onClick={() => {}} disabled large title="Play">
+      <TransportButton onClick={() => {}} disabled primary title="Play">
         <Play data-icon="inline-start" />
       </TransportButton>
     ))
     .with("playing", () => (
-      <TransportButton onClick={handlePause} large title="Pause (Space)">
+      <TransportButton onClick={handlePause} primary title="Pause (Space)">
         <Pause data-icon="inline-start" />
       </TransportButton>
     ))
     .with("paused", () => (
-      <TransportButton onClick={handleResume} large title="Resume (Space)">
+      <TransportButton onClick={handleResume} primary title="Resume (Space)">
         <Play data-icon="inline-start" />
       </TransportButton>
     ))
@@ -76,7 +74,7 @@ export function Transport() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-1.5">
         <TransportButton onClick={handlePrev} disabled={!canPrev} title="Prev (Left arrow)">
           <SkipBack data-icon="inline-start" />
         </TransportButton>
@@ -88,7 +86,6 @@ export function Transport() {
           <SkipForward data-icon="inline-start" />
         </TransportButton>
       </div>
-
       <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <span className="tabular-nums">
           {playlist.length > 0 && playlistIdx >= 0

@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { Breadcrumb, BrowseEntries, LibraryFilter } from "./components/LibraryBrowser";
 import { NowPlaying } from "./components/NowPlaying";
 import { ProgressLine } from "./components/ProgressLine";
@@ -16,23 +16,29 @@ export function Player() {
 }
 
 function PlayerContent() {
-  const [{ browse, browseError }] = usePlayer();
+  const [{ browse, browseError, playerState }] = usePlayer();
+  const isActive = playerState.status !== "idle";
 
   return (
-    <div className="player-page flex flex-col gap-3">
-      <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
+      <Card
+        className={cn(
+          "flex flex-col gap-3.5 border p-5 shadow-none transition-colors duration-150",
+          isActive && "border-primary/35",
+        )}
+      >
         <NowPlaying />
         <ProgressLine />
         <Transport />
         <QueuePanel />
-      </div>
+      </Card>
 
-      <Separator className="my-1" />
-
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden border bg-muted/30 p-0 shadow-none">
         {browse && <Breadcrumb />}
         {browse && <LibraryFilter />}
-        {browseError && <p className="px-4 py-3 text-xs text-destructive">{browseError}</p>}
+        {browseError && (
+          <p className="border-b px-3.5 py-2.5 text-xs text-destructive">{browseError}</p>
+        )}
         {browse && <BrowseEntries />}
       </Card>
     </div>

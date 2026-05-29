@@ -11,6 +11,26 @@ import {
   XCircle,
 } from "lucide-react";
 import React from "react";
+import {
+  ConflictAlbum,
+  ConflictCard,
+  ConflictFiles,
+  ConflictFileTag,
+  EmptyState,
+  EventLine,
+  EventLog,
+  EventLogArt,
+  EventLogEmpty,
+  EventMessage,
+  EventSeq,
+  JobListItem,
+  JobListMeta,
+  JobListTime,
+  JobListType,
+  ProgressBar,
+  ProgressTrack,
+  StatusDot,
+} from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -63,22 +83,20 @@ export function ConflictPanel({ jobId, onResolved }: ConflictPanelProps) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 text-sm font-medium text-amber-600">
+      <div className="flex items-center gap-2 text-sm font-medium text-warning-foreground">
         <AlertTriangle size={14} />
         <span>
           {conflicts.length} conflict{conflicts.length !== 1 ? "s" : ""} need resolution
         </span>
       </div>
       {conflicts.map((c) => (
-        <div key={c.itemId} className="conflict-card">
-          <div className="conflict-album">{c.albumName}</div>
-          <div className="conflict-files">
+        <ConflictCard key={c.itemId}>
+          <ConflictAlbum>{c.albumName}</ConflictAlbum>
+          <ConflictFiles>
             {c.conflictingFiles.map((f) => (
-              <span key={f} className="conflict-file-tag">
-                {f}
-              </span>
+              <ConflictFileTag key={f}>{f}</ConflictFileTag>
             ))}
-          </div>
+          </ConflictFiles>
           <div className="flex gap-2 mt-2">
             <Button
               size="sm"
@@ -99,7 +117,7 @@ export function ConflictPanel({ jobId, onResolved }: ConflictPanelProps) {
               Force merge
             </Button>
           </div>
-        </div>
+        </ConflictCard>
       ))}
     </div>
   );
@@ -108,7 +126,7 @@ export function ConflictPanel({ jobId, onResolved }: ConflictPanelProps) {
 type JobStatusDotProps = { status: JobStatus };
 
 export function JobStatusDot({ status }: JobStatusDotProps) {
-  return <span className="status-dot" data-status={status} />;
+  return <StatusDot $status={status} />;
 }
 
 type JobStatusBadgeProps = { status: JobStatus };
@@ -254,34 +272,36 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
               </span>
               <span>{progress}%</span>
             </div>
-            <div className="progress-track">
-              <div
-                className="progress-bar"
-                style={{ width: `${progress}%` }}
-                data-failed={counts.failed > 0}
-              />
-            </div>
+            <ProgressTrack>
+              <ProgressBar $failed={counts.failed > 0} style={{ width: `${progress}%` }} />
+            </ProgressTrack>
           </div>
         ) : null}
 
         {/* Event log */}
-        <div className="event-log" ref={logRef}>
+        <EventLog ref={logRef}>
           {events.length === 0 ? (
-            <div className="event-log-empty">
-              <pre className="event-log-art">{`  ┌ ─ ─ ─ ─ ─ ┐
+            <EventLogEmpty>
+              <EventLogArt>{`  ┌ ─ ─ ─ ─ ─ ┐
     · · · · ·
-  └ ─ ─ ─ ─ ─ ┘`}</pre>
+  └ ─ ─ ─ ─ ─ ┘`}</EventLogArt>
               <span>waiting for events</span>
-            </div>
+            </EventLogEmpty>
           ) : (
             events.map((event) => (
-              <div key={event.seq} className={`event-line level-${event.level}`}>
-                <span className="event-seq">{event.seq}</span>
-                <span className="event-msg">{event.message}</span>
-              </div>
+              <EventLine key={event.seq}>
+                <EventSeq>{event.seq}</EventSeq>
+                <EventMessage
+                  $level={
+                    event.level === "error" || event.level === "warning" ? event.level : "info"
+                  }
+                >
+                  {event.message}
+                </EventMessage>
+              </EventLine>
             ))
           )}
-        </div>
+        </EventLog>
 
         {/* Conflict resolution */}
         {isTerminal && liveJob.status === "completed_with_failures" ? (
@@ -317,10 +337,10 @@ export function Jobs() {
     return (
       <Card>
         <CardContent className="p-4">
-          <div className="empty-state">
+          <EmptyState>
             <ListChecks size={28} />
             <span>No jobs yet. Confirm a Move Plan to start one.</span>
-          </div>
+          </EmptyState>
         </CardContent>
       </Card>
     );
@@ -342,18 +362,18 @@ export function Jobs() {
                     ? "CUE fix"
                     : "Move Plan";
               return (
-                <button
+                <JobListItem
                   key={job.id}
                   type="button"
+                  $active={selected?.id === job.id}
                   onClick={() => navigate({ to: "/jobs", search: { jobId: job.id } })}
-                  className={`job-list-item${selected?.id === job.id ? " active" : ""}`}
                 >
                   <JobStatusDot status={job.status} />
-                  <div className="job-list-meta">
-                    <span className="job-list-type">{itemLabel}</span>
-                    <span className="job-list-time">{formatRelativeTime(job.createdAt)}</span>
-                  </div>
-                </button>
+                  <JobListMeta>
+                    <JobListType>{itemLabel}</JobListType>
+                    <JobListTime>{formatRelativeTime(job.createdAt)}</JobListTime>
+                  </JobListMeta>
+                </JobListItem>
               );
             })}
           </div>

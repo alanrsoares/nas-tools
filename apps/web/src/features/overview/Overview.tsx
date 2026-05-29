@@ -1,6 +1,28 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { CheckCircle2, Download, FolderCog, Loader2, Pause, Play, Trash2, X } from "lucide-react";
+import {
+  OverviewCardHeader,
+  OverviewCardTitle,
+  OverviewDlControls,
+  OverviewDlItem,
+  OverviewDlList,
+  OverviewDlMeta,
+  OverviewDlName,
+  OverviewDlPct,
+  OverviewDlSpeed,
+  OverviewGrid,
+  OverviewIdle,
+  OverviewOrphanItem,
+  OverviewOrphanList,
+  OverviewStat,
+  OverviewStatLabel,
+  OverviewStats,
+  OverviewStatValue,
+  ProgressBar,
+  ProgressTrack,
+  StagingCueIndicator,
+} from "@/components/styled";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -26,72 +48,88 @@ type DashboardData = {
   staging: StagingStatus | null;
 };
 
-function StagingPreviewList({ staging }: { staging: StagingStatus }) {
+type StagingPreviewListProps = {
+  staging: StagingStatus;
+};
+
+function StagingPreviewList({ staging }: StagingPreviewListProps) {
   if (!staging.preview || staging.preview.length === 0) return null;
   return (
-    <div className="overview-orphan-list">
+    <OverviewOrphanList>
       {staging.preview.map((item) => (
-        <div key={item.name} className="overview-orphan-item">
+        <OverviewOrphanItem key={item.name} as="div">
           {item.hasCue ? (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="staging-cue-indicator" role="img" aria-label="Has CUE file">
+                <StagingCueIndicator role="img" aria-label="Has CUE file">
                   ♪
-                </span>
+                </StagingCueIndicator>
               </TooltipTrigger>
               <TooltipContent>Contains .cue file</TooltipContent>
             </Tooltip>
           ) : null}
           {item.name}
-        </div>
+        </OverviewOrphanItem>
       ))}
       {staging.total > 5 ? (
-        <div className="overview-orphan-item muted">+{staging.total - 5} more</div>
+        <OverviewOrphanItem $muted as="div">
+          +{staging.total - 5} more
+        </OverviewOrphanItem>
       ) : null}
-    </div>
+    </OverviewOrphanList>
   );
 }
 
-function StagingAreaBody({ staging }: { staging: StagingStatus }) {
+type StagingAreaBodyProps = {
+  staging: StagingStatus;
+};
+
+function StagingAreaBody({ staging }: StagingAreaBodyProps) {
   return (
     <>
-      <div className="overview-stats">
-        <div className="overview-stat">
-          <strong>{staging.total}</strong>
-          <span>items</span>
-        </div>
+      <OverviewStats>
+        <OverviewStat>
+          <OverviewStatValue>{staging.total}</OverviewStatValue>
+          <OverviewStatLabel>items</OverviewStatLabel>
+        </OverviewStat>
         {staging.withCue > 0 ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="overview-stat warn">
-                <strong>{staging.withCue}</strong>
-                <span>need CUE split</span>
-              </div>
+              <OverviewStat $warn>
+                <OverviewStatValue>{staging.withCue}</OverviewStatValue>
+                <OverviewStatLabel>need CUE split</OverviewStatLabel>
+              </OverviewStat>
             </TooltipTrigger>
             <TooltipContent>
               Items containing .cue files that may need splitting before moving
             </TooltipContent>
           </Tooltip>
         ) : null}
-      </div>
+      </OverviewStats>
       <StagingPreviewList staging={staging} />
     </>
   );
 }
 
-function OrphanedList({ orphaned }: { orphaned: OrphanedTorrent[] }) {
+type OrphanedListProps = {
+  orphaned: OrphanedTorrent[];
+};
+
+function OrphanedList({ orphaned }: OrphanedListProps) {
   if (orphaned.length === 0) return null;
   return (
-    <div className="overview-orphan-list">
+    <OverviewOrphanList>
       {orphaned.slice(0, 4).map((o) => (
-        <div key={o.id} className="overview-orphan-item">
+        <OverviewOrphanItem key={o.id} as="div">
           {o.name}
-        </div>
+        </OverviewOrphanItem>
       ))}
       {orphaned.length > 4 ? (
-        <div className="overview-orphan-item muted">+{orphaned.length - 4} more</div>
+        <OverviewOrphanItem $muted as="div">
+          +{orphaned.length - 4} more
+        </OverviewOrphanItem>
       ) : null}
-    </div>
+    </OverviewOrphanList>
   );
 }
 
@@ -102,13 +140,12 @@ type CleanTorrentsMutation = {
   mutate: () => void;
 };
 
-function CleanButton({
-  cleanTorrents,
-  orphanedCount,
-}: {
+type CleanButtonProps = {
   cleanTorrents: CleanTorrentsMutation;
   orphanedCount: number;
-}) {
+};
+
+function CleanButton({ cleanTorrents, orphanedCount }: CleanButtonProps) {
   return (
     <Button
       size="sm"
@@ -140,34 +177,34 @@ type ActiveDownloadsCardProps = {
 
 function ActiveDownloadsCard({ tx, loading }: ActiveDownloadsCardProps) {
   return (
-    <Card className="overview-downloads">
+    <Card className="col-span-full">
       <CardContent className="p-4 flex flex-col gap-3">
-        <div className="overview-card-header">
-          <span className="overview-card-title">
+        <OverviewCardHeader>
+          <OverviewCardTitle>
             <Download size={13} />
             Active Downloads
-          </span>
+          </OverviewCardTitle>
           {tx ? (
             <span className="text-xs text-muted-foreground">
               {tx.seeding > 0 ? `${tx.seeding} seeding · ` : ""}
               {tx.total} total
             </span>
           ) : null}
-        </div>
+        </OverviewCardHeader>
         {loading ? (
-          <div className="overview-idle">
+          <OverviewIdle>
             <Loader2 size={14} className="animate-spin" /> Loading…
-          </div>
+          </OverviewIdle>
         ) : tx === null ? (
-          <div className="overview-idle">Transmission unreachable</div>
+          <OverviewIdle>Transmission unreachable</OverviewIdle>
         ) : tx.downloading.length === 0 ? (
-          <div className="overview-idle">Nothing downloading</div>
+          <OverviewIdle>Nothing downloading</OverviewIdle>
         ) : (
-          <div className="overview-dl-list">
+          <OverviewDlList>
             {tx.downloading.map((t) => (
               <ActiveDownloadRow key={t.id} torrent={t} />
             ))}
-          </div>
+          </OverviewDlList>
         )}
       </CardContent>
     </Card>
@@ -185,23 +222,23 @@ function StagingAreaCard({ staging, loading, navigate }: StagingAreaCardProps) {
   return (
     <Card>
       <CardContent className="p-4 flex flex-col gap-3">
-        <div className="overview-card-header">
-          <span className="overview-card-title">
+        <OverviewCardHeader>
+          <OverviewCardTitle>
             <FolderCog size={13} />
             Staging Area
-          </span>
-        </div>
+          </OverviewCardTitle>
+        </OverviewCardHeader>
         {loading ? (
-          <div className="overview-idle">
+          <OverviewIdle>
             <Loader2 size={14} className="animate-spin" /> Loading…
-          </div>
+          </OverviewIdle>
         ) : staging === null ? (
-          <div className="overview-idle">Staging dir unavailable</div>
+          <OverviewIdle>Staging dir unavailable</OverviewIdle>
         ) : staging.total === 0 ? (
-          <div className="overview-idle">
+          <OverviewIdle>
             <CheckCircle2 size={14} className="text-success-foreground" />
             Staging area clear
-          </div>
+          </OverviewIdle>
         ) : (
           <StagingAreaBody staging={staging} />
         )}
@@ -229,26 +266,28 @@ function OrphanedTorrentsCard({ tx, loading, cleanTorrents }: OrphanedTorrentsCa
   return (
     <Card>
       <CardContent className="p-4 flex flex-col gap-3">
-        <div className="overview-card-header">
-          <span className="overview-card-title">
+        <OverviewCardHeader>
+          <OverviewCardTitle>
             <Trash2 size={13} />
             Orphaned Torrents
-          </span>
-        </div>
+          </OverviewCardTitle>
+        </OverviewCardHeader>
         {loading ? (
-          <div className="overview-idle">
+          <OverviewIdle>
             <Loader2 size={14} className="animate-spin" /> Loading…
-          </div>
+          </OverviewIdle>
         ) : tx === null ? (
-          <div className="overview-idle">Transmission unreachable</div>
+          <OverviewIdle>Transmission unreachable</OverviewIdle>
         ) : (
           <>
-            <div className="overview-stats">
-              <div className={`overview-stat${tx.orphaned.length > 0 ? " warn" : ""}`}>
-                <strong>{tx.orphaned.length}</strong>
-                <span>{tx.orphaned.length === 1 ? "torrent" : "torrents"}</span>
-              </div>
-            </div>
+            <OverviewStats>
+              <OverviewStat $warn={tx.orphaned.length > 0}>
+                <OverviewStatValue>{tx.orphaned.length}</OverviewStatValue>
+                <OverviewStatLabel>
+                  {tx.orphaned.length === 1 ? "torrent" : "torrents"}
+                </OverviewStatLabel>
+              </OverviewStat>
+            </OverviewStats>
             <OrphanedList orphaned={tx.orphaned} />
             <CleanButton cleanTorrents={cleanTorrents} orphanedCount={tx.orphaned.length} />
           </>
@@ -274,27 +313,21 @@ function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
   const pending = action.isPending;
 
   return (
-    <div className="overview-dl-item">
-      <span className="overview-dl-name">{torrent.name}</span>
-      <div className="overview-dl-meta">
-        <div className="progress-track" style={{ flex: 1 }}>
-          <div
-            className="progress-bar"
-            style={{ width: `${torrent.progress * 100}%` }}
-            data-paused={isPaused}
-          />
-        </div>
-        <span className="overview-dl-pct tabular-nums">{Math.round(torrent.progress * 100)}%</span>
+    <OverviewDlItem>
+      <OverviewDlName>{torrent.name}</OverviewDlName>
+      <OverviewDlMeta>
+        <ProgressTrack className="flex-1">
+          <ProgressBar $paused={isPaused} style={{ width: `${torrent.progress * 100}%` }} />
+        </ProgressTrack>
+        <OverviewDlPct>{Math.round(torrent.progress * 100)}%</OverviewDlPct>
         {torrent.rateDownload > 0 ? (
-          <span className="overview-dl-speed tabular-nums">
-            {formatBytes(torrent.rateDownload)}/s
-          </span>
+          <OverviewDlSpeed>{formatBytes(torrent.rateDownload)}/s</OverviewDlSpeed>
         ) : (
-          <span className="overview-dl-speed text-muted-foreground">
+          <OverviewDlSpeed className="text-muted-foreground">
             {isPaused ? "paused" : "—"}
-          </span>
+          </OverviewDlSpeed>
         )}
-        <div className="overview-dl-controls">
+        <OverviewDlControls>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -333,9 +366,9 @@ function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
             </TooltipTrigger>
             <TooltipContent>Remove from Transmission (keeps files)</TooltipContent>
           </Tooltip>
-        </div>
-      </div>
-    </div>
+        </OverviewDlControls>
+      </OverviewDlMeta>
+    </OverviewDlItem>
   );
 }
 
@@ -361,10 +394,10 @@ export function Overview() {
   const loading = dashboard.isLoading;
 
   return (
-    <div className="overview-grid">
+    <OverviewGrid>
       <ActiveDownloadsCard tx={tx} loading={loading} />
       <StagingAreaCard staging={staging} loading={loading} navigate={navigate} />
       <OrphanedTorrentsCard tx={tx} loading={loading} cleanTorrents={cleanTorrents} />
-    </div>
+    </OverviewGrid>
   );
 }

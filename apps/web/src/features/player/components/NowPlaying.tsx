@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { PlayerState } from "../../../types";
 import { parseTrackInfo } from "../lib/utils";
@@ -9,10 +8,16 @@ const fallbackTitle = (state: PlayerState) =>
   state.currentTrack
     ?.split("/")
     .pop()
-    ?.replace(/\.[^.]+$/, "") ?? "-";
+    ?.replace(/\.[^.]+$/, "") ?? "—";
+
+const statusLabel: Record<PlayerState["status"], string> = {
+  idle: "Idle",
+  playing: "Playing",
+  paused: "Paused",
+};
 
 type TrackHeadingProps = {
-  title: string | null;
+  title: string;
   artist: string | null | undefined;
   album: string | null | undefined;
   isActive: boolean;
@@ -20,35 +25,58 @@ type TrackHeadingProps = {
 
 function TrackHeading({ title, artist, album, isActive }: TrackHeadingProps) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       {artist && (
-        <p className="text-xs font-medium uppercase tracking-wider text-primary/80">{artist}</p>
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          {artist}
+        </p>
       )}
-      <CardTitle
-        key={title}
+      <h2
         className={cn(
-          "truncate text-base leading-snug",
-          isActive ? "text-foreground" : "text-muted-foreground",
+          "truncate font-semibold leading-snug tracking-tight",
+          isActive ? "text-xl" : "text-base font-medium text-muted-foreground",
         )}
       >
-        {title ?? "Nothing playing"}
-      </CardTitle>
+        {title}
+      </h2>
       {album && <p className="truncate text-xs text-muted-foreground">{album}</p>}
     </div>
   );
 }
 
-function AudioBadges({ state }: { state: PlayerState }) {
-  if (!state.sampleRate && !state.bitDepth) return null;
+type AudioSpecsProps = {
+  state: PlayerState;
+};
+
+function AudioSpecs({ state }: AudioSpecsProps) {
+  if (!state.sampleRate && !state.bitDepth && !state.device) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-1.5">
       {state.sampleRate && (
-        <Badge variant="secondary">{(state.sampleRate / 1000).toFixed(1)} kHz</Badge>
+        <Badge variant="secondary" className="text-[11px]">
+          {(state.sampleRate / 1000).toFixed(1)} kHz
+        </Badge>
       )}
-      {state.bitDepth && <Badge variant="secondary">{state.bitDepth}-bit</Badge>}
-      {state.channels === 2 && <Badge variant="outline">stereo</Badge>}
-      {state.channels === 1 && <Badge variant="outline">mono</Badge>}
-      <span className="ml-auto truncate text-muted-foreground/70">{state.device}</span>
+      {state.bitDepth && (
+        <Badge variant="secondary" className="text-[11px]">
+          {state.bitDepth}-bit
+        </Badge>
+      )}
+      {state.channels === 2 && (
+        <Badge variant="outline" className="text-[11px]">
+          stereo
+        </Badge>
+      )}
+      {state.channels === 1 && (
+        <Badge variant="outline" className="text-[11px]">
+          mono
+        </Badge>
+      )}
+      {state.device && (
+        <span className="ml-auto max-w-[55%] truncate text-[11px] text-muted-foreground/80">
+          {state.device}
+        </span>
+      )}
     </div>
   );
 }
@@ -58,18 +86,21 @@ export function NowPlaying() {
   const isActive = state.status !== "idle";
   const info =
     state.currentTrack && libraryRoot ? parseTrackInfo(state.currentTrack, libraryRoot) : null;
-  const title = info?.title ?? (isActive ? fallbackTitle(state) : null);
+  const title = info?.title ?? (isActive ? fallbackTitle(state) : "Nothing playing");
 
   return (
-    <Card
-      data-state={state.status}
-      className="player-now-playing overflow-hidden transition-colors duration-700"
-    >
-      <CardHeader className="relative gap-2 p-5">
-        <TrackHeading title={title} artist={info?.artist} album={info?.album} isActive={isActive} />
-        <AudioBadges state={state} />
-      </CardHeader>
-      {state.status === "playing" && <div aria-hidden className="player-now-playing-glow" />}
-    </Card>
+    <header className="flex flex-col gap-2.5">
+      <Badge
+        variant="outline"
+        className={cn(
+          "w-fit text-[11px] font-medium uppercase tracking-wide",
+          state.status === "playing" && "border-primary/40 text-primary",
+        )}
+      >
+        {statusLabel[state.status]}
+      </Badge>
+      <TrackHeading title={title} artist={info?.artist} album={info?.album} isActive={isActive} />
+      <AudioSpecs state={state} />
+    </header>
   );
 }

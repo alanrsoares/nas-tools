@@ -1,6 +1,15 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, Radio } from "lucide-react";
 import React from "react";
+import {
+  PlexScanAction,
+  PlexScanHeader,
+  PlexScanItem,
+  PlexScanList,
+  PlexScanLoading,
+  PlexScanPopover as PlexScanPopoverRoot,
+  PlexScanTitle,
+} from "@/components/styled";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -44,15 +53,14 @@ export function PlexSectionRow({
   onScan,
 }: PlexSectionRowProps) {
   return (
-    <button
-      key={section.key}
+    <PlexScanItem
       type="button"
-      className={`plex-scan-item${scanning ? " scanning" : ""}`}
+      $scanning={scanning}
       disabled={anyPending}
       onClick={() => onScan(section.key)}
     >
-      <span className="plex-scan-title">{section.title}</span>
-      <span className="plex-scan-action">
+      <PlexScanTitle>{section.title}</PlexScanTitle>
+      <PlexScanAction>
         {scanning ? (
           <Loader2 size={12} className="animate-spin" />
         ) : done ? (
@@ -61,8 +69,8 @@ export function PlexSectionRow({
           <Radio size={12} />
         )}
         {scanning ? "Scanning…" : done ? "Scanned" : "Scan"}
-      </span>
-    </button>
+      </PlexScanAction>
+    </PlexScanItem>
   );
 }
 
@@ -86,7 +94,7 @@ function PlexScanTrigger({ renderTrigger, anyPending, open }: PlexScanTriggerPro
   );
 }
 
-function PlexScanList({
+function PlexScanListBody({
   isLoading,
   sections,
   scanned,
@@ -97,18 +105,18 @@ function PlexScanList({
 }: PlexScanListProps) {
   if (isLoading) {
     return (
-      <div className="plex-scan-loading">
+      <PlexScanLoading>
         <Loader2 size={14} className="animate-spin" />
         <span>Loading libraries…</span>
-      </div>
+      </PlexScanLoading>
     );
   }
 
   if (sections.length === 0) {
     return (
-      <div className="plex-scan-loading">
+      <PlexScanLoading>
         <span>No libraries found</span>
-      </div>
+      </PlexScanLoading>
     );
   }
 
@@ -162,13 +170,13 @@ export function PlexScanPopover({ renderTrigger }: PlexScanPopoverProps) {
     <Popover open={open} onOpenChange={setOpen}>
       <PlexScanTrigger renderTrigger={renderTrigger} anyPending={anyPending} open={open} />
       <PopoverContent align="end" className="w-64 p-0">
-        <div className="plex-scan-popover">
-          <div className="plex-scan-header">
+        <PlexScanPopoverRoot>
+          <PlexScanHeader>
             <span>Plex Libraries</span>
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 text-xs px-2"
+              className="h-7 px-2 text-xs"
               disabled={anyPending || sections.length === 0}
               onClick={() => scanAll.mutate()}
             >
@@ -179,9 +187,9 @@ export function PlexScanPopover({ renderTrigger }: PlexScanPopoverProps) {
               )}
               {scanAll.isPending ? "Scanning…" : "Scan all"}
             </Button>
-          </div>
-          <div className="plex-scan-list">
-            <PlexScanList
+          </PlexScanHeader>
+          <PlexScanList>
+            <PlexScanListBody
               isLoading={sectionsQuery.isLoading}
               sections={sections}
               scanned={scanned}
@@ -190,8 +198,8 @@ export function PlexScanPopover({ renderTrigger }: PlexScanPopoverProps) {
               scanningKey={scanOne.variables}
               onScan={(key) => scanOne.mutate(key)}
             />
-          </div>
-        </div>
+          </PlexScanList>
+        </PlexScanPopoverRoot>
       </PopoverContent>
     </Popover>
   );

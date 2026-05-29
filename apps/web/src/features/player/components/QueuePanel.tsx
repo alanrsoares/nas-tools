@@ -1,5 +1,3 @@
-import { ListMusic } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePlayer } from "../PlayerProvider";
 
 const basename = (filePath: string) =>
@@ -17,24 +15,24 @@ export function QueuePanel() {
   if (upcoming.length === 0) return null;
 
   return (
-    <Card className="bg-muted/30">
-      <CardHeader className="px-3 py-2">
-        <CardTitle className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <ListMusic data-icon="inline-start" />
-          <span>Up next · {remaining}</span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-1 px-3 pb-3 pt-0">
+    <div className="border-t pt-3">
+      <p className="mb-2 text-xs font-medium text-muted-foreground">Up next · {remaining}</p>
+      <ol className="flex flex-col gap-1">
         {upcoming.map((filePath, index) => (
-          <p
+          <li
             key={`${nextStart + index}-${filePath}`}
-            className="truncate text-xs text-muted-foreground"
+            className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground"
           >
-            {nextStart + index + 1}. {basename(filePath)}
-          </p>
+            <span className="w-5 shrink-0 text-right tabular-nums text-muted-foreground/60">
+              {nextStart + index + 1}
+            </span>
+            <span className="truncate">{basename(filePath)}</span>
+          </li>
         ))}
-        {remaining > 4 && <p className="text-xs text-muted-foreground/60">+{remaining - 4} more</p>}
-      </CardContent>
-    </Card>
+      </ol>
+      {remaining > 4 && (
+        <p className="mt-1.5 text-xs text-muted-foreground/60">+{remaining - 4} more in queue</p>
+      )}
+    </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Settings as SettingsIcon } from "lucide-react";
+import { EmptyState, SettingField, SettingFieldLabel, SettingsGrid } from "@/components/styled";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,24 +20,24 @@ export function Settings() {
     <Card>
       <CardContent className="p-4">
         {value ? (
-          <div className="settings-grid">
+          <SettingsGrid>
             {Object.entries(value).map(([key, path]) => (
-              <label key={key} htmlFor={`setting-${key}`} className="setting-field">
-                <span>{settingLabel(key)}</span>
+              <SettingField key={key} htmlFor={`setting-${key}`}>
+                <SettingFieldLabel>{settingLabel(key)}</SettingFieldLabel>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Input id={`setting-${key}`} value={path} readOnly className="cursor-default" />
                   </TooltipTrigger>
                   <TooltipContent>Read-only — set via server environment variable</TooltipContent>
                 </Tooltip>
-              </label>
+              </SettingField>
             ))}
-          </div>
+          </SettingsGrid>
         ) : (
-          <div className="empty-state">
+          <EmptyState>
             <SettingsIcon size={28} />
             <span>Loading settings.</span>
-          </div>
+          </EmptyState>
         )}
       </CardContent>
     </Card>

@@ -11,6 +11,16 @@ import {
   Trash2,
 } from "lucide-react";
 import React from "react";
+import {
+  CueSplitToggle as CueSplitToggleBox,
+  CueSplitToggleLabel,
+  EmptyState,
+  ItemTitleInner,
+  MutedText,
+  PathTruncate,
+  TitleCell,
+  Toolbar,
+} from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +36,7 @@ import {
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, queryClient } from "../../api";
-import { IssueList, SummaryCell } from "../../components/IssueList";
+import { IssueList, Summary, SummaryCell } from "../../components/IssueList";
 import type { StagingPreviewItem } from "../../types";
 import { mediaLabel, summarizePlan, updatePlanItem } from "../../utils";
 
@@ -57,11 +67,28 @@ type StagingCleanTorrentsMutation = {
   mutate: () => void;
 };
 
-function CueSplitToggle({ plan, setPlan }: { plan: MovePlan; setPlan: (p: MovePlan) => void }) {
+type PlanSummaryStats = ReturnType<typeof summarizePlan>;
+
+type StagingConfirmMutation = {
+  isPending: boolean;
+  mutate: (plan: MovePlan) => void;
+};
+
+type StagingScanMutation = {
+  isPending: boolean;
+  mutate: () => void;
+};
+
+type CueSplitToggleProps = {
+  plan: MovePlan;
+  setPlan: (plan: MovePlan) => void;
+};
+
+function CueSplitToggle({ plan, setPlan }: CueSplitToggleProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="cue-split-toggle">
+        <CueSplitToggleBox>
           <Checkbox
             id="staging-cue-split"
             checked={plan.cueSplitEnabled}
@@ -69,11 +96,11 @@ function CueSplitToggle({ plan, setPlan }: { plan: MovePlan; setPlan: (p: MovePl
               setPlan({ ...plan, cueSplitEnabled: checked === true })
             }
           />
-          <label htmlFor="staging-cue-split" className="cue-split-toggle-label">
+          <CueSplitToggleLabel htmlFor="staging-cue-split">
             <Scissors size={14} />
             <span>Split CUE</span>
-          </label>
-        </div>
+          </CueSplitToggleLabel>
+        </CueSplitToggleBox>
       </TooltipTrigger>
       <TooltipContent>
         Split matching CUE/audio pairs after move and before Transmission cleanup
@@ -82,13 +109,12 @@ function CueSplitToggle({ plan, setPlan }: { plan: MovePlan; setPlan: (p: MovePl
   );
 }
 
-function StagingCleanButton({
-  cleanTorrents,
-  orphanedCount,
-}: {
+type StagingCleanButtonProps = {
   cleanTorrents: StagingCleanTorrentsMutation;
   orphanedCount: number;
-}) {
+};
+
+function StagingCleanButton({ cleanTorrents, orphanedCount }: StagingCleanButtonProps) {
   const cleanData = cleanTorrents.data?.data;
   const cleanSucceeded = isCleanSuccess(cleanData);
   const label = cleanTorrents.isPending
@@ -121,6 +147,15 @@ function StagingCleanButton({
   );
 }
 
+type StagingConfirmButtonProps = {
+  plan: MovePlan;
+  canConfirm: boolean | undefined;
+  confirmIsPending: boolean;
+  needsCorrection: number;
+  includedWithCue: number;
+  onConfirm: () => void;
+};
+
 function StagingConfirmButton({
   plan,
   canConfirm,
@@ -128,14 +163,7 @@ function StagingConfirmButton({
   needsCorrection,
   includedWithCue,
   onConfirm,
-}: {
-  plan: MovePlan;
-  canConfirm: boolean | undefined;
-  confirmIsPending: boolean;
-  needsCorrection: number;
-  includedWithCue: number;
-  onConfirm: () => void;
-}) {
+}: StagingConfirmButtonProps) {
   if (!plan.items.length) return null;
   const blockReason = !canConfirm
     ? needsCorrection > 0
@@ -165,31 +193,24 @@ function StagingConfirmButton({
 
 type StagingToolbarProps = {
   plan: MovePlan | undefined;
-  stats: ReturnType<typeof summarizePlan> | undefined;
+  stats: PlanSummaryStats | undefined;
   cuePairTotal: number;
   orphanedCount: number;
   cleanTorrents: StagingCleanTorrentsMutation;
-  confirm: {
-    isPending: boolean;
-    mutate: (plan: MovePlan) => void;
-  };
-  scan: {
-    isPending: boolean;
-    mutate: () => void;
-  };
+  confirm: StagingConfirmMutation;
+  scan: StagingScanMutation;
   setPlan: (plan: MovePlan | undefined) => void;
 };
 
-function StagingSummarySection({
-  stats,
-  cuePairTotal,
-}: {
-  stats: ReturnType<typeof summarizePlan> | undefined;
+type StagingSummarySectionProps = {
+  stats: PlanSummaryStats | undefined;
   cuePairTotal: number;
-}) {
+};
+
+function StagingSummarySection({ stats, cuePairTotal }: StagingSummarySectionProps) {
   if (!stats) return <div />;
   return (
-    <section className="summary" aria-label="Move Plan summary">
+    <Summary aria-label="Move Plan summary">
       <SummaryCell label="Found" value={stats.total} />
       <SummaryCell label="To move" value={stats.included} />
       {stats.excluded > 0 ? <SummaryCell label="Skipped" value={stats.excluded} /> : null}
@@ -199,9 +220,22 @@ function StagingSummarySection({
         tone={stats.needsCorrection > 0 ? "warn" : ""}
       />
       {cuePairTotal > 0 ? <SummaryCell label="CUE pairs" value={cuePairTotal} tone="warn" /> : null}
-    </section>
+    </Summary>
   );
 }
+
+type StagingActionsProps = {
+  plan: MovePlan | undefined;
+  cuePairTotal: number;
+  orphanedCount: number;
+  cleanTorrents: StagingCleanTorrentsMutation;
+  confirm: StagingConfirmMutation;
+  scan: StagingScanMutation;
+  setPlan: (plan: MovePlan | undefined) => void;
+  canConfirm: boolean;
+  needsCorrection: number;
+  includedWithCue: number;
+};
 
 function StagingActions({
   plan,
@@ -214,18 +248,7 @@ function StagingActions({
   canConfirm,
   needsCorrection,
   includedWithCue,
-}: {
-  plan: MovePlan | undefined;
-  cuePairTotal: number;
-  orphanedCount: number;
-  cleanTorrents: StagingCleanTorrentsMutation;
-  confirm: { isPending: boolean; mutate: (plan: MovePlan) => void };
-  scan: { isPending: boolean; mutate: () => void };
-  setPlan: (p: MovePlan | undefined) => void;
-  canConfirm: boolean;
-  needsCorrection: number;
-  includedWithCue: number;
-}) {
+}: StagingActionsProps) {
   const showClean =
     orphanedCount > 0 || cleanTorrents.isPending || isCleanSuccess(cleanTorrents.data?.data);
   return (
@@ -283,7 +306,7 @@ function StagingToolbar({
   );
 
   return (
-    <div className="toolbar">
+    <Toolbar>
       <StagingSummarySection stats={stats} cuePairTotal={cuePairTotal} />
       <StagingActions
         plan={plan}
@@ -297,7 +320,7 @@ function StagingToolbar({
         needsCorrection={stats?.needsCorrection ?? 0}
         includedWithCue={includedWithCue}
       />
-    </div>
+    </Toolbar>
   );
 }
 
@@ -350,22 +373,22 @@ type StagingBodyProps = {
 function StagingBody({ plan, scanIsPending, setPlan }: StagingBodyProps) {
   if (plan && plan.items.length === 0) {
     return (
-      <div className="empty-state">
+      <EmptyState>
         <CheckCircle2 size={28} className="text-success-foreground" />
         <span>Staging area is clear — nothing to move.</span>
-      </div>
+      </EmptyState>
     );
   }
   if (plan) {
     return <MovePlanTable plan={plan} setPlan={setPlan} />;
   }
   return (
-    <div className="empty-state">
+    <EmptyState>
       {scanIsPending ? <Loader2 size={28} className="animate-spin" /> : <FolderCog size={28} />}
       <span>
         {scanIsPending ? "Scanning staging area…" : "Scan the staging area to build a Move Plan."}
       </span>
-    </div>
+    </EmptyState>
   );
 }
 
@@ -388,8 +411,8 @@ function MovePlanRow({ item, onChange }: MovePlanRowProps) {
           }
         />
       </TableCell>
-      <TableCell className="font-semibold path-cell">
-        <div className="item-title-cell">
+      <TitleCell>
+        <ItemTitleInner>
           <span>{item.albumName}</span>
           {(item.cueAudioPairs ?? 0) > 0 ? (
             <Tooltip>
@@ -402,8 +425,8 @@ function MovePlanRow({ item, onChange }: MovePlanRowProps) {
               <TooltipContent>Will split after move when Split CUE is enabled</TooltipContent>
             </Tooltip>
           ) : null}
-        </div>
-      </TableCell>
+        </ItemTitleInner>
+      </TitleCell>
       <TableCell>
         <Badge variant="secondary">{mediaLabel(item.mediaType)}</Badge>
       </TableCell>
@@ -426,7 +449,7 @@ function MovePlanRow({ item, onChange }: MovePlanRowProps) {
             value={item.artistName ?? ""}
           />
         ) : (
-          <span className="muted">—</span>
+          <MutedText>—</MutedText>
         )}
       </TableCell>
       <TableCell>
@@ -435,7 +458,7 @@ function MovePlanRow({ item, onChange }: MovePlanRowProps) {
       <TableCell>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="path-truncate">{item.targetPath}</span>
+            <PathTruncate>{item.targetPath}</PathTruncate>
           </TooltipTrigger>
           <TooltipContent className="max-w-sm break-all">{item.targetPath}</TooltipContent>
         </Tooltip>

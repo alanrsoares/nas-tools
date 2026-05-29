@@ -9,16 +9,23 @@ export function ProgressLine() {
   const isPlaying = state.status === "playing";
 
   return (
-    <div className="flex flex-col gap-2 px-1">
-      <div className="relative h-1 overflow-visible rounded-full bg-muted">
+    <div className="flex flex-col gap-1.5 px-0.5">
+      <div
+        className="relative h-1 rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={Math.round(state.positionMs)}
+        aria-valuemin={0}
+        aria-valuemax={state.durationMs}
+        aria-label="Playback position"
+      >
         <div
           className="h-full rounded-full bg-primary transition-[width] duration-1000 ease-linear"
           style={{ width: `${pct}%` }}
         />
         <div
           className={cn(
-            "absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_8px_var(--primary)] transition-[left] duration-1000 ease-linear",
-            isPlaying && "player-progress-dot",
+            "absolute top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary transition-[left] duration-1000 ease-linear",
+            isPlaying && "animate-pulse",
           )}
           style={{ left: `${pct}%` }}
         />

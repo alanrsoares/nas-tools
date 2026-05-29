@@ -1,11 +1,12 @@
 import { useMutation } from "@tanstack/react-query";
 import { Copy, Loader2, Search, Trash2 } from "lucide-react";
 import React from "react";
+import { EmptyState, Toolbar } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { api } from "../../api";
-import { SummaryCell } from "../../components/IssueList";
+import { Summary, SummaryCell } from "../../components/IssueList";
 import { readSseStream } from "../../utils";
 
 type DedupeGroup = {
@@ -73,7 +74,11 @@ function useDedupeScan() {
   return { results, status, isScanning, startScan };
 }
 
-function DedupeProgress({ status }: { status: DedupeStatus }) {
+type DedupeProgressProps = {
+  status: DedupeStatus;
+};
+
+function DedupeProgress({ status }: DedupeProgressProps) {
   const showProgress = status.current !== undefined && status.total !== undefined;
   const progressPercent =
     status.current !== undefined && status.total !== undefined
@@ -103,7 +108,11 @@ function DedupeProgress({ status }: { status: DedupeStatus }) {
   );
 }
 
-function DedupeGroupCard({ group }: { group: DedupeGroup }) {
+type DedupeGroupCardProps = {
+  group: DedupeGroup;
+};
+
+function DedupeGroupCard({ group }: DedupeGroupCardProps) {
   return (
     <Card key={group.id} className="border-border/50">
       <CardContent className="p-3">
@@ -159,14 +168,14 @@ function DedupeBody({ isScanning, status, duplicates }: DedupeBodyProps) {
     );
   }
   return (
-    <div className="empty-state">
+    <EmptyState>
       <Copy size={28} />
       <span>
         {status?.type === "error"
           ? status.message
           : "Scan your music library to find duplicate releases."}
       </span>
-    </div>
+    </EmptyState>
   );
 }
 
@@ -187,11 +196,11 @@ export function Dedupe() {
   return (
     <Card>
       <CardContent className="p-4">
-        <div className="toolbar">
-          <section className="summary" aria-label="Dedupe summary">
+        <Toolbar>
+          <Summary aria-label="Dedupe summary">
             <SummaryCell label="Duplicates Found" value={duplicates.length} />
             <SummaryCell label="Folders to Move" value={moves.length} />
-          </section>
+          </Summary>
           <div className="flex gap-2 items-center toolbar-actions">
             <Button
               onClick={startScan}
@@ -217,7 +226,7 @@ export function Dedupe() {
               </Button>
             )}
           </div>
-        </div>
+        </Toolbar>
         <DedupeBody isScanning={isScanning} status={status} duplicates={duplicates} />
       </CardContent>
     </Card>

@@ -1,32 +1,43 @@
 import { AlertTriangle } from "lucide-react";
+import {
+  IssueList as IssueListRoot,
+  IssueRow,
+  Summary,
+  SummaryCell,
+  SummaryCellLabel,
+  SummaryCellValue,
+} from "@/components/styled";
 import type { Issue } from "../types";
 
 type IssueListProps = { issues: Issue[] };
 
 export function IssueList({ issues }: IssueListProps) {
   return (
-    <div className="issue-list">
+    <IssueListRoot>
       {issues.map((issue) => (
-        <div key={`${issue.code}:${issue.message}`} className="issue">
+        <IssueRow key={`${issue.code}:${issue.message}`}>
           <AlertTriangle size={16} />
           <span>{issue.message}</span>
-        </div>
+        </IssueRow>
       ))}
-    </div>
+    </IssueListRoot>
   );
 }
 
 type SummaryCellProps = {
   label: string;
   value: number;
-  tone?: "" | "warn";
+  tone?: "default" | "warn" | "";
 };
 
-export function SummaryCell({ label, value, tone = "" }: SummaryCellProps) {
+export function SummaryCellBlock({ label, value, tone = "default" }: SummaryCellProps) {
   return (
-    <div className={tone ? `summary-cell ${tone}` : "summary-cell"}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
+    <SummaryCell $tone={tone === "warn" ? "warn" : "default"}>
+      <SummaryCellLabel>{label}</SummaryCellLabel>
+      <SummaryCellValue>{value}</SummaryCellValue>
+    </SummaryCell>
   );
 }
+
+// Back-compat export name used across features
+export { Summary, SummaryCellBlock as SummaryCell };

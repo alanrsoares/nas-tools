@@ -20,21 +20,28 @@ const formatLabel = (type: AudioFileType): string | null =>
     .with("flac", () => null)
     .exhaustive();
 
-function DirectoryRow({ entry }: { entry: BrowseEntry }) {
+const entryActionsClass =
+  "flex shrink-0 items-center gap-0.5 pr-1.5 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100";
+
+type DirectoryRowProps = {
+  entry: BrowseEntry;
+};
+
+function DirectoryRow({ entry }: DirectoryRowProps) {
   const [, { navigateTo, handlePlayAll, handleAddDirToQueue }] = usePlayer();
   return (
     <div className="group flex items-center border-b border-border transition-colors last:border-0 hover:bg-muted/70">
       <Button
         type="button"
         variant="ghost"
-        className="h-10 min-w-0 flex-1 justify-start rounded-none px-4 text-sm font-normal"
+        className="h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none px-3 text-sm font-normal"
         onClick={() => navigateTo(entry.path)}
       >
         <Folder data-icon="inline-start" className="opacity-60" />
         <span className="truncate">{entry.name}</span>
         <ChevronRight data-icon="inline-end" className="ml-auto opacity-40" />
       </Button>
-      <div className="flex shrink-0 items-center gap-1 pr-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+      <div className={entryActionsClass}>
         <Button
           type="button"
           variant="ghost"
@@ -70,29 +77,29 @@ function TrackRow({ entry, isActive }: EntryRowProps) {
   return (
     <div
       className={cn(
-        "group flex items-center border-b border-border transition-colors last:border-0",
-        isActive && "border-l-2 border-l-primary bg-primary/10",
+        "group flex items-center border-b border-border transition-colors last:border-0 hover:bg-muted/70",
+        isActive && "bg-primary/10 hover:bg-primary/15",
       )}
     >
       <Button
         type="button"
         variant="ghost"
         className={cn(
-          "h-10 min-w-0 flex-1 justify-start rounded-none px-4 text-sm font-normal",
+          "h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none px-3 text-sm font-normal",
           isActive && "text-primary hover:text-primary",
         )}
         onClick={() => handlePlay(entry.path)}
       >
         <span
           className={cn(
-            "w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground/60",
+            "inline-flex w-5 shrink-0 items-center justify-end text-xs tabular-nums text-muted-foreground/60",
             isActive && "text-primary",
           )}
         >
           {isActive ? (
-            <Play className="player-progress-dot inline" data-icon="inline-start" />
+            <Play className="inline size-3.5" data-icon="inline-start" />
           ) : (
-            (trackNum ?? <Music className="inline" data-icon="inline-start" />)
+            (trackNum ?? <Music className="inline size-3.5 opacity-50" data-icon="inline-start" />)
           )}
         </span>
         <span className="truncate">{trackName}</span>
@@ -102,16 +109,18 @@ function TrackRow({ entry, isActive }: EntryRowProps) {
           </Badge>
         )}
       </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        title="Add to queue"
-        className="mr-2 size-8 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-        onClick={() => handleAddToQueue(entry.path)}
-      >
-        <Plus data-icon="inline-start" />
-      </Button>
+      <div className={entryActionsClass}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          title="Add to queue"
+          className="size-8"
+          onClick={() => handleAddToQueue(entry.path)}
+        >
+          <Plus data-icon="inline-start" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -125,7 +134,10 @@ export function Breadcrumb() {
   const [{ browse }, { navigateTo }] = usePlayer();
   const parts = browse?.path.split("/").filter(Boolean) ?? [];
   return (
-    <div className="flex items-center gap-1 overflow-x-auto border-b border-border px-3 py-2 text-xs text-muted-foreground">
+    <nav
+      className="flex items-center gap-1 overflow-x-auto border-b border-border px-2.5 py-2 text-xs text-muted-foreground"
+      aria-label="Library path"
+    >
       <Button
         type="button"
         variant="ghost"
@@ -150,7 +162,7 @@ export function Breadcrumb() {
           </Button>
         </span>
       ))}
-    </div>
+    </nav>
   );
 }
 
@@ -183,7 +195,7 @@ export function LibraryFilter() {
     <div className="border-b border-border p-3">
       <div className="relative">
         <Search
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           data-icon="inline-start"
         />
         <Input
