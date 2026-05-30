@@ -57,9 +57,9 @@ const MAX_SAMPLE_RATE = 96000;
 const buildFfmpegCmd = (filePath: string, device: string): string[] => {
   const ext = path.extname(filePath).toLowerCase();
   const isDsd = ext === ".dsf" || ext === ".dff";
-  // DSD decodes to 705600+ Hz; cap at device max. Same cap for hi-res PCM above 96 kHz.
-  const resample = isDsd ? ["-ar", String(MAX_SAMPLE_RATE)] : [];
-  return ["ffmpeg", "-hide_banner", "-i", filePath, ...resample, "-f", "alsa", device];
+  // DSD decodes to float; hw:N,0 only accepts S16_LE / S24_3LE. Resample + convert explicitly.
+  const dsdArgs = isDsd ? ["-ar", String(MAX_SAMPLE_RATE), "-sample_fmt", "s16"] : [];
+  return ["ffmpeg", "-hide_banner", "-i", filePath, ...dsdArgs, "-f", "alsa", device];
 };
 
 const isVisible = (name: string) =>
@@ -115,7 +115,9 @@ const parseAudioInfo = (
     fltp: 32,
     flt: 32,
   };
-  return { sampleRate, bitDepth: bits[fmt ?? ""] ?? null, channels };
+  // Clamp to device max — DSD input streams report native rate (2.8+ MHz) but we resample.
+  const clampedRate = sampleRate > MAX_SAMPLE_RATE ? MAX_SAMPLE_RATE : sampleRate;
+  return { sampleRate: clampedRate, bitDepth: bits[fmt ?? ""] ?? null, channels };
 };
 
 const parseDuration = (line: string): number | null => {
