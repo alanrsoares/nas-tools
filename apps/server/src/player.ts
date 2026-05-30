@@ -205,8 +205,9 @@ class PlayerService {
     const proc = this.proc;
     this.proc = null;
     return wrap(async () => {
-      if (this.state.status === "paused") process.kill(proc.pid, "SIGCONT");
-      proc.kill("SIGTERM");
+      // SIGKILL on a stopped process kills it without waking it (no buffer flush).
+      // SIGTERM on a running process allows graceful ALSA close.
+      proc.kill(this.state.status === "paused" ? "SIGKILL" : "SIGTERM");
       await proc.exited;
       this.state = idle();
       this.notify();
