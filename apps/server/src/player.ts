@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { match } from "@onrails/pattern";
 import type { Result } from "@onrails/result";
 import { err, ok, ResultAsync } from "@onrails/result";
 import { env } from "./env.js";
@@ -54,6 +55,12 @@ type StateListener = (state: PlayerState) => void;
 // FiiO Warmer (full-speed USB) tops out at 96 kHz / 24-bit
 const MAX_SAMPLE_RATE = 96000;
 
+const FFMPEG_BIT_DEPTHS: Record<string, number> = {
+  s16: 16, s24: 24, s32: 32, u8: 8,
+  s16le: 16, s24le: 24, s32le: 32,
+  fltp: 32, flt: 32,
+};
+
 const buildFfmpegCmd = (filePath: string, device: string): string[] => {
   const ext = path.extname(filePath).toLowerCase();
   const isDsd = ext === ".dsf" || ext === ".dff";
@@ -104,20 +111,9 @@ const parseAudioInfo = (
   const ch = m[2];
   const fmt = m[3];
   const channels = ch === "stereo" ? 2 : ch === "mono" ? 1 : null;
-  const bits: Record<string, number> = {
-    s16: 16,
-    s24: 24,
-    s32: 32,
-    u8: 8,
-    s16le: 16,
-    s24le: 24,
-    s32le: 32,
-    fltp: 32,
-    flt: 32,
-  };
   // Clamp to device max — DSD input streams report native rate (2.8+ MHz) but we resample.
   const clampedRate = sampleRate > MAX_SAMPLE_RATE ? MAX_SAMPLE_RATE : sampleRate;
-  return { sampleRate: clampedRate, bitDepth: bits[fmt ?? ""] ?? null, channels };
+  return { sampleRate: clampedRate, bitDepth: FFMPEG_BIT_DEPTHS[fmt ?? ""] ?? null, channels };
 };
 
 const parseDuration = (line: string): number | null => {
@@ -148,12 +144,12 @@ class PlayerService {
     for (const fn of this.listeners) fn(this.getState());
   };
 
-  private position = (): number => {
-    if (this.state.status === "idle") return 0;
-    if (this.state.status === "paused")
-      return this.pauseStartMs - this.playStartMs - this.totalPausedMs;
-    return Date.now() - this.playStartMs - this.totalPausedMs;
-  };
+  private position = (): number =>
+    match(this.state.status)
+      .with("idle", () => 0)
+      .with("paused", () => this.pauseStartMs - this.playStartMs - this.totalPausedMs)
+      .with("playing", () => Date.now() - this.playStartMs - this.totalPausedMs)
+      .exhaustive();
 
   play = (filePath: string, device?: string): ResultAsync<void, PlayerError> =>
     this.stop().andThen(() =>
@@ -227,15 +223,12 @@ class PlayerService {
       const raw = await readdir(resolved, { withFileTypes: true });
       const entries: BrowseEntry[] = raw
         .filter((e) => isVisible(e.name))
-        .reduce<BrowseEntry[]>((acc, e) => {
+        .flatMap<BrowseEntry>((e) => {
           const p = path.join(resolved, e.name);
-          if (e.isDirectory()) acc.push({ name: e.name, path: p, type: "dir" });
-          else {
-            const t = audioType(e.name);
-            if (e.isFile() && t) acc.push({ name: e.name, path: p, type: t });
-          }
-          return acc;
-        }, [])
+          if (e.isDirectory()) return [{ name: e.name, path: p, type: "dir" as const }];
+          const t = audioType(e.name);
+          return e.isFile() && t ? [{ name: e.name, path: p, type: t }] : [];
+        })
         .sort((a, b) =>
           a.type !== b.type ? (a.type === "dir" ? -1 : 1) : a.name.localeCompare(b.name),
         );
