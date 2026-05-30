@@ -1,7 +1,7 @@
 import { isErr } from "@onrails/result";
 import { t } from "elysia";
 import { publicSubrouter } from "../lib/subrouter.js";
-import { player } from "../player.js";
+import type { BrowseResult } from "../player/index.js";
 import type { Deps } from "../types/deps.js";
 
 const SSE_HEADERS = {
@@ -14,6 +14,8 @@ const encodeSse = (encoder: TextEncoder, data: unknown): Uint8Array =>
   encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
 
 export function playerModule(deps: Deps) {
+  const { player } = deps;
+
   return publicSubrouter(deps)
     .get("/player/status", () => {
       const encoder = new TextEncoder();
@@ -45,7 +47,7 @@ export function playerModule(deps: Deps) {
     .get(
       "/player/list",
       async ({ query, set }) => {
-        const result = await player.listFlacs(query.path);
+        const result = await player.listTracks(query.path);
         if (isErr(result)) {
           set.status = 400;
           return { ok: false as const, message: result.error.message };
@@ -63,13 +65,13 @@ export function playerModule(deps: Deps) {
           set.status = 400;
           return { ok: false as const, message: result.error.message };
         }
-        return { ok: true as const, ...result.value };
+        return { ok: true as const, ...(result.value as BrowseResult) };
       },
       { query: t.Object({ path: t.Optional(t.String()) }) },
     )
 
     .get("/player/devices", async ({ set }) => {
-      const result = await player.listAlsaDevices();
+      const result = await player.listDevices();
       if (isErr(result)) {
         set.status = 500;
         return { ok: false as const, message: result.error.message };
@@ -90,8 +92,8 @@ export function playerModule(deps: Deps) {
       { body: t.Object({ path: t.String(), device: t.Optional(t.String()) }) },
     )
 
-    .post("/player/pause", ({ set }) => {
-      const result = player.pause();
+    .post("/player/pause", async ({ set }) => {
+      const result = await player.pause();
       if (isErr(result)) {
         set.status = 409;
         return { ok: false as const, message: result.error.message };
@@ -99,8 +101,8 @@ export function playerModule(deps: Deps) {
       return { ok: true as const };
     })
 
-    .post("/player/resume", ({ set }) => {
-      const result = player.resume();
+    .post("/player/resume", async ({ set }) => {
+      const result = await player.resume();
       if (isErr(result)) {
         set.status = 409;
         return { ok: false as const, message: result.error.message };

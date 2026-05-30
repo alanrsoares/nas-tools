@@ -1,36 +1,30 @@
 import { type App as ApiApp, createApi } from "./api.js";
 import { createApp } from "./app.js";
-import type { Deps } from "./deps.js";
 import { closeDeps, createDeps } from "./deps.js";
 import { env } from "./env.js";
+import { isErr } from "@onrails/result";
 import { logger } from "./logger.js";
+import { createMpdPlayer } from "./player/index.js";
 
 export type { CreateDepsOptions, Deps } from "./deps.js";
 export type { ApiApp as App };
 export { closeDeps, createApi, createApp, createDeps };
 
-let deps: Deps | undefined;
-let api: ApiApp | undefined;
-let app: ReturnType<typeof createApp> | undefined;
-
-export const getDeps = (): Deps => {
-  deps ??= createDeps();
-  return deps;
-};
-
-export const getApi = (): ApiApp => {
-  api ??= createApi(getDeps());
-  return api;
-};
-
-export const getApp = (): ReturnType<typeof createApp> => {
-  app ??= createApp(getDeps());
-  return app;
-};
-
 if (import.meta.main) {
-  const activeDeps = getDeps();
-  const activeApp = getApp();
+  const playerResult = await createMpdPlayer({
+    host: "127.0.0.1",
+    port: 6600,
+    musicDir: env.MUSIC_LIBRARY_PATH,
+    device: env.ALSA_DEVICE,
+  });
+
+  if (isErr(playerResult)) {
+    logger.fatal({ err: playerResult.error }, "Failed to connect to MPD — is mpd running?");
+    process.exit(1);
+  }
+
+  const activeDeps = createDeps({ player: playerResult.value });
+  const activeApp = createApp(activeDeps);
   const host = env.HOST;
   const port = env.PORT;
 
