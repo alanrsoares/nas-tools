@@ -12,8 +12,13 @@ export function searchModule(deps: Deps) {
         issues: [{ path: ["q"], code: "REQUIRED", message: "Query is required" }],
       };
     }
+    const categoriesRaw = query.categories as string | undefined;
+    const categories = categoriesRaw
+      ? categoriesRaw.split(",").map(Number).filter(Number.isFinite)
+      : undefined;
+
     try {
-      const results = await prowlarrSearch(q.trim());
+      const results = await prowlarrSearch(q.trim(), categories);
       return { ok: true, results };
     } catch (cause) {
       set.status = 502;

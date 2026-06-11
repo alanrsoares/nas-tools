@@ -35,17 +35,17 @@ export const connectMpd = (host: string, port: number): ResultAsync<MpdClient, M
 
       const client: MpdClient = { cmd: sendCmd, close: () => socket.destroy() };
 
-      const onLine = (line: string) => {
-        if (!greeted) {
-          if (line.startsWith("OK MPD")) {
-            greeted = true;
-            resolveConn(client);
-          } else {
-            socket.destroy();
-            rejectConn({ message: `MPD greeting failed: ${line}` });
-          }
-          return;
+      const handleGreeting = (line: string): void => {
+        if (line.startsWith("OK MPD")) {
+          greeted = true;
+          resolveConn(client);
+        } else {
+          socket.destroy();
+          rejectConn({ message: `MPD greeting failed: ${line}` });
         }
+      };
+
+      const handleCommand = (line: string): void => {
         if (line === "OK") {
           const pending = queue.shift();
           const lines = currentLines;
@@ -60,12 +60,21 @@ export const connectMpd = (host: string, port: number): ResultAsync<MpdClient, M
         }
       };
 
+      const onLine = (line: string): void => {
+        if (!greeted) {
+          handleGreeting(line);
+          return;
+        }
+        handleCommand(line);
+      };
+
       socket.on("data", (chunk: Buffer) => {
         buf += chunk.toString("utf8");
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) !== -1) {
+        let nl = buf.indexOf("\n");
+        while (nl !== -1) {
           onLine(buf.slice(0, nl));
           buf = buf.slice(nl + 1);
+          nl = buf.indexOf("\n");
         }
       });
 

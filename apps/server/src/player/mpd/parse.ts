@@ -49,9 +49,7 @@ export const parseMpdSong = (lines: string[]): MpdSong | null => {
 
 // ── PlayerState composition ──────────────────────────────────────────────────
 
-const parseAudio = (
-  audio: string,
-): Pick<PlayerState, "sampleRate" | "bitDepth" | "channels"> => {
+const parseAudio = (audio: string): Pick<PlayerState, "sampleRate" | "bitDepth" | "channels"> => {
   const [sr, bd, ch] = audio.split(":");
   return {
     sampleRate: sr ? Number(sr) : null,
@@ -71,7 +69,9 @@ export const toPlayerState = (
   device,
   positionMs: Math.round((status.elapsed ?? 0) * 1000),
   durationMs: status.duration != null ? Math.round(status.duration * 1000) : null,
-  ...(status.audio ? parseAudio(status.audio) : { sampleRate: null, bitDepth: null, channels: null }),
+  ...(status.audio
+    ? parseAudio(status.audio)
+    : { sampleRate: null, bitDepth: null, channels: null }),
 });
 
 // ── Browse ───────────────────────────────────────────────────────────────────

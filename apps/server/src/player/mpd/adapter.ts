@@ -6,10 +6,10 @@
  */
 import { readFile } from "node:fs/promises";
 import { ResultAsync } from "@onrails/result";
-import type { MpdClient } from "./client.js";
-import type { StateWatcher } from "./watcher.js";
-import { parseAlsaDevices, parseLsinfo, parseListall } from "./parse.js";
 import type { BrowseResult, PlayerError, PlayerPort } from "../port.js";
+import type { MpdClient } from "./client.js";
+import { parseAlsaDevices, parseListall, parseLsinfo } from "./parse.js";
+import type { StateWatcher } from "./watcher.js";
 
 export type MpdAdapterDeps = {
   /** Command connection — all mutations: play, pause, stop, add, clear. */
@@ -27,14 +27,10 @@ const toMpdPath = (absPath: string, musicDir: string): string => {
 };
 
 const toPlayerError = (e: unknown): PlayerError => ({
-  message: e instanceof Error ? e.message : (e as { message?: string }).message ?? String(e),
+  message: e instanceof Error ? e.message : ((e as { message?: string }).message ?? String(e)),
 });
 
-export const makeMpdAdapter = ({
-  cmdClient,
-  watcher,
-  musicDir,
-}: MpdAdapterDeps): PlayerPort => ({
+export const makeMpdAdapter = ({ cmdClient, watcher, musicDir }: MpdAdapterDeps): PlayerPort => ({
   getState: watcher.getState,
   subscribe: watcher.subscribe,
 
@@ -73,10 +69,12 @@ export const makeMpdAdapter = ({
     const resolvedAbs = dirPath ?? musicDir;
     return cmdClient
       .cmd(mpdCmd)
-      .map((lines): BrowseResult => ({
-        path: resolvedAbs,
-        entries: parseLsinfo(lines, musicDir),
-      }))
+      .map(
+        (lines): BrowseResult => ({
+          path: resolvedAbs,
+          entries: parseLsinfo(lines, musicDir),
+        }),
+      )
       .mapErr(toPlayerError);
   },
 

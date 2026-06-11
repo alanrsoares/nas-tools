@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -17,6 +27,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { api } from "../../api";
 import { IssueList } from "../../components/IssueList";
 import { formatBytes } from "../../utils";
+
+const MEDIA_KINDS = [
+  { value: "3040", label: "Music – Lossless", group: "Music" },
+  { value: "3010", label: "Music – MP3", group: "Music" },
+  { value: "3000", label: "Music – All", group: "Music" },
+  { value: "2000", label: "Movies", group: "Video" },
+  { value: "5000", label: "TV", group: "Video" },
+] as const;
+
+type MediaKindValue = (typeof MEDIA_KINDS)[number]["value"];
 
 type SearchResult = {
   title: string;
@@ -110,15 +130,19 @@ function SearchResultsTable({ results, added, isPending, onAdd }: SearchResultsT
 
 type DownloadsSearchFormProps = {
   query: string;
+  category: MediaKindValue;
   isPending: boolean;
   onQueryChange: (q: string) => void;
+  onCategoryChange: (c: MediaKindValue) => void;
   onSubmit: (e: React.FormEvent) => void;
 };
 
 function DownloadsSearchForm({
   query,
+  category,
   isPending,
   onQueryChange,
+  onCategoryChange,
   onSubmit,
 }: DownloadsSearchFormProps) {
   return (
@@ -126,9 +150,33 @@ function DownloadsSearchForm({
       <Input
         value={query}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onQueryChange(e.currentTarget.value)}
-        placeholder="Artist, album, or release…"
+        placeholder="Search…"
         className="flex-1"
       />
+      <Select value={category} onValueChange={(v) => onCategoryChange(v as MediaKindValue)}>
+        <SelectTrigger className="w-40 shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectLabel>Music</SelectLabel>
+            {MEDIA_KINDS.filter((k) => k.group === "Music").map((k) => (
+              <SelectItem key={k.value} value={k.value}>
+                {k.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+          <SelectSeparator />
+          <SelectGroup>
+            <SelectLabel>Video</SelectLabel>
+            {MEDIA_KINDS.filter((k) => k.group === "Video").map((k) => (
+              <SelectItem key={k.value} value={k.value}>
+                {k.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
       <Button type="submit" disabled={!query.trim() || isPending} size="sm">
         {isPending ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
         <span>{isPending ? "Searching…" : "Search"}</span>
@@ -163,7 +211,7 @@ function DownloadsBody({ searchIsSuccess, results, added, isPending, onAdd }: Do
     return (
       <EmptyState>
         <Download size={28} />
-        <span>Search Prowlarr indexers for lossless audio.</span>
+        <span>Search Prowlarr indexers for music, movies, or TV.</span>
       </EmptyState>
     );
   }
@@ -172,11 +220,12 @@ function DownloadsBody({ searchIsSuccess, results, added, isPending, onAdd }: Do
 
 export function Downloads() {
   const [query, setQuery] = React.useState("");
+  const [category, setCategory] = React.useState<MediaKindValue>("3040");
   const [added, setAdded] = React.useState<Set<string>>(new Set());
 
   const search = useMutation({
-    mutationFn: async (q: string) => {
-      const res = await api.search.get({ query: { q } });
+    mutationFn: async ({ q, categories }: { q: string; categories: string }) => {
+      const res = await api.search.get({ query: { q, categories } });
       return res.data && "results" in res.data ? (res.data.results as SearchResult[]) : [];
     },
   });
@@ -191,7 +240,7 @@ export function Downloads() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) search.mutate(query.trim());
+    if (query.trim()) search.mutate({ q: query.trim(), categories: category });
   };
 
   return (
@@ -199,8 +248,10 @@ export function Downloads() {
       <CardContent className="p-4 flex flex-col gap-4">
         <DownloadsSearchForm
           query={query}
+          category={category}
           isPending={search.isPending}
           onQueryChange={setQuery}
+          onCategoryChange={setCategory}
           onSubmit={handleSubmit}
         />
         {searchError ? (

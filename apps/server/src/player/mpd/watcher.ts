@@ -9,9 +9,9 @@
  * always sees the result.
  */
 import { isErr } from "@onrails/result";
+import type { PlayerState, StateListener } from "../port.js";
 import type { MpdClient } from "./client.js";
 import { parseMpdSong, parseMpdStatus, toPlayerState } from "./parse.js";
-import type { PlayerState, StateListener } from "../port.js";
 
 export type StateWatcher = {
   getState: () => PlayerState;
@@ -39,9 +39,11 @@ const fetchState = (
   client
     .cmd("status")
     .andThen((statusLines) =>
-      client.cmd("currentsong").map((songLines) =>
-        toPlayerState(parseMpdStatus(statusLines), parseMpdSong(songLines), musicDir, device),
-      ),
+      client
+        .cmd("currentsong")
+        .map((songLines) =>
+          toPlayerState(parseMpdStatus(statusLines), parseMpdSong(songLines), musicDir, device),
+        ),
     )
     .match(
       (s) => s,
@@ -79,7 +81,9 @@ export const createStateWatcher = (
     }
   };
 
-  runIdleLoop().catch(() => { /* connection dropped; caller handles reconnect */ });
+  runIdleLoop().catch(() => {
+    /* connection dropped; caller handles reconnect */
+  });
 
   return {
     getState: () => state,

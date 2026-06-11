@@ -1,14 +1,14 @@
+import { isErr } from "@onrails/result";
 import { type App as ApiApp, createApi } from "./api.js";
 import { createApp } from "./app.js";
 import { closeDeps, createDeps } from "./deps.js";
 import { env } from "./env.js";
-import { isErr } from "@onrails/result";
 import { logger } from "./logger.js";
 import { createMpdPlayer } from "./player/index.js";
 
 export type { CreateDepsOptions, Deps } from "./deps.js";
 export type { ApiApp as App };
-export { closeDeps, createApi, createApp, createDeps };
+export { closeDeps, createApi, createApp, createDeps, createMpdPlayer };
 
 if (import.meta.main) {
   const playerResult = await createMpdPlayer({

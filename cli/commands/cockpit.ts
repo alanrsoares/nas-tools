@@ -19,8 +19,27 @@ export default function cockpitCommand(program: Command) {
         console.warn("Run 'bun run build' to compile the frontend.");
       }
 
-      const { getApp } = await import("../../apps/server/src/index.js");
-      getApp().listen({ hostname: host, port });
+      const { createApp, createDeps, createMpdPlayer } = await import(
+        "../../apps/server/src/index.js"
+      );
+      const { isErr } = await import("@onrails/result");
+
+      const playerResult = await createMpdPlayer({
+        host: "127.0.0.1",
+        port: 6600,
+        musicDir: env.MUSIC_LIBRARY_PATH,
+        device: env.ALSA_DEVICE,
+      });
+
+      if (isErr(playerResult)) {
+        console.warn(
+          "Warning: Failed to connect to MPD — is mpd running? Player will be unavailable.",
+        );
+      }
+
+      const activeDeps = createDeps(isErr(playerResult) ? {} : { player: playerResult.value });
+
+      createApp(activeDeps).listen({ hostname: host, port });
       console.log(`NAS Tools Cockpit listening on http://${host}:${port}`);
     });
 }

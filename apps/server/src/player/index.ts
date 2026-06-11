@@ -1,11 +1,19 @@
-import { ResultAsync, errAsync } from "@onrails/result";
+import { errAsync, type ResultAsync } from "@onrails/result";
+import { makeMpdAdapter } from "./mpd/adapter.js";
 import { connectMpd } from "./mpd/client.js";
 import { createStateWatcher } from "./mpd/watcher.js";
-import { makeMpdAdapter } from "./mpd/adapter.js";
 import type { PlayerError, PlayerPort, PlayerState } from "./port.js";
 
-export type { PlayerPort } from "./port.js";
-export type { PlayerError, PlayerState, PlayerStatus, BrowseResult, BrowseEntry, AudioFileType, AlsaDevice } from "./port.js";
+export type {
+  AlsaDevice,
+  AudioFileType,
+  BrowseEntry,
+  BrowseResult,
+  PlayerError,
+  PlayerPort,
+  PlayerState,
+  PlayerStatus,
+} from "./port.js";
 
 const unavailable = (): ResultAsync<never, PlayerError> =>
   errAsync({ message: "player unavailable" });
@@ -58,7 +66,12 @@ export const createMpdPlayer = (config: MpdConfig): ResultAsync<PlayerPort, Play
         .mapErr(toPlayerError)
         .map((watchClient) => {
           const watcher = createStateWatcher(watchClient, config.musicDir, config.device);
-          return makeMpdAdapter({ cmdClient, watcher, musicDir: config.musicDir, device: config.device });
+          return makeMpdAdapter({
+            cmdClient,
+            watcher,
+            musicDir: config.musicDir,
+            device: config.device,
+          });
         }),
     );
 };
