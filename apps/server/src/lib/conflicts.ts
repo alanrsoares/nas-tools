@@ -23,9 +23,7 @@ async function resolveConflictEntry(
   resolvedItemIds: Set<string>,
   plan: Maybe<MovePlan>,
 ): Promise<Maybe<ConflictEntry>> {
-  if (e.type !== "item_failed") return none();
-  const match = e.message.match(/Merge conflict — files already exist in target: (.+)$/);
-  if (!match) return none();
+  if (e.type !== "item_conflict") return none();
 
   const itemId = parseEventItemId(e.data);
   if (isNone(itemId) || resolvedItemIds.has(itemId.value)) return none();
@@ -40,11 +38,15 @@ async function resolveConflictEntry(
     .catch(() => false);
   if (!sourceExists) return none();
 
-  const albumName = e.message.replace(/^Failed: /, "").replace(/ — Merge conflict.*$/, "");
+  const data = e.data as { conflictingFiles?: unknown } | null | undefined;
+  const conflictingFiles = Array.isArray(data?.conflictingFiles)
+    ? (data.conflictingFiles as string[])
+    : [];
+
   return some({
     itemId: itemId.value,
-    albumName,
-    conflictingFiles: (match[1] ?? "").split(", ").filter(Boolean),
+    albumName: item.value.albumName,
+    conflictingFiles,
     sourcePath: item.value.sourcePath,
   });
 }

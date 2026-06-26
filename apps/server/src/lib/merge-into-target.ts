@@ -4,19 +4,24 @@ import type { MovePlan } from "@nas-tools/core";
 import type { JobEmitter } from "./job-types.js";
 import { smartMerge } from "./smart-merge.js";
 
+export type MergeOutcome =
+  | { status: "merged" }
+  | { status: "conflict"; conflictingFiles: string[] };
+
 export async function mergeIntoExistingTarget(
   item: MovePlan["items"][number],
   emit: JobEmitter,
   force: boolean,
-): Promise<void> {
+): Promise<MergeOutcome> {
   const [srcFiles, destFiles] = await Promise.all([
     readdir(item.sourcePath),
     readdir(item.targetPath),
   ]);
   const destSet = new Set(destFiles);
-  const conflicts = srcFiles.filter((f) => destSet.has(f));
-  if (conflicts.length > 0 && !force) {
-    throw new Error(`Merge conflict — files already exist in target: ${conflicts.join(", ")}`);
+  const conflictingFiles = srcFiles.filter((f) => destSet.has(f));
+
+  if (conflictingFiles.length > 0 && !force) {
+    return { status: "conflict", conflictingFiles };
   }
 
   emit("move_merge", "warning", `Target exists, merging: ${item.albumName}`, { itemId: item.id });
@@ -34,4 +39,5 @@ export async function mergeIntoExistingTarget(
   }
 
   await rm(item.sourcePath, { recursive: true, force: true });
+  return { status: "merged" };
 }

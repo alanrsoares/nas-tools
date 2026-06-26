@@ -1,10 +1,9 @@
-import { cp, mkdir, rename } from "node:fs/promises";
-import path from "node:path";
 import type { MovePlan } from "@nas-tools/core";
 
-import { type CuePair, findCuePairs, getBashFunctionsPath, splitCuePair } from "./cue.js";
+import { type CuePair, getBashFunctionsPath, splitCuePair } from "./cue.js";
 import type { JobEventsRepo, JobsRepo } from "./db/index.js";
 import { errorMessage } from "./lib/job-lifecycle.js";
+import type { JobItemRunner } from "./lib/job-item-runner.js";
 import type {
   ConflictResolution,
   CuePairOutcome,
@@ -13,7 +12,6 @@ import type {
   JobStatusExtra,
   JobStatusUpdater,
 } from "./lib/job-types.js";
-import { mergeIntoExistingTarget } from "./lib/merge-into-target.js";
 import { runCueJob } from "./lib/run-cue-job.js";
 import { runMoveJob } from "./lib/run-move-job.js";
 
@@ -40,7 +38,10 @@ export type ExecutionService = {
   ) => Promise<void>;
 };
 
-export const createExecutionService = (repos: ExecutionRepos): ExecutionService => {
+export const createExecutionService = (
+  repos: ExecutionRepos,
+  runner: JobItemRunner,
+): ExecutionService => {
   const activeControllers = new Map<string, AbortController>();
 
   const makeEmitter = (jobId: string): JobEmitter => {
@@ -77,16 +78,17 @@ export const createExecutionService = (repos: ExecutionRepos): ExecutionService 
       return;
     }
     emit("item_started", "info", `Retrying (force merge): ${item.albumName}`, { itemId: item.id });
-    try {
-      await moveItem(item, plan, emit, true);
+    const outcome = await runner.runForced(item, plan, emit);
+    if (outcome.status === "completed") {
       emit("item_completed", "info", `Done: ${item.albumName} → ${item.targetPath}`, {
         itemId: item.id,
       });
-    } catch (cause) {
+    } else {
+      const cause = outcome.status === "failed" ? outcome.cause : new Error("Unexpected conflict after force merge");
       emit("item_failed", "error", `Failed: ${item.albumName} — ${errorMessage(cause)}`, {
         itemId: item.id,
       });
-      throw cause;
+      throw cause instanceof Error ? cause : new Error(String(cause));
     }
   };
 
@@ -98,37 +100,6 @@ export const createExecutionService = (repos: ExecutionRepos): ExecutionService 
       activeControllers.delete(jobId);
     });
   };
-
-  async function moveItem(
-    item: MovePlan["items"][number],
-    plan: MovePlan,
-    emit: JobEmitter,
-    force = false,
-  ): Promise<void> {
-    const backupDest = path.join(plan.config.backupDir, item.albumName);
-    emit("backup_started", "info", `Backing up: ${item.albumName}`, { itemId: item.id });
-    await cp(item.sourcePath, backupDest, { recursive: true });
-    emit("backup_completed", "info", `Backup complete: ${item.albumName}`, {
-      itemId: item.id,
-      backupDest,
-    });
-
-    await mkdir(path.dirname(item.targetPath), { recursive: true });
-    emit("move_started", "info", `Moving: ${item.albumName}`, { itemId: item.id });
-
-    try {
-      await rename(item.sourcePath, item.targetPath);
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOTEMPTY") throw cause;
-      await mergeIntoExistingTarget(item, emit, force);
-    }
-
-    emit("move_completed", "info", `Move complete: ${item.albumName}`, {
-      itemId: item.id,
-      targetPath: item.targetPath,
-    });
-    await splitCueForMovedItem(item, plan, emit);
-  }
 
   async function cleanTorrentsStep(stagingDir: string, emit: JobEmitter): Promise<void> {
     try {
@@ -187,57 +158,6 @@ export const createExecutionService = (repos: ExecutionRepos): ExecutionService 
     }
   }
 
-  async function splitCueForMovedItem(
-    item: MovePlan["items"][number],
-    plan: MovePlan,
-    emit: JobEmitter,
-  ): Promise<void> {
-    if (!plan.cueSplitEnabled || item.mediaType !== "music") return;
-
-    emit("cue_scan_started", "info", `Scanning for CUE pairs: ${item.albumName}`, {
-      itemId: item.id,
-    });
-
-    const pairs = await findCuePairs(item.targetPath, 6);
-    if (pairs.length === 0) {
-      emit("cue_scan_completed", "info", `No CUE pairs found: ${item.albumName}`, {
-        itemId: item.id,
-      });
-      return;
-    }
-
-    const bashFunctionsPath = await getBashFunctionsPath();
-    if (!bashFunctionsPath) {
-      throw new Error("Could not find bash/functions.sh. Set NAS_TOOLS_BASH_FUNCTIONS_PATH.");
-    }
-
-    emit("cue_scan_completed", "info", `Found ${pairs.length} CUE pair(s): ${item.albumName}`, {
-      itemId: item.id,
-      total: pairs.length,
-    });
-
-    for (const pair of pairs) {
-      if (pair.blocked) {
-        emit("cue_skipped", "warning", `Skipped blocked CUE: ${pair.cueFile}`, {
-          itemId: item.id,
-          pair,
-        });
-        continue;
-      }
-
-      emit("cue_started", "info", `Splitting CUE: ${pair.cueFile}`, { itemId: item.id, pair });
-      await splitCuePair({
-        pair,
-        bashFunctionsPath,
-        onLine: (line) => emit("cue_log", "info", line, { itemId: item.id, pairId: pair.id }),
-      });
-      emit("cue_completed", "info", `Split CUE complete: ${pair.cueFile}`, {
-        itemId: item.id,
-        pair,
-      });
-    }
-  }
-
   async function runExecution(jobId: string, plan: MovePlan, signal: AbortSignal): Promise<void> {
     const emit = makeEmitter(jobId);
     const setJobStatus = makeJobStatusUpdater(jobId);
@@ -246,8 +166,9 @@ export const createExecutionService = (repos: ExecutionRepos): ExecutionService 
 
     await runMoveJob({
       items: included,
+      plan,
       signal,
-      move: (item) => moveItem(item, plan, emit),
+      runner,
       emit,
       setJobStatus,
       counts,
