@@ -4,7 +4,8 @@ import { getOrElse, type Maybe, map as mapMaybe, none, some } from "@onrails/may
 import { ResultAsync } from "@onrails/result";
 import { parseFile } from "music-metadata";
 
-import { isUnknown, parseReleaseFolderName, stripReleaseTags } from "./artist.js";
+import { isUnknown } from "./artist.js";
+import { parseReleaseFolderName, stripReleaseTags } from "./release-naming.js";
 import { type CoreError, toCoreError } from "./errors.js";
 import { alphabeticalRanges, isLibraryRootName } from "./library-layout.js";
 import { isMusicFile } from "./media-files.js";
