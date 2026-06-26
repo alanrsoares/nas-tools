@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { BrowseResult, PlayerState } from "../../types";
 import type { AlsaDevice } from "./lib/utils";
 import { apiFetch, isAudio, post, postJson } from "./lib/utils";
+import { usePlaylist } from "./usePlaylist.js";
 
 const BASE = window.location.origin;
 
@@ -98,16 +99,24 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [devices, setDevices] = useState<AlsaDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState(DEFAULT_STATE.device);
-  const [playlist, setPlaylist] = useState<string[]>([]);
-  const [playlistIdx, setPlaylistIdx] = useState(-1);
   const [filter, setFilter] = useState("");
   const libraryRootRef = useRef<string | null>(null);
-
-  const playlistRef = useRef(playlist);
-  const playlistIdxRef = useRef(playlistIdx);
   const selectedDeviceRef = useRef(selectedDevice);
-  const playerStatusRef = useRef<PlayerState["status"]>("idle");
-  const autoAdvanceRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    selectedDeviceRef.current = selectedDevice;
+  }, [selectedDevice]);
+
+  const onPlayTrack = useCallback(
+    (path: string) =>
+      postJson("/player/play", { path, device: selectedDeviceRef.current }),
+    [],
+  );
+
+  const { playlist, playlistIdx, play, next, prev, enqueue, clear } = usePlaylist({
+    playerStatus: playerState.status,
+    onPlayTrack,
+  });
 
   const navigateTo = useCallback(async (dirPath?: string) => {
     setBrowseError(null);
@@ -122,28 +131,15 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     setBrowseError(data.message);
   }, []);
 
-  const playTracks = useCallback(async (tracks: string[], startIdx: number) => {
-    const track = tracks[startIdx];
-    if (!track) return;
-    setPlaylist(tracks);
-    setPlaylistIdx(startIdx);
-    playlistRef.current = tracks;
-    playlistIdxRef.current = startIdx;
-    await postJson("/player/play", {
-      path: track,
-      device: selectedDeviceRef.current,
-    });
-  }, []);
-
   const handlePlay = useCallback(
     async (filePath: string) => {
       const tracks = browse?.entries
         .filter((entry) => isAudio(entry.type))
         .map((entry) => entry.path) ?? [filePath];
       const idx = tracks.indexOf(filePath);
-      await playTracks(tracks, Math.max(0, idx));
+      await play(tracks, Math.max(0, idx));
     },
-    [browse, playTracks],
+    [browse, play],
   );
 
   const handlePlayAll = useCallback(
@@ -151,75 +147,42 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       const data = await apiFetch<{ files: string[] }>(
         `/player/list?path=${encodeURIComponent(dirPath)}`,
       );
-      if (data.ok) await playTracks(data.files, 0);
+      if (data.ok) await play(data.files, 0);
     },
-    [playTracks],
+    [play],
   );
 
-  const handleAddToQueue = useCallback((filePath: string) => {
-    setPlaylist((prev) => [...prev, filePath]);
-  }, []);
+  const handleAddToQueue = useCallback(
+    (filePath: string) => enqueue([filePath]),
+    [enqueue],
+  );
 
-  const handleAddDirToQueue = useCallback(async (dirPath: string) => {
-    const data = await apiFetch<{ files: string[] }>(
-      `/player/list?path=${encodeURIComponent(dirPath)}`,
-    );
-    if (data.ok) setPlaylist((prev) => [...prev, ...data.files]);
-  }, []);
+  const handleAddDirToQueue = useCallback(
+    async (dirPath: string) => {
+      const data = await apiFetch<{ files: string[] }>(
+        `/player/list?path=${encodeURIComponent(dirPath)}`,
+      );
+      if (data.ok) enqueue(data.files);
+    },
+    [enqueue],
+  );
 
-  const handlePrev = useCallback(async () => {
-    if (playerState.positionMs > 3000 || playlistIdx <= 0) {
-      if (playerState.currentTrack) {
-        await postJson("/player/play", {
-          path: playerState.currentTrack,
-          device: selectedDevice,
-        });
-      }
-      return;
-    }
-    const idx = playlistIdx - 1;
-    const track = playlist[idx];
-    if (!track) return;
-    setPlaylistIdx(idx);
-    await postJson("/player/play", { path: track, device: selectedDevice });
-  }, [playerState.currentTrack, playerState.positionMs, playlist, playlistIdx, selectedDevice]);
+  const handlePrev = useCallback(
+    async () =>
+      prev({
+        positionMs: playerState.positionMs,
+        currentTrack: playerState.currentTrack,
+      }),
+    [prev, playerState.positionMs, playerState.currentTrack],
+  );
 
-  const handleNext = useCallback(async () => {
-    const idx = playlistIdxRef.current + 1;
-    const track = playlistRef.current[idx];
-    if (!track) return;
-    setPlaylistIdx(idx);
-    await postJson("/player/play", {
-      path: track,
-      device: selectedDeviceRef.current,
-    });
-  }, []);
-
-  const handlePause = useCallback(async () => {
-    await post("/player/pause");
-  }, []);
-
-  const handleResume = useCallback(async () => {
-    await post("/player/resume");
-  }, []);
-
+  const handleNext = useCallback(async () => next(), [next]);
+  const handlePause = useCallback(async () => post("/player/pause"), []);
+  const handleResume = useCallback(async () => post("/player/resume"), []);
   const handleStop = useCallback(async () => {
     await post("/player/stop");
-    setPlaylist([]);
-    setPlaylistIdx(-1);
-  }, []);
-
-  useEffect(() => {
-    playlistRef.current = playlist;
-  }, [playlist]);
-
-  useEffect(() => {
-    playlistIdxRef.current = playlistIdx;
-  }, [playlistIdx]);
-
-  useEffect(() => {
-    selectedDeviceRef.current = selectedDevice;
-  }, [selectedDevice]);
+    clear();
+  }, [clear]);
 
   useEffect(() => {
     const es = new EventSource(`${BASE}/api/player/status`);
@@ -236,29 +199,6 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   useEffect(() => {
     if (playerState.device) setSelectedDevice(playerState.device);
   }, [playerState.device]);
-
-  useEffect(() => {
-    autoAdvanceRef.current = () => {
-      const nextIdx = playlistIdxRef.current + 1;
-      const track = playlistRef.current[nextIdx];
-      if (track) {
-        setPlaylistIdx(nextIdx);
-        playlistIdxRef.current = nextIdx;
-        postJson("/player/play", {
-          path: track,
-          device: selectedDeviceRef.current,
-        });
-        return;
-      }
-      setPlaylistIdx(-1);
-    };
-  }, []);
-
-  useEffect(() => {
-    const prev = playerStatusRef.current;
-    playerStatusRef.current = playerState.status;
-    if (prev === "playing" && playerState.status === "idle") autoAdvanceRef.current();
-  }, [playerState.status]);
 
   useEffect(() => {
     navigateTo(undefined);
