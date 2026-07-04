@@ -27,13 +27,13 @@ import {
   JobListMeta,
   JobListTime,
   JobListType,
-  ProgressBar,
-  ProgressTrack,
+  ResponsiveCard,
+  ResponsiveCardContent,
   StatusDot,
 } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { withToken } from "@/lib/auth";
 import { api, queryClient } from "../../api";
@@ -235,8 +235,8 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
   });
 
   return (
-    <Card className="min-w-0 flex-1">
-      <CardContent className="p-4 flex flex-col gap-3">
+    <ResponsiveCard className="min-w-0 flex-1">
+      <ResponsiveCardContent className="flex flex-col gap-3">
         {/* Header row */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -273,9 +273,11 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
               </span>
               <span>{progress}%</span>
             </div>
-            <ProgressTrack>
-              <ProgressBar $failed={counts.failed > 0} style={{ width: `${progress}%` }} />
-            </ProgressTrack>
+            <Progress
+              value={progress}
+              className="h-1 bg-muted"
+              indicatorClassName={counts.failed > 0 ? "bg-[oklch(0.78_0.13_60)]" : ""}
+            />
           </div>
         ) : null}
 
@@ -313,8 +315,8 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
             }}
           />
         ) : null}
-      </CardContent>
-    </Card>
+      </ResponsiveCardContent>
+    </ResponsiveCard>
   );
 }
 
@@ -336,25 +338,25 @@ export function Jobs() {
 
   if (jobList.length === 0 && !jobsQuery.isLoading) {
     return (
-      <Card>
-        <CardContent className="p-4">
+      <ResponsiveCard>
+        <ResponsiveCardContent>
           <EmptyState>
             <ListChecks size={28} />
             <span>No jobs yet. Confirm a Move Plan to start one.</span>
           </EmptyState>
-        </CardContent>
-      </Card>
+        </ResponsiveCardContent>
+      </ResponsiveCard>
     );
   }
 
   const selected = jobId ? (jobList.find((j) => j.id === jobId) ?? jobList[0]) : jobList[0];
 
   return (
-    <div className="flex gap-4" style={{ minWidth: 0 }}>
+    <div className="flex gap-4 max-md:flex-col" style={{ minWidth: 0 }}>
       {/* Job list */}
-      <Card style={{ width: 220, flexShrink: 0 }}>
-        <CardContent className="p-2">
-          <div className="grid gap-1">
+      <ResponsiveCard className="w-[220px] shrink-0 max-md:w-full">
+        <ResponsiveCardContent className="p-2 max-md:p-0">
+          <div className="grid gap-1 max-md:flex max-md:overflow-x-auto max-md:pb-1 max-md:pt-0.5 max-md:gap-1.5 max-md:[scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {jobList.map((job) => {
               const itemLabel =
                 job.counts.total > 0
@@ -378,8 +380,8 @@ export function Jobs() {
               );
             })}
           </div>
-        </CardContent>
-      </Card>
+        </ResponsiveCardContent>
+      </ResponsiveCard>
 
       {/* Job detail */}
       {selected ? <JobDetail job={selected} /> : null}

@@ -27,6 +27,7 @@ describe("createMovePlanDraft", () => {
       tvDir: join(root, "TV"),
       movieDir: join(root, "Movies"),
       audiobookDir: join(root, "Audiobooks"),
+      ebookDir: join(root, "Ebooks"),
       backupDir: join(root, "backup"),
     };
 
@@ -50,6 +51,7 @@ describe("createMovePlanDraft", () => {
       tvDir: join(root, "TV"),
       movieDir: join(root, "Movies"),
       audiobookDir: join(root, "Audiobooks"),
+      ebookDir: join(root, "Ebooks"),
       backupDir: join(root, "backup"),
     };
 
@@ -74,6 +76,7 @@ describe("createMovePlanDraft", () => {
       tvDir: join(root, "TV"),
       movieDir: join(root, "Movies"),
       audiobookDir: join(root, "Audiobooks"),
+      ebookDir: join(root, "Ebooks"),
       backupDir: join(root, "backup"),
     };
 
@@ -81,6 +84,34 @@ describe("createMovePlanDraft", () => {
     const ebooks = join(config.stagingDir, "Nietzsche, Friedrich");
     await mkdir(ebooks, { recursive: true });
     await writeFile(join(ebooks, "Genealogy of Morals.epub"), "not real epub");
+
+    const result = await createMovePlanDraft(config).unwrapOr(undefined);
+
+    expect(result?.items).toHaveLength(1);
+    expect(result?.items[0]?.mediaType).toBe("ebook");
+    expect(result?.items[0]?.status).toBe("included");
+    expect(result?.items[0]?.included).toBe(true);
+    expect(result?.items[0]?.targetPath).toBe(
+      join(config.ebookDir, "Nietzsche, Friedrich"),
+    );
+  });
+
+  it("surfaces unsupported items as excluded instead of dropping them", async () => {
+    const root = await Bun.$`mktemp -d`.text().then((value) => value.trim());
+    const config: NasPathConfig = {
+      stagingDir: join(root, "complete"),
+      musicDir: join(root, "FLAC"),
+      tvDir: join(root, "TV"),
+      movieDir: join(root, "Movies"),
+      audiobookDir: join(root, "Audiobooks"),
+      ebookDir: join(root, "Ebooks"),
+      backupDir: join(root, "backup"),
+    };
+
+    await Promise.all(Object.values(config).map((dir) => mkdir(dir, { recursive: true })));
+    const unsupported = join(config.stagingDir, "unsupported-item");
+    await mkdir(unsupported, { recursive: true });
+    await writeFile(join(unsupported, "somefile.zip"), "not real zip");
 
     const result = await createMovePlanDraft(config).unwrapOr(undefined);
 

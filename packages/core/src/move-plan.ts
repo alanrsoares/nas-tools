@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { isNone, isSome, type Maybe, none } from "@onrails/maybe";
 import { match as matchUnion } from "@onrails/pattern";
@@ -65,6 +65,7 @@ function targetDirectoryFor(
     .with("tv", () => ok<string, MovePlanError>(config.tvDir))
     .with("movie", () => ok<string, MovePlanError>(config.movieDir))
     .with("audiobook", () => ok<string, MovePlanError>(config.audiobookDir))
+    .with("ebook", () => ok<string, MovePlanError>(config.ebookDir))
     .with("unknown", () =>
       err<string, MovePlanError>(toCoreError("No target directory for unsupported media")),
     )
@@ -77,16 +78,34 @@ export function validateNasPathConfig(
   return ResultAsync.fromSafePromise(
     Promise.all(
       Object.entries(config).map(async ([key, value]) => {
-        const dir = await stat(value)
-          .then((entry) => entry.isDirectory())
-          .catch(() => false);
-        return dir
-          ? undefined
-          : ({
-              path: [key],
-              code: "PATH_MISSING",
-              message: `${key} does not exist: ${value}`,
-            } satisfies FieldIssue);
+        if (key === "stagingDir") {
+          const isDir = await stat(value)
+            .then((entry) => entry.isDirectory())
+            .catch(() => false);
+          return isDir
+            ? undefined
+            : ({
+                path: [key],
+                code: "PATH_MISSING",
+                message: `stagingDir does not exist: ${value}`,
+              } satisfies FieldIssue);
+        }
+
+        try {
+          const isDir = await stat(value)
+            .then((entry) => entry.isDirectory())
+            .catch(() => false);
+          if (!isDir) {
+            await mkdir(value, { recursive: true });
+          }
+          return undefined;
+        } catch {
+          return {
+            path: [key],
+            code: "PATH_MISSING",
+            message: `${key} does not exist and could not be created: ${value}`,
+          } satisfies FieldIssue;
+        }
       }),
     ).then((issues) => issues.filter((issue): issue is FieldIssue => issue !== undefined)),
   ).andThen((issues) =>
@@ -182,7 +201,7 @@ function toMovePlanItem(
       issues: [
         createIssue(
           "UNSUPPORTED_MEDIA_TYPE",
-          "No supported media detected (music, movie, TV, audiobook).",
+          "No supported media detected (music, movie, TV, audiobook, ebook).",
           itemId,
         ),
       ],

@@ -20,6 +20,7 @@ export function formatRelativeTime(iso: string): string {
 export function mediaLabel(mediaType: MovePlanItem["mediaType"]) {
   const labels: Record<MovePlanItem["mediaType"], string> = {
     audiobook: "Audiobook",
+    ebook: "Ebook",
     movie: "Movie",
     music: "Music",
     tv: "TV",
@@ -31,6 +32,7 @@ export function mediaLabel(mediaType: MovePlanItem["mediaType"]) {
 export function settingLabel(key: string) {
   const labels: Record<string, string> = {
     audiobookDir: "Audiobooks",
+    ebookDir: "Ebooks",
     backupDir: "Backup",
     movieDir: "Movies",
     musicDir: "Music",

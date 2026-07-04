@@ -7,17 +7,19 @@ export const Sidebar = tw.aside(
 );
 
 export const Brand = tw.div(
-  "mb-2.5 flex items-center gap-2 border-b border-border px-2.5 pb-4 pt-1 text-[15px] font-semibold tracking-tight text-[oklch(0.94_0.008_155)] max-md:mb-2 max-md:pb-2.5",
+  "mb-2.5 flex items-center gap-2 border-b border-border px-2.5 pb-4 pt-1 text-[15px] font-semibold tracking-tight text-[oklch(0.94_0.008_155)] max-md:mb-0 max-md:border-b-0 max-md:pb-0 max-md:pt-0",
 );
 
-export const Nav = tw.nav("grid gap-0.5 max-md:grid-cols-3 max-md:gap-0.5");
+export const Nav = tw.nav(
+  "grid gap-0.5 max-md:fixed max-md:bottom-0 max-md:left-0 max-md:right-0 max-md:z-50 max-md:flex max-md:flex-row max-md:gap-2 max-md:border-t max-md:border-border max-md:bg-[oklch(0.125_0.015_175)] max-md:px-3 max-md:py-2 max-md:pb-[calc(8px+env(safe-area-inset-bottom))] max-md:overflow-x-auto max-md:[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+);
 
 export const navLinkClass =
-  "flex w-full items-center gap-2 rounded-[5px] border-0 bg-transparent px-2.5 py-2 text-left text-[13.5px] tracking-tight text-[oklch(0.82_0.01_165)] no-underline transition-colors duration-150 hover:bg-accent hover:text-foreground max-md:justify-center max-md:px-2 max-md:py-2 max-md:text-[13px]";
+  "flex w-full items-center gap-2 rounded-[5px] border-0 bg-transparent px-2.5 py-2 text-left text-[13.5px] tracking-tight text-[oklch(0.82_0.01_165)] no-underline transition-colors duration-150 hover:bg-accent hover:text-foreground max-md:w-auto max-md:shrink-0 max-md:px-3 max-md:py-1.5 max-md:text-[13px] max-md:justify-center";
 
 export const navLinkActiveClass = "bg-accent font-medium text-foreground [&_svg]:text-primary";
 
-export const Content = tw.main("min-w-0 bg-background px-6 py-5 max-md:px-4 max-md:py-3.5");
+export const Content = tw.main("min-w-0 bg-background px-6 py-5 max-md:px-4 max-md:pt-3.5 max-md:pb-[calc(60px+env(safe-area-inset-bottom))]");
 
 export const Topbar = tw.header(
   "mb-4 flex min-h-9 items-center justify-between gap-4 border-b border-border pb-3.5 max-md:flex-col max-md:items-stretch",
@@ -28,3 +30,11 @@ export const PageTitle = tw.h1(
 );
 
 export const SectionDesc = tw.p("mt-0.5 text-xs leading-snug text-muted-foreground");
+
+export const ResponsiveCard = tw.div(
+  "rounded-lg border border-border bg-card text-card-foreground shadow-sm max-md:border-0 max-md:bg-transparent max-md:shadow-none",
+);
+
+export const ResponsiveCardContent = tw.div(
+  "p-4 max-md:p-0",
+);

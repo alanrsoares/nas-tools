@@ -1,12 +1,19 @@
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Scissors, Search } from "lucide-react";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import {
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Scissors, Search } from "lucide-react";
 import React from "react";
+import { cn } from "@/lib/utils";
 import { z } from "zod";
-import { EmptyState, PathTruncate, Toolbar } from "@/components/styled";
+import { EmptyState, PathTruncate, ResponsiveCard, ResponsiveCardContent, Toolbar } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -151,41 +158,120 @@ type CuePairTableProps = {
 };
 
 function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+
+  const columns = React.useMemo<ColumnDef<CuePair>[]>(
+    () => [
+      {
+        id: "select",
+        header: "",
+        cell: ({ row }) => (
+          <Checkbox
+            checked={selectedIds.has(row.original.id)}
+            disabled={row.original.blocked}
+            onCheckedChange={(checked) => togglePair(row.original.id, checked === true)}
+          />
+        ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: "cueFile",
+        header: "CUE",
+        cell: ({ row }) => (
+          <div className="grid gap-1">
+            <PathTruncate className="font-mono">{row.original.cueFile}</PathTruncate>
+            <PathTruncate className="text-xs text-muted-foreground">
+              {row.original.directory}
+            </PathTruncate>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "audioFile",
+        header: "Audio",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs">{row.original.audioFile}</span>
+        ),
+      },
+      {
+        accessorKey: "blocked",
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge variant={row.original.blocked ? "warning" : "success"}>
+            {row.original.blocked ? "Blocked" : "Ready"}
+          </Badge>
+        ),
+      },
+    ],
+    [selectedIds, togglePair]
+  );
+
+  const table = useReactTable({
+    data: pairs,
+    columns,
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
   return (
     <div className="overflow-x-auto rounded-md border border-border mt-4">
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHead className="w-10" />
-            <TableHead>CUE</TableHead>
-            <TableHead>Audio</TableHead>
-            <TableHead className="w-28">Status</TableHead>
-          </TableRow>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => {
+                let className = "";
+                if (header.id === "select") {
+                  className = "w-10";
+                } else if (header.id === "status") {
+                  className = "w-28";
+                }
+                const canSort = header.column.getCanSort();
+                const isSorted = header.column.getIsSorted();
+                return (
+                  <TableHead
+                    key={header.id}
+                    className={cn(
+                      className,
+                      canSort && "cursor-pointer select-none"
+                    )}
+                    onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                      {canSort && (
+                        <span>
+                          {isSorted === "asc" ? (
+                            <ArrowUp className="h-3.5 w-3.5 shrink-0" />
+                          ) : isSorted === "desc" ? (
+                            <ArrowDown className="h-3.5 w-3.5 shrink-0" />
+                          ) : (
+                            <ArrowUpDown className="h-3.5 w-3.5 opacity-50 shrink-0 hover:opacity-100" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </TableHead>
+                );
+              })}
+            </TableRow>
+          ))}
         </TableHeader>
         <TableBody>
-          {pairs.map((pair) => (
-            <TableRow key={pair.id}>
-              <TableCell>
-                <Checkbox
-                  checked={selectedIds.has(pair.id)}
-                  disabled={pair.blocked}
-                  onCheckedChange={(checked) => togglePair(pair.id, checked === true)}
-                />
-              </TableCell>
-              <TableCell>
-                <div className="grid gap-1">
-                  <PathTruncate className="font-mono">{pair.cueFile}</PathTruncate>
-                  <PathTruncate className="text-xs text-muted-foreground">
-                    {pair.directory}
-                  </PathTruncate>
-                </div>
-              </TableCell>
-              <TableCell className="font-mono text-xs">{pair.audioFile}</TableCell>
-              <TableCell>
-                <Badge variant={pair.blocked ? "warning" : "success"}>
-                  {pair.blocked ? "Blocked" : "Ready"}
-                </Badge>
-              </TableCell>
+          {table.getRowModel().rows.map((row) => (
+            <TableRow key={row.id}>
+              {row.getVisibleCells().map((cell) => (
+                <TableCell key={cell.id}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </TableCell>
+              ))}
             </TableRow>
           ))}
         </TableBody>
@@ -330,8 +416,8 @@ export function CueSplit() {
   };
 
   return (
-    <Card>
-      <CardContent className="p-4">
+    <ResponsiveCard>
+      <ResponsiveCardContent>
         <CueSplitToolbar
           result={result}
           readyPairs={readyPairs}
@@ -349,7 +435,7 @@ export function CueSplit() {
           selectedIds={selectedIds}
           togglePair={togglePair}
         />
-      </CardContent>
-    </Card>
+      </ResponsiveCardContent>
+    </ResponsiveCard>
   );
 }

@@ -1,8 +1,18 @@
 import type { MovePlan, MovePlanItem } from "@nas-tools/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import {
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   CheckCircle2,
   FolderCog,
   Loader2,
@@ -11,6 +21,7 @@ import {
   Trash2,
 } from "lucide-react";
 import React from "react";
+import { cn } from "@/lib/utils";
 import {
   CueSplitToggle as CueSplitToggleBox,
   CueSplitToggleLabel,
@@ -18,6 +29,8 @@ import {
   ItemTitleInner,
   MutedText,
   PathTruncate,
+  ResponsiveCard,
+  ResponsiveCardContent,
   TitleCell,
   Toolbar,
 } from "@/components/styled";
@@ -88,7 +101,7 @@ function CueSplitToggle({ plan, setPlan }: CueSplitToggleProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <CueSplitToggleBox>
+        <CueSplitToggleBox className="max-md:w-full max-md:justify-center">
           <Checkbox
             id="staging-cue-split"
             checked={plan.cueSplitEnabled}
@@ -175,7 +188,7 @@ function StagingConfirmButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span>
+        <span className="max-md:block max-md:w-full [&>button]:max-md:w-full">
           <Button onClick={onConfirm} disabled={!canConfirm || confirmIsPending} size="sm">
             {confirmIsPending ? (
               <Loader2 size={15} className="animate-spin" />
@@ -252,7 +265,7 @@ function StagingActions({
   const showClean =
     orphanedCount > 0 || cleanTorrents.isPending || isCleanSuccess(cleanTorrents.data?.data);
   return (
-    <div className="flex gap-2 items-center toolbar-actions">
+    <div className="flex gap-2 items-center toolbar-actions max-md:w-full max-md:flex-col max-md:items-stretch">
       {plan && cuePairTotal > 0 ? <CueSplitToggle plan={plan} setPlan={setPlan} /> : null}
       {showClean ? (
         <StagingCleanButton cleanTorrents={cleanTorrents} orphanedCount={orphanedCount} />
@@ -330,36 +343,295 @@ type MovePlanTableProps = {
 };
 
 function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
-  return (
-    <div className="overflow-x-auto rounded-md border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-14 text-center">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="cursor-default">Use</span>
-                </TooltipTrigger>
-                <TooltipContent>Include this item in the move</TooltipContent>
-              </Tooltip>
-            </TableHead>
-            <TableHead>Item</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Artist</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Target</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {plan.items.map((item) => (
-            <MovePlanRow
-              key={item.id}
-              item={item}
-              onChange={(next) => setPlan(updatePlanItem(plan, next))}
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+
+  const columns = React.useMemo<ColumnDef<MovePlanItem>[]>(
+    () => [
+      {
+        id: "use",
+        header: () => (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="cursor-default">Use</span>
+            </TooltipTrigger>
+            <TooltipContent>Include this item in the move</TooltipContent>
+          </Tooltip>
+        ),
+        cell: ({ row }) => {
+          const item = row.original;
+          return (
+            <Checkbox
+              aria-label={`Include ${item.albumName}`}
+              checked={item.included}
+              disabled={item.mediaType === "unknown"}
+              onCheckedChange={(checked: boolean | "indeterminate") =>
+                setPlan(updatePlanItem(plan, { ...item, included: !!checked }))
+              }
             />
-          ))}
-        </TableBody>
-      </Table>
+          );
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: "albumName",
+        header: "Item",
+        cell: ({ row }) => {
+          const item = row.original;
+          return (
+            <ItemTitleInner>
+              <span>{item.albumName}</span>
+              {(item.cueAudioPairs ?? 0) > 0 ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="warning" className="gap-1 cursor-default">
+                      <Scissors size={12} />
+                      CUE {item.cueAudioPairs}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>Will split after move when Split CUE is enabled</TooltipContent>
+                </Tooltip>
+              ) : null}
+            </ItemTitleInner>
+          );
+        },
+      },
+      {
+        accessorKey: "mediaType",
+        header: "Type",
+        cell: ({ row }) => (
+          <Badge variant="secondary">{mediaLabel(row.original.mediaType)}</Badge>
+        ),
+      },
+      {
+        accessorKey: "artistName",
+        header: "Artist",
+        cell: ({ row }) => {
+          const item = row.original;
+          const showWarning = item.issues.length > 0 && item.included;
+          return item.mediaType === "music" ? (
+            <Input
+              aria-label={`Artist for ${item.albumName}`}
+              className={showWarning ? "border-warning/60 bg-warning/20 max-w-60" : "max-w-60"}
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                const artistName = event.currentTarget.value;
+                setPlan(
+                  updatePlanItem(plan, {
+                    ...item,
+                    artistName,
+                    issues: artistName.trim()
+                      ? item.issues.filter((i) => i.code !== "ARTIST_REQUIRED")
+                      : item.issues,
+                  })
+                );
+              }}
+              placeholder="Artist name…"
+              value={item.artistName ?? ""}
+            />
+          ) : (
+            <MutedText>—</MutedText>
+          );
+        },
+      },
+      {
+        accessorFn: (item) => {
+          if (item.mediaType === "unknown") return 0;
+          if (item.issues.length > 0) return 1;
+          if (!item.included) return 2;
+          return 3;
+        },
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => <StatusBadge item={row.original} />,
+      },
+      {
+        accessorKey: "targetPath",
+        header: "Target",
+        cell: ({ row }) => {
+          const item = row.original;
+          return item.mediaType === "unknown" ? (
+            <MutedText>—</MutedText>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PathTruncate>{item.targetPath}</PathTruncate>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm break-all">{item.targetPath}</TooltipContent>
+            </Tooltip>
+          );
+        },
+      },
+    ],
+    [plan, setPlan]
+  );
+
+  const table = useReactTable({
+    data: plan.items,
+    columns,
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
+  return (
+    <div className="grid gap-4">
+      {/* Desktop view */}
+      <div className="hidden md:block overflow-x-auto rounded-md border border-border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  let className = "";
+                  if (header.id === "use") {
+                    className = "w-14 text-center";
+                  }
+                  const canSort = header.column.getCanSort();
+                  const isSorted = header.column.getIsSorted();
+                  return (
+                    <TableHead
+                      key={header.id}
+                      className={cn(
+                        className,
+                        canSort && "cursor-pointer select-none"
+                      )}
+                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                    >
+                      <div className={cn("flex items-center gap-1.5", header.id === "use" && "justify-center")}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(header.column.columnDef.header, header.getContext())}
+                        {canSort && (
+                          <span>
+                            {isSorted === "asc" ? (
+                              <ArrowUp className="h-3.5 w-3.5 shrink-0" />
+                            ) : isSorted === "desc" ? (
+                              <ArrowDown className="h-3.5 w-3.5 shrink-0" />
+                            ) : (
+                              <ArrowUpDown className="h-3.5 w-3.5 opacity-50 shrink-0 hover:opacity-100" />
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => {
+                  if (cell.column.id === "albumName") {
+                    return (
+                      <TitleCell key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TitleCell>
+                    );
+                  }
+                  let className = "";
+                  if (cell.column.id === "use") {
+                    className = "text-center";
+                  }
+                  return (
+                    <TableCell key={cell.id} className={className}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Mobile view */}
+      <div className="flex flex-col gap-3 md:hidden">
+        {table.getRowModel().rows.map((row) => {
+          const item = row.original;
+          const showWarning = item.issues.length > 0 && item.included;
+          return (
+            <Card key={row.id} className="border-border/50 bg-card/60">
+              <CardContent className="p-3 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className="pt-0.5 shrink-0">
+                      <Checkbox
+                        aria-label={`Include ${item.albumName}`}
+                        checked={item.included}
+                        disabled={item.mediaType === "unknown"}
+                        onCheckedChange={(checked: boolean | "indeterminate") =>
+                          setPlan(updatePlanItem(plan, { ...item, included: !!checked }))
+                        }
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-sm text-foreground/95 flex flex-wrap items-center gap-1.5 leading-snug">
+                        <span>{item.albumName}</span>
+                        {(item.cueAudioPairs ?? 0) > 0 ? (
+                          <Badge variant="warning" className="gap-0.5 text-[9px] px-1 py-0 h-4">
+                            <Scissors size={10} />
+                            CUE {item.cueAudioPairs}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        {mediaLabel(item.mediaType)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    <StatusBadge item={item} />
+                  </div>
+                </div>
+
+                {item.mediaType === "music" && (
+                  <div className="flex flex-col gap-1 w-full">
+                    <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Artist Name
+                    </label>
+                    <Input
+                      aria-label={`Artist for ${item.albumName}`}
+                      className={cn(
+                        "w-full h-8 text-xs",
+                        showWarning && "border-warning/60 bg-warning/20"
+                      )}
+                      onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                        const artistName = event.currentTarget.value;
+                        setPlan(
+                          updatePlanItem(plan, {
+                            ...item,
+                            artistName,
+                            issues: artistName.trim()
+                              ? item.issues.filter((i) => i.code !== "ARTIST_REQUIRED")
+                              : item.issues,
+                          })
+                        );
+                      }}
+                      placeholder="Artist name…"
+                      value={item.artistName ?? ""}
+                    />
+                  </div>
+                )}
+
+                {item.mediaType !== "unknown" && (
+                  <div className="flex flex-col gap-1 w-full">
+                    <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Target Path
+                    </label>
+                    <div className="text-[10px] font-mono text-muted-foreground/90 break-all select-all leading-normal bg-background/40 p-2 rounded border border-border/20">
+                      {item.targetPath}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -389,86 +661,6 @@ function StagingBody({ plan, scanIsPending, setPlan }: StagingBodyProps) {
         {scanIsPending ? "Scanning staging area…" : "Scan the staging area to build a Move Plan."}
       </span>
     </EmptyState>
-  );
-}
-
-type MovePlanRowProps = {
-  item: MovePlanItem;
-  onChange: (item: MovePlanItem) => void;
-};
-
-function MovePlanRow({ item, onChange }: MovePlanRowProps) {
-  const showWarning = item.issues.length > 0 && item.included;
-
-  return (
-    <TableRow>
-      <TableCell className="text-center">
-        <Checkbox
-          aria-label={`Include ${item.albumName}`}
-          checked={item.included}
-          disabled={item.mediaType === "unknown"}
-          onCheckedChange={(checked: boolean | "indeterminate") =>
-            onChange({ ...item, included: !!checked })
-          }
-        />
-      </TableCell>
-      <TitleCell>
-        <ItemTitleInner>
-          <span>{item.albumName}</span>
-          {(item.cueAudioPairs ?? 0) > 0 ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge variant="warning" className="gap-1 cursor-default">
-                  <Scissors size={12} />
-                  CUE {item.cueAudioPairs}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>Will split after move when Split CUE is enabled</TooltipContent>
-            </Tooltip>
-          ) : null}
-        </ItemTitleInner>
-      </TitleCell>
-      <TableCell>
-        <Badge variant="secondary">{mediaLabel(item.mediaType)}</Badge>
-      </TableCell>
-      <TableCell>
-        {item.mediaType === "music" ? (
-          <Input
-            aria-label={`Artist for ${item.albumName}`}
-            className={showWarning ? "border-warning/60 bg-warning/20 max-w-60" : "max-w-60"}
-            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-              const artistName = event.currentTarget.value;
-              onChange({
-                ...item,
-                artistName,
-                issues: artistName.trim()
-                  ? item.issues.filter((i) => i.code !== "ARTIST_REQUIRED")
-                  : item.issues,
-              });
-            }}
-            placeholder="Artist name…"
-            value={item.artistName ?? ""}
-          />
-        ) : (
-          <MutedText>—</MutedText>
-        )}
-      </TableCell>
-      <TableCell>
-        <StatusBadge item={item} />
-      </TableCell>
-      <TableCell>
-        {item.mediaType === "unknown" ? (
-          <MutedText>—</MutedText>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <PathTruncate>{item.targetPath}</PathTruncate>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-sm break-all">{item.targetPath}</TooltipContent>
-          </Tooltip>
-        )}
-      </TableCell>
-    </TableRow>
   );
 }
 
@@ -564,14 +756,22 @@ export function Staging() {
 
   const stats = plan ? summarizePlan(plan.items) : undefined;
   const cuePairTotal = stats?.cuePairTotal ?? 0;
-  const issues = scan.data?.data && "issues" in scan.data.data ? scan.data.data.issues : [];
+  
+  const scanData = scan.data?.data;
+  const scanError = scan.error;
+  const issues =
+    scanData && "issues" in scanData
+      ? scanData.issues
+      : scanError?.value && typeof scanError.value === "object" && "issues" in scanError.value && Array.isArray(scanError.value.issues)
+        ? scanError.value.issues
+        : [];
 
   const confirmIssues =
     confirm.data?.data && "issues" in confirm.data.data ? confirm.data.data.issues : [];
 
   return (
-    <Card>
-      <CardContent className="p-4">
+    <ResponsiveCard>
+      <ResponsiveCardContent>
         <StagingToolbar
           plan={plan}
           stats={stats}
@@ -586,7 +786,7 @@ export function Staging() {
         {issues.length > 0 ? <IssueList issues={issues} /> : null}
         {confirmIssues.length > 0 ? <IssueList issues={confirmIssues} /> : null}
         <StagingBody plan={plan} scanIsPending={scan.isPending} setPlan={setPlan} />
-      </CardContent>
-    </Card>
+      </ResponsiveCardContent>
+    </ResponsiveCard>
   );
 }

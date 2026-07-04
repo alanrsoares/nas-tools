@@ -42,6 +42,11 @@ const isAudiobookFile = (file: string, pathName?: string) =>
   file.toLowerCase().endsWith(fileExtensions.m4b) ||
   Boolean(pathName?.toLowerCase().includes("audiobook"));
 
+const ebookExtensions = [".epub", ".pdf", ".mobi", ".azw3"] as const;
+const isEbookFile = (file: string, pathName?: string) =>
+  fileNameEndsWith(file, ebookExtensions) ||
+  Boolean(pathName?.toLowerCase().includes("ebook"));
+
 export function detectMediaType(
   dirName: string,
   files: string[],
@@ -50,6 +55,9 @@ export function detectMediaType(
   if (isTvFile(dirName) || files.some(isTvFile)) return some("tv");
   if (isAudiobookFile(dirName, dirPath) || files.some((file) => isAudiobookFile(file))) {
     return some("audiobook");
+  }
+  if (isEbookFile(dirName, dirPath) || files.some((file) => isEbookFile(file))) {
+    return some("ebook");
   }
   if (files.some((file) => isMusicFile(file) || isCueFile(file))) return some("music");
   if (files.some(isMovieFile)) return some("movie");

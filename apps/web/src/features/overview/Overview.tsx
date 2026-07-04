@@ -19,12 +19,12 @@ import {
   OverviewStatLabel,
   OverviewStats,
   OverviewStatValue,
-  ProgressBar,
-  ProgressTrack,
+  ResponsiveCard,
+  ResponsiveCardContent,
   StagingCueIndicator,
 } from "@/components/styled";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, queryClient } from "../../api";
 import type { ActiveDownload, OrphanedTorrent, StagingPreviewItem } from "../../types";
@@ -177,8 +177,8 @@ type ActiveDownloadsCardProps = {
 
 function ActiveDownloadsCard({ tx, loading }: ActiveDownloadsCardProps) {
   return (
-    <Card className="col-span-full">
-      <CardContent className="p-4 flex flex-col gap-3">
+    <ResponsiveCard className="col-span-full">
+      <ResponsiveCardContent className="flex flex-col gap-3">
         <OverviewCardHeader>
           <OverviewCardTitle>
             <Download size={13} />
@@ -206,8 +206,8 @@ function ActiveDownloadsCard({ tx, loading }: ActiveDownloadsCardProps) {
             ))}
           </OverviewDlList>
         )}
-      </CardContent>
-    </Card>
+      </ResponsiveCardContent>
+    </ResponsiveCard>
   );
 }
 
@@ -220,8 +220,8 @@ type StagingAreaCardProps = {
 function StagingAreaCard({ staging, loading, navigate }: StagingAreaCardProps) {
   const hasItems = staging !== null && staging.total > 0;
   return (
-    <Card>
-      <CardContent className="p-4 flex flex-col gap-3">
+    <ResponsiveCard>
+      <ResponsiveCardContent className="flex flex-col gap-3 h-full">
         <OverviewCardHeader>
           <OverviewCardTitle>
             <FolderCog size={13} />
@@ -251,8 +251,8 @@ function StagingAreaCard({ staging, loading, navigate }: StagingAreaCardProps) {
           <FolderCog size={13} />
           {hasItems ? "Review & Move" : "Go to Staging"}
         </Button>
-      </CardContent>
-    </Card>
+      </ResponsiveCardContent>
+    </ResponsiveCard>
   );
 }
 
@@ -264,8 +264,8 @@ type OrphanedTorrentsCardProps = {
 
 function OrphanedTorrentsCard({ tx, loading, cleanTorrents }: OrphanedTorrentsCardProps) {
   return (
-    <Card>
-      <CardContent className="p-4 flex flex-col gap-3">
+    <ResponsiveCard>
+      <ResponsiveCardContent className="flex flex-col gap-3">
         <OverviewCardHeader>
           <OverviewCardTitle>
             <Trash2 size={13} />
@@ -292,8 +292,8 @@ function OrphanedTorrentsCard({ tx, loading, cleanTorrents }: OrphanedTorrentsCa
             <CleanButton cleanTorrents={cleanTorrents} orphanedCount={tx.orphaned.length} />
           </>
         )}
-      </CardContent>
-    </Card>
+      </ResponsiveCardContent>
+    </ResponsiveCard>
   );
 }
 
@@ -316,9 +316,11 @@ function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
     <OverviewDlItem>
       <OverviewDlName>{torrent.name}</OverviewDlName>
       <OverviewDlMeta>
-        <ProgressTrack className="flex-1">
-          <ProgressBar $paused={isPaused} style={{ width: `${torrent.progress * 100}%` }} />
-        </ProgressTrack>
+        <Progress
+          value={torrent.progress * 100}
+          className="h-1 flex-1 bg-muted"
+          indicatorClassName={isPaused ? "bg-muted-foreground opacity-40" : ""}
+        />
         <OverviewDlPct>{Math.round(torrent.progress * 100)}%</OverviewDlPct>
         {torrent.rateDownload > 0 ? (
           <OverviewDlSpeed>{formatBytes(torrent.rateDownload)}/s</OverviewDlSpeed>

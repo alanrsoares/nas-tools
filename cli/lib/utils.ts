@@ -84,6 +84,17 @@ export const isAudiobookFile = (file: string, pathName?: string): boolean => {
   return false;
 };
 
+export const isEbookFile = (file: string, pathName?: string): boolean => {
+  const EBOOK_EXTENSIONS = [".epub", ".pdf", ".mobi", ".azw3"];
+  if (EBOOK_EXTENSIONS.some((ext) => file.toLowerCase().endsWith(ext))) {
+    return true;
+  }
+  if (pathName?.toLowerCase().includes("ebook")) {
+    return true;
+  }
+  return false;
+};
+
 // Path manipulation utilities
 export const getBasename = (file: string, ext?: string): string =>
   ext ? path.basename(file, ext) : path.basename(file);

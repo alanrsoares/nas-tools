@@ -1,4 +1,4 @@
-import { Card } from "@/components/ui/card";
+import { ResponsiveCard, ResponsiveCardContent } from "@/components/styled";
 import { cn } from "@/lib/utils";
 import { Breadcrumb, BrowseEntries, LibraryFilter } from "./components/LibraryBrowser";
 import { NowPlaying } from "./components/NowPlaying";
@@ -21,26 +21,30 @@ function PlayerContent() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card
+      <ResponsiveCard
         className={cn(
-          "flex flex-col gap-3.5 border p-5 shadow-none transition-colors duration-150",
-          isActive && "border-primary/35",
+          "transition-colors duration-150",
+          isActive && "border-primary/35 max-md:border max-md:border-primary/35 max-md:bg-card/30",
         )}
       >
-        <NowPlaying />
-        <ProgressLine />
-        <Transport />
-        <QueuePanel />
-      </Card>
+        <ResponsiveCardContent className="flex flex-col gap-3.5 p-5 max-md:p-3">
+          <NowPlaying />
+          <ProgressLine />
+          <Transport />
+          <QueuePanel />
+        </ResponsiveCardContent>
+      </ResponsiveCard>
 
-      <Card className="overflow-hidden border bg-muted/30 p-0 shadow-none">
-        {browse && <Breadcrumb />}
-        {browse && <LibraryFilter />}
-        {browseError && (
-          <p className="border-b px-3.5 py-2.5 text-xs text-destructive">{browseError}</p>
-        )}
-        {browse && <BrowseEntries />}
-      </Card>
+      <ResponsiveCard className="overflow-hidden bg-muted/30">
+        <ResponsiveCardContent className="p-0 max-md:p-0">
+          {browse && <Breadcrumb />}
+          {browse && <LibraryFilter />}
+          {browseError && (
+            <p className="border-b px-3.5 py-2.5 text-xs text-destructive">{browseError}</p>
+          )}
+          {browse && <BrowseEntries />}
+        </ResponsiveCardContent>
+      </ResponsiveCard>
     </div>
   );
 }

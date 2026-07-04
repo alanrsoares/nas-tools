@@ -3,6 +3,7 @@ import { z } from "zod";
 export const mediaTypeSchema = z.union([
   z.literal("tv"),
   z.literal("audiobook"),
+  z.literal("ebook"),
   z.literal("music"),
   z.literal("movie"),
   z.literal("unknown"),
@@ -38,6 +39,7 @@ export const nasPathConfigSchema = z.object({
   tvDir: z.string().min(1),
   movieDir: z.string().min(1),
   audiobookDir: z.string().min(1),
+  ebookDir: z.string().min(1),
   backupDir: z.string().min(1),
 });
 
@@ -49,6 +51,7 @@ export const defaultNasPathConfig = {
   tvDir: "/volmain/Public/TV Series & Documentaries/",
   movieDir: "/volmain/Public/Movies/",
   audiobookDir: "/volmain/Public/Audiobooks/",
+  ebookDir: "/volmain/Public/Ebooks/",
   backupDir: "/volmain/Download/Transmission/backup/",
 } satisfies NasPathConfig;
 

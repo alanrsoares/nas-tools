@@ -42,6 +42,7 @@ const DEFAULT_TARGET_DIR = "/volmain/Public/FLAC/";
 const DEFAULT_TV_DIR = "/volmain/Public/TV Series & Documentaries/";
 const DEFAULT_MOVIE_DIR = "/volmain/Public/Movies/";
 const DEFAULT_AUDIOBOOK_DIR = "/volmain/Public/Audiobooks/";
+const DEFAULT_EBOOK_DIR = "/volmain/Public/Ebooks/";
 const DEFAULT_BACKUP_DIR = "/volmain/Download/Transmission/backup/";
 
 type MediaItem = Omit<StagedMediaItem, "id">;
@@ -61,6 +62,7 @@ const optionsSchema = z.object({
   tvDir: z.string().optional().default(DEFAULT_TV_DIR),
   movieDir: z.string().optional().default(DEFAULT_MOVIE_DIR),
   audiobookDir: z.string().optional().default(DEFAULT_AUDIOBOOK_DIR),
+  ebookDir: z.string().optional().default(DEFAULT_EBOOK_DIR),
   backupDir: z.string().optional().default(DEFAULT_BACKUP_DIR),
   dryRun: z.boolean().optional().default(false),
   interactive: z.boolean().optional().default(false),
@@ -84,6 +86,7 @@ function scanConfig(sourceDir: string): NasPathConfig {
     tvDir: "",
     movieDir: "",
     audiobookDir: "",
+    ebookDir: "",
     backupDir: "",
   };
 }
@@ -228,6 +231,7 @@ function targetDirForMediaType(
   if (type === "tv") return options.tvDir;
   if (type === "movie") return options.movieDir;
   if (type === "audiobook") return options.audiobookDir;
+  if (type === "ebook") return options.ebookDir;
   return undefined;
 }
 
@@ -283,6 +287,7 @@ async function confirmProcessing(
       .with("tv", () => "📺")
       .with("movie", () => "🎬")
       .with("audiobook", () => "📚")
+      .with("ebook", () => "📖")
       .otherwise(() => "❓");
 
     const targetLabel =
@@ -399,8 +404,16 @@ function moveMediaItem(
 function validateRequiredDirectory(
   dirPath: string,
   label: string,
+  createIfMissing = false,
 ): ResultAsync<void, ReturnType<typeof fail>> {
-  return safeAsync(() => exists(dirPath), `Failed to access ${label} directory`).andThen(
+  return safeAsync(async () => {
+    const dirExists = await exists(dirPath);
+    if (!dirExists && createIfMissing) {
+      await ensureDirectory(dirPath);
+      return true;
+    }
+    return dirExists;
+  }, `Failed to access ${label} directory`).andThen(
     (dirExists) =>
       dirExists
         ? ok<void, ReturnType<typeof fail>>(undefined)
@@ -441,10 +454,11 @@ function processMoveOperations(
 
 function run(options: CommandOptions): ResultAsync<void, ReturnType<typeof fail>> {
   return validateRequiredDirectory(options.sourceDir, "Source")
-    .andThen(() => validateRequiredDirectory(options.targetDir, "Music Target"))
-    .andThen(() => validateRequiredDirectory(options.tvDir, "TV Target"))
-    .andThen(() => validateRequiredDirectory(options.movieDir, "Movie Target"))
-    .andThen(() => validateRequiredDirectory(options.audiobookDir, "Audiobook Target"))
+    .andThen(() => validateRequiredDirectory(options.targetDir, "Music Target", true))
+    .andThen(() => validateRequiredDirectory(options.tvDir, "TV Target", true))
+    .andThen(() => validateRequiredDirectory(options.movieDir, "Movie Target", true))
+    .andThen(() => validateRequiredDirectory(options.audiobookDir, "Audiobook Target", true))
+    .andThen(() => validateRequiredDirectory(options.ebookDir, "Ebook Target", true))
     .map(() => logInfo(`Scanning '${options.sourceDir}' for media items...`))
     .andThen(() => scanMediaItems(options.sourceDir))
     .andThen((mediaItems) =>
@@ -501,6 +515,7 @@ export default function moveCompletedCommand(program: Command): void {
     .option("--tv-dir <path>", "Target TV library directory", DEFAULT_TV_DIR)
     .option("--movie-dir <path>", "Target movie library directory", DEFAULT_MOVIE_DIR)
     .option("--audiobook-dir <path>", "Target audiobook library directory", DEFAULT_AUDIOBOOK_DIR)
+    .option("--ebook-dir <path>", "Target ebook library directory", DEFAULT_EBOOK_DIR)
     .option("-b, --backup-dir <path>", "Backup directory", DEFAULT_BACKUP_DIR)
     .option("--dry-run", "Preview changes without making them", false)
     .option("-y, --yes", "Assume yes to all confirmations", false)

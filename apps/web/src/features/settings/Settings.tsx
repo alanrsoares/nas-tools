@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Settings as SettingsIcon } from "lucide-react";
-import { EmptyState, SettingField, SettingFieldLabel, SettingsGrid } from "@/components/styled";
-import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState, ResponsiveCard, ResponsiveCardContent, SettingField, SettingFieldLabel, SettingsGrid } from "@/components/styled";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "../../api";
@@ -17,8 +16,8 @@ export function Settings() {
     config.data?.data && "config" in config.data.data ? config.data.data.config : undefined;
 
   return (
-    <Card>
-      <CardContent className="p-4">
+    <ResponsiveCard>
+      <ResponsiveCardContent>
         {value ? (
           <SettingsGrid>
             {Object.entries(value).map(([key, path]) => (
@@ -39,7 +38,7 @@ export function Settings() {
             <span>Loading settings.</span>
           </EmptyState>
         )}
-      </CardContent>
-    </Card>
+      </ResponsiveCardContent>
+    </ResponsiveCard>
   );
 }

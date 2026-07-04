@@ -1,9 +1,16 @@
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle2, Download, Loader2, Plus, Search } from "lucide-react";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import {
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Download, Loader2, Plus, Search } from "lucide-react";
 import React from "react";
-import { EmptyState, MutedText, PathTruncate } from "@/components/styled";
+import { cn } from "@/lib/utils";
+import { EmptyState, MutedText, PathTruncate, ResponsiveCard, ResponsiveCardContent } from "@/components/styled";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -24,9 +31,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { authHeaders } from "@/lib/auth";
 import { api } from "../../api";
 import { IssueList } from "../../components/IssueList";
-import { formatBytes } from "../../utils";
+import { formatBytes, readSseStream } from "../../utils";
 
 const MEDIA_KINDS = [
   { value: "3040", label: "Music – Lossless", group: "Music" },
@@ -49,49 +57,6 @@ type SearchResult = {
   guid: string;
 };
 
-type SearchResultRowProps = {
-  result: SearchResult;
-  isAdded: boolean;
-  isPending: boolean;
-  onAdd: (url: string) => void;
-};
-
-function SearchResultRow({ result, isAdded, isPending, onAdd }: SearchResultRowProps) {
-  const url = result.downloadUrl;
-  return (
-    <TableRow>
-      <TableCell>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PathTruncate className="max-w-[380px]">{result.title}</PathTruncate>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-sm break-words">{result.title}</TooltipContent>
-        </Tooltip>
-      </TableCell>
-      <TableCell className="text-muted-foreground text-xs">{result.indexer}</TableCell>
-      <TableCell className="text-right tabular-nums text-sm">{result.seeders}</TableCell>
-      <TableCell className="text-right tabular-nums text-sm text-muted-foreground">
-        {formatBytes(result.size)}
-      </TableCell>
-      <TableCell className="text-right">
-        {url ? (
-          <Button
-            size="sm"
-            variant={isAdded ? "secondary" : "default"}
-            disabled={isAdded || isPending}
-            onClick={() => onAdd(url)}
-          >
-            {isAdded ? <CheckCircle2 size={13} /> : <Plus size={13} />}
-            {isAdded ? "Added" : "Add"}
-          </Button>
-        ) : (
-          <MutedText className="text-xs">no link</MutedText>
-        )}
-      </TableCell>
-    </TableRow>
-  );
-}
-
 type SearchResultsTableProps = {
   results: SearchResult[];
   added: Set<string>;
@@ -100,27 +65,146 @@ type SearchResultsTableProps = {
 };
 
 function SearchResultsTable({ results, added, isPending, onAdd }: SearchResultsTableProps) {
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+
+  const columns = React.useMemo<ColumnDef<SearchResult>[]>(
+    () => [
+      {
+        accessorKey: "title",
+        header: "Title",
+        cell: ({ row }) => (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PathTruncate className="max-w-[380px] max-md:max-w-none max-md:overflow-visible max-md:text-clip">{row.original.title}</PathTruncate>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm break-words">{row.original.title}</TooltipContent>
+          </Tooltip>
+        ),
+      },
+      {
+        accessorKey: "indexer",
+        header: "Indexer",
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-xs">{row.original.indexer}</span>
+        ),
+      },
+      {
+        accessorKey: "seeders",
+        header: "Seeds",
+        cell: ({ row }) => (
+          <span className="tabular-nums text-sm">{row.original.seeders}</span>
+        ),
+      },
+      {
+        accessorKey: "size",
+        header: "Size",
+        cell: ({ row }) => (
+          <span className="tabular-nums text-sm text-muted-foreground">
+            {formatBytes(row.original.size)}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => {
+          const url = row.original.downloadUrl;
+          const isAdded = url ? added.has(url) : false;
+          return url ? (
+            <Button
+              size="sm"
+              variant={isAdded ? "secondary" : "default"}
+              disabled={isAdded || isPending}
+              onClick={() => onAdd(url)}
+            >
+              {isAdded ? <CheckCircle2 size={13} /> : <Plus size={13} />}
+              {isAdded ? "Added" : "Add"}
+            </Button>
+          ) : (
+            <MutedText className="text-xs">no link</MutedText>
+          );
+        },
+        enableSorting: false,
+      },
+    ],
+    [added, isPending, onAdd]
+  );
+
+  const table = useReactTable({
+    data: results,
+    columns,
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
   return (
     <div className="overflow-x-auto rounded-md border border-border">
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead className="w-36">Indexer</TableHead>
-            <TableHead className="w-16 text-right">Seeds</TableHead>
-            <TableHead className="w-24 text-right">Size</TableHead>
-            <TableHead className="w-20" />
-          </TableRow>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => {
+                let className = "";
+                if (header.id === "indexer") className = "w-36";
+                else if (header.id === "seeders") className = "w-16 text-right";
+                else if (header.id === "size") className = "w-24 text-right";
+                else if (header.id === "actions") className = "w-20";
+
+                const canSort = header.column.getCanSort();
+                const isSorted = header.column.getIsSorted();
+
+                return (
+                  <TableHead
+                    key={header.id}
+                    className={cn(
+                      className,
+                      canSort && "cursor-pointer select-none"
+                    )}
+                    onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                  >
+                    <div className={cn("flex items-center gap-1.5", (header.id === "seeders" || header.id === "size") && "justify-end")}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                      {canSort && (
+                        <span>
+                          {isSorted === "asc" ? (
+                            <ArrowUp className="h-3.5 w-3.5 shrink-0" />
+                          ) : isSorted === "desc" ? (
+                            <ArrowDown className="h-3.5 w-3.5 shrink-0" />
+                          ) : (
+                            <ArrowUpDown className="h-3.5 w-3.5 opacity-50 shrink-0 hover:opacity-100" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </TableHead>
+                );
+              })}
+            </TableRow>
+          ))}
         </TableHeader>
         <TableBody>
-          {results.map((result) => (
-            <SearchResultRow
-              key={result.guid}
-              result={result}
-              isAdded={result.downloadUrl ? added.has(result.downloadUrl) : false}
-              isPending={isPending}
-              onAdd={onAdd}
-            />
+          {table.getRowModel().rows.map((row) => (
+            <TableRow key={row.id}>
+              {row.getVisibleCells().map((cell) => {
+                let className = "";
+                if (cell.column.id === "seeders" || cell.column.id === "size") {
+                  className = "text-right";
+                } else if (cell.column.id === "actions") {
+                  className = "text-right";
+                }
+                return (
+                  <TableCell key={cell.id} className={className}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
           ))}
         </TableBody>
       </Table>
@@ -131,56 +215,74 @@ function SearchResultsTable({ results, added, isPending, onAdd }: SearchResultsT
 type DownloadsSearchFormProps = {
   query: string;
   category: MediaKindValue;
-  isPending: boolean;
+  isSearching: boolean;
+  searchStatus: string | undefined;
   onQueryChange: (q: string) => void;
   onCategoryChange: (c: MediaKindValue) => void;
   onSubmit: (e: React.FormEvent) => void;
+  onCancel: () => void;
 };
 
 function DownloadsSearchForm({
   query,
   category,
-  isPending,
+  isSearching,
+  searchStatus,
   onQueryChange,
   onCategoryChange,
   onSubmit,
+  onCancel,
 }: DownloadsSearchFormProps) {
   return (
-    <form onSubmit={onSubmit} className="flex gap-2">
+    <form onSubmit={onSubmit} className="flex gap-2 max-sm:flex-col">
       <Input
         value={query}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onQueryChange(e.currentTarget.value)}
         placeholder="Search…"
         className="flex-1"
+        disabled={isSearching}
       />
-      <Select value={category} onValueChange={(v) => onCategoryChange(v as MediaKindValue)}>
-        <SelectTrigger className="w-40 shrink-0">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectLabel>Music</SelectLabel>
-            {MEDIA_KINDS.filter((k) => k.group === "Music").map((k) => (
-              <SelectItem key={k.value} value={k.value}>
-                {k.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-          <SelectSeparator />
-          <SelectGroup>
-            <SelectLabel>Video</SelectLabel>
-            {MEDIA_KINDS.filter((k) => k.group === "Video").map((k) => (
-              <SelectItem key={k.value} value={k.value}>
-                {k.label}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-      <Button type="submit" disabled={!query.trim() || isPending} size="sm">
-        {isPending ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-        <span>{isPending ? "Searching…" : "Search"}</span>
-      </Button>
+      <div className="flex gap-2 max-sm:w-full">
+        <Select 
+          value={category} 
+          onValueChange={(v) => onCategoryChange(v as MediaKindValue)}
+          disabled={isSearching}
+        >
+          <SelectTrigger className="w-40 shrink-0 max-sm:flex-1">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectLabel>Music</SelectLabel>
+              {MEDIA_KINDS.filter((k) => k.group === "Music").map((k) => (
+                <SelectItem key={k.value} value={k.value}>
+                  {k.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+            <SelectSeparator />
+            <SelectGroup>
+              <SelectLabel>Video</SelectLabel>
+              {MEDIA_KINDS.filter((k) => k.group === "Video").map((k) => (
+                <SelectItem key={k.value} value={k.value}>
+                  {k.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        {isSearching ? (
+          <Button type="button" onClick={onCancel} variant="destructive" size="sm" className="max-sm:flex-1">
+            <Loader2 size={15} className="animate-spin" />
+            <span>Cancel</span>
+          </Button>
+        ) : (
+          <Button type="submit" disabled={!query.trim()} size="sm" className="max-sm:flex-1">
+            <Search size={15} />
+            <span>Search</span>
+          </Button>
+        )}
+      </div>
     </form>
   );
 }
@@ -223,48 +325,119 @@ export function Downloads() {
   const [category, setCategory] = React.useState<MediaKindValue>("3040");
   const [added, setAdded] = React.useState<Set<string>>(new Set());
 
-  const search = useMutation({
-    mutationFn: async ({ q, categories }: { q: string; categories: string }) => {
-      const res = await api.search.get({ query: { q, categories } });
-      return res.data && "results" in res.data ? (res.data.results as SearchResult[]) : [];
-    },
-  });
+  const [isSearching, setIsSearching] = React.useState(false);
+  const [searchStatus, setSearchStatus] = React.useState<string>();
+  const [results, setResults] = React.useState<SearchResult[]>([]);
+  const [searchSuccess, setSearchSuccess] = React.useState(false);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
+
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const handleCancel = React.useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsSearching(false);
+    setSearchStatus(undefined);
+  }, []);
+
+  const handleSearch = React.useCallback(async (q: string, cat: string) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setIsSearching(true);
+    setSearchStatus("Connecting...");
+    setSearchError(null);
+    setResults([]);
+    setSearchSuccess(false);
+
+    try {
+      const params = new URLSearchParams({ q, categories: cat });
+      const response = await fetch(`/api/search?${params}`, {
+        headers: authHeaders(),
+        signal: controller.signal,
+      });
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("Search stream did not open");
+
+      await readSseStream(reader, (raw: any) => {
+        if (raw.type === "status") {
+          setSearchStatus(raw.message);
+        } else if (raw.type === "result") {
+          setResults(raw.results ?? []);
+          setSearchSuccess(true);
+          setIsSearching(false);
+          setSearchStatus(undefined);
+        } else if (raw.type === "error") {
+          setSearchError(raw.message);
+          setIsSearching(false);
+          setSearchStatus(undefined);
+        }
+      });
+    } catch (cause: any) {
+      if (cause.name === "AbortError") {
+        setSearchError("Search cancelled");
+      } else {
+        setSearchError(cause instanceof Error ? cause.message : String(cause));
+      }
+      setIsSearching(false);
+      setSearchStatus(undefined);
+    }
+  }, []);
 
   const addTorrent = useMutation({
     mutationFn: async (url: string) => await api.transmission.add.post({ url }),
     onSuccess: (_, url) => setAdded((prev) => new Set([...prev, url])),
   });
 
-  const results = search.data ?? [];
-  const searchError = search.data === undefined && search.error ? String(search.error) : null;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) search.mutate({ q: query.trim(), categories: category });
+    if (query.trim()) handleSearch(query.trim(), category);
   };
 
   return (
-    <Card>
-      <CardContent className="p-4 flex flex-col gap-4">
+    <ResponsiveCard>
+      <ResponsiveCardContent className="flex flex-col gap-4">
         <DownloadsSearchForm
           query={query}
           category={category}
-          isPending={search.isPending}
+          isSearching={isSearching}
+          searchStatus={searchStatus}
           onQueryChange={setQuery}
           onCategoryChange={setCategory}
           onSubmit={handleSubmit}
+          onCancel={handleCancel}
         />
+        {searchStatus ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse pl-1">
+            <Loader2 size={14} className="animate-spin" />
+            <span>{searchStatus}</span>
+          </div>
+        ) : null}
         {searchError ? (
           <IssueList issues={[{ code: "SEARCH_ERROR", message: searchError }]} />
         ) : null}
         <DownloadsBody
-          searchIsSuccess={search.isSuccess}
+          searchIsSuccess={searchSuccess}
           results={results}
           added={added}
           isPending={addTorrent.isPending}
           onAdd={(url) => addTorrent.mutate(url)}
         />
-      </CardContent>
-    </Card>
+      </ResponsiveCardContent>
+    </ResponsiveCard>
   );
 }
