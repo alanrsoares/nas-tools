@@ -11,7 +11,9 @@ export const CueSplitToggle = tw.div(
 
 export const CueSplitToggleLabel = tw.label("inline-flex cursor-pointer items-center gap-2");
 
-export const PathCell = tw(TableCell)`max-w-[340px] max-md:max-w-[180px] tabular-nums [overflow-wrap:anywhere]`;
+export const PathCell = tw(
+  TableCell,
+)`max-w-[340px] max-md:max-w-[180px] tabular-nums [overflow-wrap:anywhere]`;
 
 export const TitleCell = tw(TableCell)`min-w-[220px] font-semibold`;
 

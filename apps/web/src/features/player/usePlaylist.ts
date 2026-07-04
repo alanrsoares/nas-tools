@@ -16,9 +16,15 @@ export function usePlaylist({ playerStatus, onPlayTrack }: UsePlaylistOptions) {
   const onPlayRef = useRef(onPlayTrack);
   const statusRef = useRef(playerStatus);
 
-  useEffect(() => { listRef.current = list; }, [list]);
-  useEffect(() => { idxRef.current = idx; }, [idx]);
-  useEffect(() => { onPlayRef.current = onPlayTrack; }, [onPlayTrack]);
+  useEffect(() => {
+    listRef.current = list;
+  }, [list]);
+  useEffect(() => {
+    idxRef.current = idx;
+  }, [idx]);
+  useEffect(() => {
+    onPlayRef.current = onPlayTrack;
+  }, [onPlayTrack]);
 
   const play = useCallback(async (tracks: string[], startIdx: number) => {
     const track = tracks[startIdx];
@@ -37,21 +43,18 @@ export function usePlaylist({ playerStatus, onPlayTrack }: UsePlaylistOptions) {
     await onPlayRef.current(track);
   }, []);
 
-  const prev = useCallback(
-    async (opts: { positionMs: number; currentTrack: string | null }) => {
-      const { positionMs, currentTrack } = opts;
-      if (positionMs > 3000 || idxRef.current <= 0) {
-        if (currentTrack) await onPlayRef.current(currentTrack);
-        return;
-      }
-      const prevIdx = idxRef.current - 1;
-      const track = listRef.current[prevIdx];
-      if (!track) return;
-      dispatch({ type: "prev", positionMs });
-      await onPlayRef.current(track);
-    },
-    [],
-  );
+  const prev = useCallback(async (opts: { positionMs: number; currentTrack: string | null }) => {
+    const { positionMs, currentTrack } = opts;
+    if (positionMs > 3000 || idxRef.current <= 0) {
+      if (currentTrack) await onPlayRef.current(currentTrack);
+      return;
+    }
+    const prevIdx = idxRef.current - 1;
+    const track = listRef.current[prevIdx];
+    if (!track) return;
+    dispatch({ type: "prev", positionMs });
+    await onPlayRef.current(track);
+  }, []);
 
   const enqueue = useCallback((tracks: string[]) => {
     dispatch({ type: "enqueue", tracks });

@@ -44,8 +44,7 @@ const isAudiobookFile = (file: string, pathName?: string) =>
 
 const ebookExtensions = [".epub", ".pdf", ".mobi", ".azw3"] as const;
 const isEbookFile = (file: string, pathName?: string) =>
-  fileNameEndsWith(file, ebookExtensions) ||
-  Boolean(pathName?.toLowerCase().includes("ebook"));
+  fileNameEndsWith(file, ebookExtensions) || Boolean(pathName?.toLowerCase().includes("ebook"));
 
 export function detectMediaType(
   dirName: string,

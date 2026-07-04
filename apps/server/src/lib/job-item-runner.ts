@@ -3,8 +3,8 @@ import path from "node:path";
 import type { MovePlan } from "@nas-tools/core";
 
 import { findCuePairs, getBashFunctionsPath, splitCuePair } from "../cue.js";
-import { mergeIntoExistingTarget } from "./merge-into-target.js";
 import type { JobEmitter } from "./job-types.js";
+import { mergeIntoExistingTarget } from "./merge-into-target.js";
 
 export type ItemOutcome =
   | { status: "completed" }
@@ -12,11 +12,7 @@ export type ItemOutcome =
   | { status: "failed"; cause: unknown };
 
 export type JobItemRunner = {
-  run(
-    item: MovePlan["items"][number],
-    plan: MovePlan,
-    emit: JobEmitter,
-  ): Promise<ItemOutcome>;
+  run(item: MovePlan["items"][number], plan: MovePlan, emit: JobEmitter): Promise<ItemOutcome>;
   runForced(
     item: MovePlan["items"][number],
     plan: MovePlan,

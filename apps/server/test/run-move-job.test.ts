@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import type { MovePlan, MovePlanItem } from "@nas-tools/core";
 import type { ItemOutcome, JobItemRunner } from "../src/lib/job-item-runner.js";
-import { runMoveJob } from "../src/lib/run-move-job.js";
 import type { JobCounts, JobStatusUpdater } from "../src/lib/job-types.js";
+import { runMoveJob } from "../src/lib/run-move-job.js";
 
 const makeItem = (id: string, albumName = `Album ${id}`): MovePlanItem => ({
   id,

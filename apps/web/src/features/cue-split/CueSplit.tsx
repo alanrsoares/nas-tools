@@ -7,24 +7,23 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Scissors, Search } from "lucide-react";
+import { Loader2, Scissors, Search } from "lucide-react";
 import React from "react";
-import { cn } from "@/lib/utils";
 import { z } from "zod";
-import { EmptyState, PathTruncate, ResponsiveCard, ResponsiveCardContent, Toolbar } from "@/components/styled";
+import {
+  EmptyState,
+  PathTruncate,
+  ResponsiveCard,
+  ResponsiveCardContent,
+  Toolbar,
+} from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authHeaders } from "@/lib/auth";
 import { IssueList, Summary, SummaryCell } from "../../components/IssueList";
+import { SortableHeader } from "../../components/SortableHeader";
 import { readSseStream } from "../../utils";
 
 type CuePair = {
@@ -189,9 +188,7 @@ function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
       {
         accessorKey: "audioFile",
         header: "Audio",
-        cell: ({ row }) => (
-          <span className="font-mono text-xs">{row.original.audioFile}</span>
-        ),
+        cell: ({ row }) => <span className="font-mono text-xs">{row.original.audioFile}</span>,
       },
       {
         accessorKey: "blocked",
@@ -204,7 +201,7 @@ function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
         ),
       },
     ],
-    [selectedIds, togglePair]
+    [selectedIds, togglePair],
   );
 
   const table = useReactTable({
@@ -226,40 +223,9 @@ function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 let className = "";
-                if (header.id === "select") {
-                  className = "w-10";
-                } else if (header.id === "status") {
-                  className = "w-28";
-                }
-                const canSort = header.column.getCanSort();
-                const isSorted = header.column.getIsSorted();
-                return (
-                  <TableHead
-                    key={header.id}
-                    className={cn(
-                      className,
-                      canSort && "cursor-pointer select-none"
-                    )}
-                    onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                      {canSort && (
-                        <span>
-                          {isSorted === "asc" ? (
-                            <ArrowUp className="h-3.5 w-3.5 shrink-0" />
-                          ) : isSorted === "desc" ? (
-                            <ArrowDown className="h-3.5 w-3.5 shrink-0" />
-                          ) : (
-                            <ArrowUpDown className="h-3.5 w-3.5 opacity-50 shrink-0 hover:opacity-100" />
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </TableHead>
-                );
+                if (header.id === "select") className = "w-10";
+                else if (header.id === "status") className = "w-28";
+                return <SortableHeader key={header.id} header={header} className={className} />;
               })}
             </TableRow>
           ))}

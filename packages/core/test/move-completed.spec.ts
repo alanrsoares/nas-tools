@@ -91,9 +91,7 @@ describe("createMovePlanDraft", () => {
     expect(result?.items[0]?.mediaType).toBe("ebook");
     expect(result?.items[0]?.status).toBe("included");
     expect(result?.items[0]?.included).toBe(true);
-    expect(result?.items[0]?.targetPath).toBe(
-      join(config.ebookDir, "Nietzsche, Friedrich"),
-    );
+    expect(result?.items[0]?.targetPath).toBe(join(config.ebookDir, "Nietzsche, Friedrich"));
   });
 
   it("surfaces unsupported items as excluded instead of dropping them", async () => {

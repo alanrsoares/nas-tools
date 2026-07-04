@@ -1,8 +1,7 @@
 import type { MovePlan } from "@nas-tools/core";
 import { match } from "@onrails/pattern";
-
-import { cancelJobIfAborted, errorMessage, finalizeJob } from "./job-lifecycle.js";
 import type { JobItemRunner } from "./job-item-runner.js";
+import { cancelJobIfAborted, errorMessage, finalizeJob } from "./job-lifecycle.js";
 import type { JobCounts, JobEmitter, JobStatusUpdater } from "./job-types.js";
 
 export type RunMoveJobOptions = {

@@ -19,7 +19,9 @@ export const navLinkClass =
 
 export const navLinkActiveClass = "bg-accent font-medium text-foreground [&_svg]:text-primary";
 
-export const Content = tw.main("min-w-0 bg-background px-6 py-5 max-md:px-4 max-md:pt-3.5 max-md:pb-[calc(60px+env(safe-area-inset-bottom))]");
+export const Content = tw.main(
+  "min-w-0 bg-background px-6 py-5 max-md:px-4 max-md:pt-3.5 max-md:pb-[calc(60px+env(safe-area-inset-bottom))]",
+);
 
 export const Topbar = tw.header(
   "mb-4 flex min-h-9 items-center justify-between gap-4 border-b border-border pb-3.5 max-md:flex-col max-md:items-stretch",
@@ -35,6 +37,4 @@ export const ResponsiveCard = tw.div(
   "rounded-lg border border-border bg-card text-card-foreground shadow-sm max-md:border-0 max-md:bg-transparent max-md:shadow-none",
 );
 
-export const ResponsiveCardContent = tw.div(
-  "p-4 max-md:p-0",
-);
+export const ResponsiveCardContent = tw.div("p-4 max-md:p-0");

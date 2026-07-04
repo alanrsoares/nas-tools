@@ -1,6 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Settings as SettingsIcon } from "lucide-react";
-import { EmptyState, ResponsiveCard, ResponsiveCardContent, SettingField, SettingFieldLabel, SettingsGrid } from "@/components/styled";
+import {
+  EmptyState,
+  ResponsiveCard,
+  ResponsiveCardContent,
+  SettingField,
+  SettingFieldLabel,
+  SettingsGrid,
+} from "@/components/styled";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "../../api";

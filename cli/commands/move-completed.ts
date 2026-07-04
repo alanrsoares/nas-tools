@@ -413,11 +413,10 @@ function validateRequiredDirectory(
       return true;
     }
     return dirExists;
-  }, `Failed to access ${label} directory`).andThen(
-    (dirExists) =>
-      dirExists
-        ? ok<void, ReturnType<typeof fail>>(undefined)
-        : err(fail(`${label} directory '${dirPath}' does not exist or is not accessible`)),
+  }, `Failed to access ${label} directory`).andThen((dirExists) =>
+    dirExists
+      ? ok<void, ReturnType<typeof fail>>(undefined)
+      : err(fail(`${label} directory '${dirPath}' does not exist or is not accessible`)),
   );
 }
 

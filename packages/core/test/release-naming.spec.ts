@@ -1,5 +1,5 @@
-import { getOrElse, isNone } from "@onrails/maybe";
 import { describe, expect, it } from "bun:test";
+import { getOrElse, isNone } from "@onrails/maybe";
 import {
   inferArtistNameFromFolder,
   parseReleaseFolderName,
@@ -30,7 +30,10 @@ describe("parseReleaseFolderName", () => {
 
   it("parses Artist - Album pattern", () => {
     const result = parseReleaseFolderName("Sunn O))) - Monoliths and Dimensions");
-    expect(getOrElse(result, null)).toMatchObject({ artist: "Sunn O)))", album: "Monoliths and Dimensions" });
+    expect(getOrElse(result, null)).toMatchObject({
+      artist: "Sunn O)))",
+      album: "Monoliths and Dimensions",
+    });
   });
 
   it("returns none for bare year prefix", () => {

@@ -113,13 +113,7 @@ type DedupeGroupCardProps = {
   group: DedupeGroup;
 };
 
-function AlbumFolderRow({
-  folder,
-  type,
-}: {
-  folder: AlbumFolder;
-  type: "keep" | "move";
-}) {
+function AlbumFolderRow({ folder, type }: { folder: AlbumFolder; type: "keep" | "move" }) {
   const isKeep = type === "keep";
   const bgClass = isKeep
     ? "bg-success/5 border-success/20 hover:bg-success/10"
@@ -127,7 +121,8 @@ function AlbumFolderRow({
   const badgeVariant = isKeep ? "success" : "secondary";
   const badgeLabel = isKeep ? "KEEP" : "MOVE";
 
-  const sr = folder.sampleRate >= 1000 ? `${folder.sampleRate / 1000}kHz` : `${folder.sampleRate}Hz`;
+  const sr =
+    folder.sampleRate >= 1000 ? `${folder.sampleRate / 1000}kHz` : `${folder.sampleRate}Hz`;
   const specs = [`${folder.bitsPerSample}bit`, sr];
   if (folder.bitrate) specs.push(`${Math.round(folder.bitrate)}kbps`);
   const specsStr = specs.join(" / ");
@@ -139,9 +134,7 @@ function AlbumFolderRow({
           <Badge variant={badgeVariant} className="text-[10px] font-bold px-1.5 py-0.5">
             {badgeLabel}
           </Badge>
-          <span className="text-[11px] font-semibold text-foreground/90">
-            {specsStr}
-          </span>
+          <span className="text-[11px] font-semibold text-foreground/90">{specsStr}</span>
         </div>
         <span className="text-[10px] text-muted-foreground/80 font-medium">
           {folder.trackCount} tracks • {formatBytes(folder.totalSize)}

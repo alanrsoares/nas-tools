@@ -2,8 +2,8 @@ import type { MovePlan } from "@nas-tools/core";
 
 import { type CuePair, getBashFunctionsPath, splitCuePair } from "./cue.js";
 import type { JobEventsRepo, JobsRepo } from "./db/index.js";
-import { errorMessage } from "./lib/job-lifecycle.js";
 import type { JobItemRunner } from "./lib/job-item-runner.js";
+import { errorMessage } from "./lib/job-lifecycle.js";
 import type {
   ConflictResolution,
   CuePairOutcome,
@@ -84,7 +84,10 @@ export const createExecutionService = (
         itemId: item.id,
       });
     } else {
-      const cause = outcome.status === "failed" ? outcome.cause : new Error("Unexpected conflict after force merge");
+      const cause =
+        outcome.status === "failed"
+          ? outcome.cause
+          : new Error("Unexpected conflict after force merge");
       emit("item_failed", "error", `Failed: ${item.albumName} — ${errorMessage(cause)}`, {
         itemId: item.id,
       });

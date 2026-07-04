@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { playlistReducer, type PlaylistState } from "../src/features/player/playlistReducer.js";
+import { type PlaylistState, playlistReducer } from "../src/features/player/playlistReducer.js";
 
 const empty: PlaylistState = { list: [], idx: -1 };
 const loaded: PlaylistState = { list: ["a.flac", "b.flac", "c.flac"], idx: 1 };

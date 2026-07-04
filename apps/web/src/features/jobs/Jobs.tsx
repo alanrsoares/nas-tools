@@ -166,10 +166,9 @@ export function JobStatusBadge({ status }: JobStatusBadgeProps) {
 
 type JobDetailProps = { job: JobRecord };
 
-export function JobDetail({ job: initialJob }: JobDetailProps) {
+function useJobDetail(initialJob: JobRecord) {
   const [liveJob, setLiveJob] = React.useState<JobRecord>(initialJob);
   const [events, setEvents] = React.useState<JobEventRecord[]>([]);
-  const logRef = React.useRef<HTMLDivElement>(null);
   const isTerminal = TERMINAL_STATUSES.has(liveJob.status);
 
   // Sync state when switching to a different job
@@ -218,6 +217,18 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
     return () => source.close();
   }, [initialJob.id]);
 
+  const cancelMutation = useMutation({
+    mutationFn: async () => await api.jobs({ id: initialJob.id }).cancel.post(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+  });
+
+  return { liveJob, events, cancelMutation };
+}
+
+export function JobDetail({ job: initialJob }: JobDetailProps) {
+  const { liveJob, events, cancelMutation } = useJobDetail(initialJob);
+  const logRef = React.useRef<HTMLDivElement>(null);
+
   // Auto-scroll log
   React.useEffect(() => {
     if (logRef.current) {
@@ -228,11 +239,6 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
   const counts = liveJob.counts;
   const progress =
     counts.total > 0 ? Math.round(((counts.completed + counts.failed) / counts.total) * 100) : 0;
-
-  const cancelMutation = useMutation({
-    mutationFn: async () => await api.jobs({ id: initialJob.id }).cancel.post(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["jobs"] }),
-  });
 
   return (
     <ResponsiveCard className="min-w-0 flex-1">

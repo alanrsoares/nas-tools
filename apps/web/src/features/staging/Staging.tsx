@@ -10,9 +10,6 @@ import {
 } from "@tanstack/react-table";
 import {
   AlertTriangle,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   CheckCircle2,
   FolderCog,
   Loader2,
@@ -21,7 +18,6 @@ import {
   Trash2,
 } from "lucide-react";
 import React from "react";
-import { cn } from "@/lib/utils";
 import {
   CueSplitToggle as CueSplitToggleBox,
   CueSplitToggleLabel,
@@ -39,17 +35,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { api, queryClient } from "../../api";
 import { IssueList, Summary, SummaryCell } from "../../components/IssueList";
+import { SortableHeader } from "../../components/SortableHeader";
 import type { StagingPreviewItem } from "../../types";
 import { mediaLabel, summarizePlan, updatePlanItem } from "../../utils";
 
@@ -398,9 +389,7 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
       {
         accessorKey: "mediaType",
         header: "Type",
-        cell: ({ row }) => (
-          <Badge variant="secondary">{mediaLabel(row.original.mediaType)}</Badge>
-        ),
+        cell: ({ row }) => <Badge variant="secondary">{mediaLabel(row.original.mediaType)}</Badge>,
       },
       {
         accessorKey: "artistName",
@@ -421,7 +410,7 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
                     issues: artistName.trim()
                       ? item.issues.filter((i) => i.code !== "ARTIST_REQUIRED")
                       : item.issues,
-                  })
+                  }),
                 );
               }}
               placeholder="Artist name…"
@@ -461,7 +450,7 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
         },
       },
     ],
-    [plan, setPlan]
+    [plan, setPlan],
   );
 
   const table = useReactTable({
@@ -483,41 +472,14 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => {
-                  let className = "";
-                  if (header.id === "use") {
-                    className = "w-14 text-center";
-                  }
-                  const canSort = header.column.getCanSort();
-                  const isSorted = header.column.getIsSorted();
-                  return (
-                    <TableHead
-                      key={header.id}
-                      className={cn(
-                        className,
-                        canSort && "cursor-pointer select-none"
-                      )}
-                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                    >
-                      <div className={cn("flex items-center gap-1.5", header.id === "use" && "justify-center")}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
-                        {canSort && (
-                          <span>
-                            {isSorted === "asc" ? (
-                              <ArrowUp className="h-3.5 w-3.5 shrink-0" />
-                            ) : isSorted === "desc" ? (
-                              <ArrowDown className="h-3.5 w-3.5 shrink-0" />
-                            ) : (
-                              <ArrowUpDown className="h-3.5 w-3.5 opacity-50 shrink-0 hover:opacity-100" />
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </TableHead>
-                  );
-                })}
+                {headerGroup.headers.map((header) => (
+                  <SortableHeader
+                    key={header.id}
+                    header={header}
+                    className={header.id === "use" ? "w-14 text-center" : ""}
+                    alignCenter={header.id === "use"}
+                  />
+                ))}
               </TableRow>
             ))}
           </TableHeader>
@@ -590,14 +552,18 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
 
                 {item.mediaType === "music" && (
                   <div className="flex flex-col gap-1 w-full">
-                    <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <label
+                      htmlFor={`artist-${item.id}`}
+                      className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                    >
                       Artist Name
                     </label>
                     <Input
+                      id={`artist-${item.id}`}
                       aria-label={`Artist for ${item.albumName}`}
                       className={cn(
                         "w-full h-8 text-xs",
-                        showWarning && "border-warning/60 bg-warning/20"
+                        showWarning && "border-warning/60 bg-warning/20",
                       )}
                       onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
                         const artistName = event.currentTarget.value;
@@ -608,7 +574,7 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
                             issues: artistName.trim()
                               ? item.issues.filter((i) => i.code !== "ARTIST_REQUIRED")
                               : item.issues,
-                          })
+                          }),
                         );
                       }}
                       placeholder="Artist name…"
@@ -619,9 +585,9 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
 
                 {item.mediaType !== "unknown" && (
                   <div className="flex flex-col gap-1 w-full">
-                    <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Target Path
-                    </label>
+                    </span>
                     <div className="text-[10px] font-mono text-muted-foreground/90 break-all select-all leading-normal bg-background/40 p-2 rounded border border-border/20">
                       {item.targetPath}
                     </div>
@@ -756,13 +722,16 @@ export function Staging() {
 
   const stats = plan ? summarizePlan(plan.items) : undefined;
   const cuePairTotal = stats?.cuePairTotal ?? 0;
-  
+
   const scanData = scan.data?.data;
   const scanError = scan.error;
   const issues =
     scanData && "issues" in scanData
       ? scanData.issues
-      : scanError?.value && typeof scanError.value === "object" && "issues" in scanError.value && Array.isArray(scanError.value.issues)
+      : scanError?.value &&
+          typeof scanError.value === "object" &&
+          "issues" in scanError.value &&
+          Array.isArray(scanError.value.issues)
         ? scanError.value.issues
         : [];
 

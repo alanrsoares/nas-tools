@@ -6,10 +6,15 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Download, Loader2, Plus, Search } from "lucide-react";
+import { CheckCircle2, Download, Loader2, Plus, Search } from "lucide-react";
 import React from "react";
-import { cn } from "@/lib/utils";
-import { EmptyState, MutedText, PathTruncate, ResponsiveCard, ResponsiveCardContent } from "@/components/styled";
+import {
+  EmptyState,
+  MutedText,
+  PathTruncate,
+  ResponsiveCard,
+  ResponsiveCardContent,
+} from "@/components/styled";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,18 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { authHeaders } from "@/lib/auth";
 import { api } from "../../api";
 import { IssueList } from "../../components/IssueList";
+import { SortableHeader } from "../../components/SortableHeader";
 import { formatBytes, readSseStream } from "../../utils";
 
 const MEDIA_KINDS = [
@@ -57,6 +56,57 @@ type SearchResult = {
   guid: string;
 };
 
+function DownloadActionCell({
+  url,
+  isAdded,
+  isPending,
+  onAdd,
+}: {
+  url: string | null;
+  isAdded: boolean;
+  isPending: boolean;
+  onAdd: (url: string) => void;
+}) {
+  if (!url) return <MutedText className="text-xs">no link</MutedText>;
+  return (
+    <Button
+      size="sm"
+      variant={isAdded ? "secondary" : "default"}
+      disabled={isAdded || isPending}
+      onClick={() => onAdd(url)}
+    >
+      {isAdded ? <CheckCircle2 size={13} /> : <Plus size={13} />}
+      {isAdded ? "Added" : "Add"}
+    </Button>
+  );
+}
+
+async function readSearchStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onStatus: (msg: string) => void,
+  onResult: (results: SearchResult[]) => void,
+  onError: (err: string) => void,
+) {
+  await readSseStream(reader, (raw: unknown) => {
+    const data = raw as { type: string; message?: string; results?: SearchResult[] };
+    if (data.type === "status") {
+      onStatus(data.message ?? "");
+    } else if (data.type === "result") {
+      onResult(data.results ?? []);
+    } else if (data.type === "error") {
+      onError(data.message ?? "Search failed");
+    }
+  });
+}
+
+function getSearchErrorMessage(cause: unknown): string {
+  if (cause instanceof Error) {
+    if (cause.name === "AbortError") return "Search cancelled";
+    return cause.message;
+  }
+  return String(cause);
+}
+
 type SearchResultsTableProps = {
   results: SearchResult[];
   added: Set<string>;
@@ -75,7 +125,9 @@ function SearchResultsTable({ results, added, isPending, onAdd }: SearchResultsT
         cell: ({ row }) => (
           <Tooltip>
             <TooltipTrigger asChild>
-              <PathTruncate className="max-w-[380px] max-md:max-w-none max-md:overflow-visible max-md:text-clip">{row.original.title}</PathTruncate>
+              <PathTruncate className="max-w-[380px] max-md:max-w-none max-md:overflow-visible max-md:text-clip">
+                {row.original.title}
+              </PathTruncate>
             </TooltipTrigger>
             <TooltipContent className="max-w-sm break-words">{row.original.title}</TooltipContent>
           </Tooltip>
@@ -91,9 +143,7 @@ function SearchResultsTable({ results, added, isPending, onAdd }: SearchResultsT
       {
         accessorKey: "seeders",
         header: "Seeds",
-        cell: ({ row }) => (
-          <span className="tabular-nums text-sm">{row.original.seeders}</span>
-        ),
+        cell: ({ row }) => <span className="tabular-nums text-sm">{row.original.seeders}</span>,
       },
       {
         accessorKey: "size",
@@ -109,25 +159,19 @@ function SearchResultsTable({ results, added, isPending, onAdd }: SearchResultsT
         header: "",
         cell: ({ row }) => {
           const url = row.original.downloadUrl;
-          const isAdded = url ? added.has(url) : false;
-          return url ? (
-            <Button
-              size="sm"
-              variant={isAdded ? "secondary" : "default"}
-              disabled={isAdded || isPending}
-              onClick={() => onAdd(url)}
-            >
-              {isAdded ? <CheckCircle2 size={13} /> : <Plus size={13} />}
-              {isAdded ? "Added" : "Add"}
-            </Button>
-          ) : (
-            <MutedText className="text-xs">no link</MutedText>
+          return (
+            <DownloadActionCell
+              url={url}
+              isAdded={url ? added.has(url) : false}
+              isPending={isPending}
+              onAdd={onAdd}
+            />
           );
         },
         enableSorting: false,
       },
     ],
-    [added, isPending, onAdd]
+    [added, isPending, onAdd],
   );
 
   const table = useReactTable({
@@ -148,41 +192,20 @@ function SearchResultsTable({ results, added, isPending, onAdd }: SearchResultsT
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
-                let className = "";
-                if (header.id === "indexer") className = "w-36";
-                else if (header.id === "seeders") className = "w-16 text-right";
-                else if (header.id === "size") className = "w-24 text-right";
-                else if (header.id === "actions") className = "w-20";
-
-                const canSort = header.column.getCanSort();
-                const isSorted = header.column.getIsSorted();
-
+                const columnClasses: Record<string, string> = {
+                  indexer: "w-36",
+                  seeders: "w-16 text-right",
+                  size: "w-24 text-right",
+                  actions: "w-20",
+                };
+                const className = columnClasses[header.id] ?? "";
                 return (
-                  <TableHead
+                  <SortableHeader
                     key={header.id}
-                    className={cn(
-                      className,
-                      canSort && "cursor-pointer select-none"
-                    )}
-                    onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                  >
-                    <div className={cn("flex items-center gap-1.5", (header.id === "seeders" || header.id === "size") && "justify-end")}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                      {canSort && (
-                        <span>
-                          {isSorted === "asc" ? (
-                            <ArrowUp className="h-3.5 w-3.5 shrink-0" />
-                          ) : isSorted === "desc" ? (
-                            <ArrowDown className="h-3.5 w-3.5 shrink-0" />
-                          ) : (
-                            <ArrowUpDown className="h-3.5 w-3.5 opacity-50 shrink-0 hover:opacity-100" />
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </TableHead>
+                    header={header}
+                    className={className}
+                    alignRight={header.id === "seeders" || header.id === "size"}
+                  />
                 );
               })}
             </TableRow>
@@ -216,7 +239,6 @@ type DownloadsSearchFormProps = {
   query: string;
   category: MediaKindValue;
   isSearching: boolean;
-  searchStatus: string | undefined;
   onQueryChange: (q: string) => void;
   onCategoryChange: (c: MediaKindValue) => void;
   onSubmit: (e: React.FormEvent) => void;
@@ -227,7 +249,6 @@ function DownloadsSearchForm({
   query,
   category,
   isSearching,
-  searchStatus,
   onQueryChange,
   onCategoryChange,
   onSubmit,
@@ -243,8 +264,8 @@ function DownloadsSearchForm({
         disabled={isSearching}
       />
       <div className="flex gap-2 max-sm:w-full">
-        <Select 
-          value={category} 
+        <Select
+          value={category}
           onValueChange={(v) => onCategoryChange(v as MediaKindValue)}
           disabled={isSearching}
         >
@@ -272,7 +293,13 @@ function DownloadsSearchForm({
           </SelectContent>
         </Select>
         {isSearching ? (
-          <Button type="button" onClick={onCancel} variant="destructive" size="sm" className="max-sm:flex-1">
+          <Button
+            type="button"
+            onClick={onCancel}
+            variant="destructive"
+            size="sm"
+            className="max-sm:flex-1"
+          >
             <Loader2 size={15} className="animate-spin" />
             <span>Cancel</span>
           </Button>
@@ -373,26 +400,23 @@ export function Downloads() {
       const reader = response.body?.getReader();
       if (!reader) throw new Error("Search stream did not open");
 
-      await readSseStream(reader, (raw: any) => {
-        if (raw.type === "status") {
-          setSearchStatus(raw.message);
-        } else if (raw.type === "result") {
-          setResults(raw.results ?? []);
+      await readSearchStream(
+        reader,
+        (msg) => setSearchStatus(msg),
+        (res) => {
+          setResults(res);
           setSearchSuccess(true);
           setIsSearching(false);
           setSearchStatus(undefined);
-        } else if (raw.type === "error") {
-          setSearchError(raw.message);
+        },
+        (err) => {
+          setSearchError(err);
           setIsSearching(false);
           setSearchStatus(undefined);
-        }
-      });
-    } catch (cause: any) {
-      if (cause.name === "AbortError") {
-        setSearchError("Search cancelled");
-      } else {
-        setSearchError(cause instanceof Error ? cause.message : String(cause));
-      }
+        },
+      );
+    } catch (cause: unknown) {
+      setSearchError(getSearchErrorMessage(cause));
       setIsSearching(false);
       setSearchStatus(undefined);
     }
@@ -415,7 +439,6 @@ export function Downloads() {
           query={query}
           category={category}
           isSearching={isSearching}
-          searchStatus={searchStatus}
           onQueryChange={setQuery}
           onCategoryChange={setCategory}
           onSubmit={handleSubmit}
