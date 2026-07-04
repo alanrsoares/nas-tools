@@ -23,6 +23,7 @@ export function mediaLabel(mediaType: MovePlanItem["mediaType"]) {
     movie: "Movie",
     music: "Music",
     tv: "TV",
+    unknown: "Unsupported",
   };
   return labels[mediaType];
 }

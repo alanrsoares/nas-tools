@@ -41,4 +41,53 @@ describe("createMovePlanDraft", () => {
     expect(result?.items).toHaveLength(1);
     expect(result?.items[0]?.artistName).toBe("Boris");
   });
+
+  it("includes loose media files at the staging root", async () => {
+    const root = await Bun.$`mktemp -d`.text().then((value) => value.trim());
+    const config: NasPathConfig = {
+      stagingDir: join(root, "complete"),
+      musicDir: join(root, "FLAC"),
+      tvDir: join(root, "TV"),
+      movieDir: join(root, "Movies"),
+      audiobookDir: join(root, "Audiobooks"),
+      backupDir: join(root, "backup"),
+    };
+
+    await Promise.all(Object.values(config).map((dir) => mkdir(dir, { recursive: true })));
+    await writeFile(join(config.stagingDir, "Stray Dog (1949) 1080p BluRay.mkv"), "not real mkv");
+
+    const result = await createMovePlanDraft(config).unwrapOr(undefined);
+
+    expect(result?.items).toHaveLength(1);
+    expect(result?.items[0]?.mediaType).toBe("movie");
+    expect(result?.items[0]?.included).toBe(true);
+    expect(result?.items[0]?.targetPath).toBe(
+      join(config.movieDir, "Stray Dog (1949) 1080p BluRay.mkv"),
+    );
+  });
+
+  it("surfaces unsupported items as excluded instead of dropping them", async () => {
+    const root = await Bun.$`mktemp -d`.text().then((value) => value.trim());
+    const config: NasPathConfig = {
+      stagingDir: join(root, "complete"),
+      musicDir: join(root, "FLAC"),
+      tvDir: join(root, "TV"),
+      movieDir: join(root, "Movies"),
+      audiobookDir: join(root, "Audiobooks"),
+      backupDir: join(root, "backup"),
+    };
+
+    await Promise.all(Object.values(config).map((dir) => mkdir(dir, { recursive: true })));
+    const ebooks = join(config.stagingDir, "Nietzsche, Friedrich");
+    await mkdir(ebooks, { recursive: true });
+    await writeFile(join(ebooks, "Genealogy of Morals.epub"), "not real epub");
+
+    const result = await createMovePlanDraft(config).unwrapOr(undefined);
+
+    expect(result?.items).toHaveLength(1);
+    expect(result?.items[0]?.mediaType).toBe("unknown");
+    expect(result?.items[0]?.status).toBe("excluded");
+    expect(result?.items[0]?.included).toBe(false);
+    expect(result?.items[0]?.issues[0]?.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+  });
 });

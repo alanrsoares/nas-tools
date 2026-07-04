@@ -1,3 +1,4 @@
+import { authHeaders } from "@/lib/auth";
 import type { AudioFileType, BrowseEntry } from "../../../types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -18,7 +19,11 @@ const BASE = window.location.origin;
 
 export async function apiFetch<T>(p: string, init?: RequestInit): Promise<ApiResult<T>> {
   try {
-    const res = await fetch(`${BASE}/api${p}`, init);
+    const headers = new Headers(init?.headers);
+    for (const [key, value] of Object.entries(authHeaders())) {
+      headers.set(key, value);
+    }
+    const res = await fetch(`${BASE}/api${p}`, { ...init, headers });
     if (!res.ok && res.headers.get("content-type")?.includes("text/html")) {
       return { ok: false, message: `HTTP ${res.status}` };
     }

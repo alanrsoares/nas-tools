@@ -406,6 +406,7 @@ function MovePlanRow({ item, onChange }: MovePlanRowProps) {
         <Checkbox
           aria-label={`Include ${item.albumName}`}
           checked={item.included}
+          disabled={item.mediaType === "unknown"}
           onCheckedChange={(checked: boolean | "indeterminate") =>
             onChange({ ...item, included: !!checked })
           }
@@ -456,12 +457,16 @@ function MovePlanRow({ item, onChange }: MovePlanRowProps) {
         <StatusBadge item={item} />
       </TableCell>
       <TableCell>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PathTruncate>{item.targetPath}</PathTruncate>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-sm break-all">{item.targetPath}</TooltipContent>
-        </Tooltip>
+        {item.mediaType === "unknown" ? (
+          <MutedText>—</MutedText>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PathTruncate>{item.targetPath}</PathTruncate>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm break-all">{item.targetPath}</TooltipContent>
+          </Tooltip>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -470,6 +475,18 @@ function MovePlanRow({ item, onChange }: MovePlanRowProps) {
 type StatusBadgeProps = { item: MovePlanItem };
 
 function StatusBadge({ item }: StatusBadgeProps) {
+  if (item.mediaType === "unknown") {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="secondary" className="cursor-default">
+            Unsupported
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>{item.issues.map((issue) => issue.message).join(" · ")}</TooltipContent>
+      </Tooltip>
+    );
+  }
   if (item.issues.length > 0) {
     return (
       <Tooltip>

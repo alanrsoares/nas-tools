@@ -1,6 +1,7 @@
 import { match } from "@onrails/pattern";
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { withToken } from "@/lib/auth";
 import type { BrowseResult, PlayerState } from "../../types";
 import type { AlsaDevice } from "./lib/utils";
 import { apiFetch, isAudio, post, postJson } from "./lib/utils";
@@ -108,8 +109,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   }, [selectedDevice]);
 
   const onPlayTrack = useCallback(
-    (path: string) =>
-      postJson("/player/play", { path, device: selectedDeviceRef.current }),
+    (path: string) => postJson("/player/play", { path, device: selectedDeviceRef.current }),
     [],
   );
 
@@ -152,10 +152,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     [play],
   );
 
-  const handleAddToQueue = useCallback(
-    (filePath: string) => enqueue([filePath]),
-    [enqueue],
-  );
+  const handleAddToQueue = useCallback((filePath: string) => enqueue([filePath]), [enqueue]);
 
   const handleAddDirToQueue = useCallback(
     async (dirPath: string) => {
@@ -185,7 +182,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   }, [clear]);
 
   useEffect(() => {
-    const es = new EventSource(`${BASE}/api/player/status`);
+    const es = new EventSource(withToken(`${BASE}/api/player/status`));
     es.onmessage = (event) => {
       try {
         setPlayerState(JSON.parse(event.data));

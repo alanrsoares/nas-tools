@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { authHeaders } from "@/lib/auth";
 import { IssueList, Summary, SummaryCell } from "../../components/IssueList";
 import { readSseStream } from "../../utils";
 
@@ -110,7 +111,7 @@ function useCueScan() {
     setSelectedIds(new Set());
     setScanStatus({ message: "Connecting...", scannedDirectories: 0, foundPairs: 0 });
     try {
-      const response = await fetch("/api/cue/scan");
+      const response = await fetch("/api/cue/scan", { headers: authHeaders() });
       const reader = response.body?.getReader();
       if (!reader) throw new Error("CUE scan stream did not open");
       await readSseStream(reader, (raw) => {
@@ -311,7 +312,7 @@ export function CueSplit() {
     mutationFn: async (pairs: CuePair[]) => {
       const response = await fetch("/api/cue/fix/jobs", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ pairs }),
       });
       return cueJobResponseSchema.parse(await response.json());

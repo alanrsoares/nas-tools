@@ -5,6 +5,7 @@ export const mediaTypeSchema = z.union([
   z.literal("audiobook"),
   z.literal("music"),
   z.literal("movie"),
+  z.literal("unknown"),
 ]);
 
 export type MediaType = z.infer<typeof mediaTypeSchema>;

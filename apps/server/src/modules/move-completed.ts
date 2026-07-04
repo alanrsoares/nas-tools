@@ -11,6 +11,42 @@ import { isNone } from "../lib/maybe.js";
 import { publicSubrouter } from "../lib/subrouter.js";
 import type { Deps } from "../types/deps.js";
 
+type MovePlanItem = MovePlan["items"][number];
+type ItemEdit = { id: string; artistName?: string; included: boolean };
+
+function mergeItemEdit(
+  item: MovePlanItem,
+  edit: ItemEdit | undefined,
+  musicDir: string,
+  issues: FieldIssue[],
+): MovePlanItem {
+  const artistName = edit?.artistName ?? item.artistName;
+  const included = edit?.included ?? item.included;
+
+  if (included && item.mediaType === "music" && !artistName) {
+    issues.push({
+      path: ["items", item.id, "artistName"],
+      code: "ARTIST_REQUIRED",
+      message: `Artist name required for "${item.albumName}"`,
+    });
+  }
+
+  if (included && item.mediaType === "unknown") {
+    issues.push({
+      path: ["items", item.id, "included"],
+      code: "UNSUPPORTED_MEDIA_TYPE",
+      message: `"${item.albumName}" has no supported media type and cannot be moved`,
+    });
+  }
+
+  const targetPath =
+    item.mediaType === "music" && artistName && artistName !== item.artistName
+      ? `${getMusicTargetDirectory(artistName, musicDir)}/${item.albumName}`
+      : item.targetPath;
+
+  return { ...item, artistName, included, targetPath };
+}
+
 export function moveCompletedModule(deps: Deps) {
   return publicSubrouter(deps)
     .post("/move-completed/scan", async ({ config, repos, set }) => {
@@ -62,26 +98,9 @@ export function moveCompletedModule(deps: Deps) {
         const editMap = new Map(body.items.map((edit) => [edit.id, edit]));
 
         const issues: FieldIssue[] = [];
-        const mergedItems = loadedPlan.items.map((item) => {
-          const edit = editMap.get(item.id);
-          const artistName = edit?.artistName ?? item.artistName;
-          const included = edit?.included ?? item.included;
-
-          if (included && item.mediaType === "music" && !artistName) {
-            issues.push({
-              path: ["items", item.id, "artistName"],
-              code: "ARTIST_REQUIRED",
-              message: `Artist name required for "${item.albumName}"`,
-            });
-          }
-
-          const targetPath =
-            item.mediaType === "music" && artistName && artistName !== item.artistName
-              ? `${getMusicTargetDirectory(artistName, loadedPlan.config.musicDir)}/${item.albumName}`
-              : item.targetPath;
-
-          return { ...item, artistName, included, targetPath };
-        });
+        const mergedItems = loadedPlan.items.map((item) =>
+          mergeItemEdit(item, editMap.get(item.id), loadedPlan.config.musicDir, issues),
+        );
 
         if (issues.length > 0) {
           set.status = 422;

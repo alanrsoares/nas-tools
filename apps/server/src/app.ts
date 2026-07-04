@@ -1,25 +1,37 @@
-import { join } from "node:path";
-import { cors } from "@elysiajs/cors";
+import { join, resolve, sep } from "node:path";
 import { Elysia } from "elysia";
 
 import { createApi } from "./api.js";
+import { securityGuard } from "./security.js";
 import type { Deps } from "./types/deps.js";
 
-const webDistDir = join(import.meta.dirname, "../../web/dist");
+const webDistDir = resolve(import.meta.dirname, "../../web/dist");
+
+const indexHtml = () => Bun.file(join(webDistDir, "index.html"));
 
 export const createApp = (deps: Deps) =>
   new Elysia()
-    .use(cors())
+    .use(securityGuard)
     .use(createApi(deps))
     .get("*", async ({ path }) => {
-      const filePath = join(webDistDir, path);
-      const file = Bun.file(filePath);
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(path);
+      } catch {
+        return indexHtml();
+      }
 
-      if ((await file.exists()) && file.size > 0 && !filePath.endsWith("/")) {
+      const filePath = resolve(join(webDistDir, decoded));
+      if (!filePath.startsWith(webDistDir + sep)) {
+        return indexHtml();
+      }
+
+      const file = Bun.file(filePath);
+      if ((await file.exists()) && file.size > 0) {
         return file;
       }
 
-      return Bun.file(join(webDistDir, "index.html"));
+      return indexHtml();
     });
 
 export type App = ReturnType<typeof createApp>;

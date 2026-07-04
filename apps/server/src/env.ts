@@ -16,6 +16,8 @@ const envSchema = z.object({
   TRANSMISSION_RPC_PASSWORD: z.string().default(""),
   MUSIC_LIBRARY_PATH: z.string().default("/volume1/music"),
   ALSA_DEVICE: z.string().default("hw:1,0"),
+  NAS_TOOLS_API_TOKEN: z.string().optional(),
+  ALLOWED_ORIGINS: z.string().default(""),
 });
 
 const parsed = envSchema.parse(process.env);

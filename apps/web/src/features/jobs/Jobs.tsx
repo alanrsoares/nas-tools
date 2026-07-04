@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { withToken } from "@/lib/auth";
 import { api, queryClient } from "../../api";
 import type { JobEventRecord, JobRecord, JobStatus } from "../../types";
 import { TERMINAL_STATUSES } from "../../types";
@@ -207,7 +208,7 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
 
   // SSE for live events — server closes naturally when job is terminal
   React.useEffect(() => {
-    const source = new EventSource(`/api/jobs/${initialJob.id}/events/stream`);
+    const source = new EventSource(withToken(`/api/jobs/${initialJob.id}/events/stream`));
     source.onmessage = (e: MessageEvent<string>) => {
       // biome-ignore lint: trusted same-origin SSE; validate if JobEventRecord gets a Zod schema
       const event = JSON.parse(e.data) as JobEventRecord;

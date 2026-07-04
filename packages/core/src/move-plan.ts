@@ -1,12 +1,12 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { compact, isNone, isSome, type Maybe, none, some } from "@onrails/maybe";
+import { isNone, isSome, type Maybe, none } from "@onrails/maybe";
 import { match as matchUnion } from "@onrails/pattern";
 import { err, ok, type Result, ResultAsync, unwrapOr } from "@onrails/result";
 
 import { inferArtistNameForStagedItem } from "./artist.js";
 import type { MovePlanError, ValidationError } from "./errors.js";
-import { safeAsync } from "./errors.js";
+import { safeAsync, toCoreError } from "./errors.js";
 import { alphabeticalRanges } from "./library-layout.js";
 import { detectMediaType, isCueFile, isMusicFile } from "./media-files.js";
 import type {
@@ -65,6 +65,9 @@ function targetDirectoryFor(
     .with("tv", () => ok<string, MovePlanError>(config.tvDir))
     .with("movie", () => ok<string, MovePlanError>(config.movieDir))
     .with("audiobook", () => ok<string, MovePlanError>(config.audiobookDir))
+    .with("unknown", () =>
+      err<string, MovePlanError>(toCoreError("No target directory for unsupported media")),
+    )
     .exhaustive();
 }
 
@@ -100,27 +103,28 @@ export function scanDownloadStagingArea(
     () => readdir(config.stagingDir, { withFileTypes: true }),
     `Failed to scan ${config.stagingDir}`,
   ).andThen((entries) => {
-    const folders = entries.filter((entry) => entry.isDirectory());
-    const tasks = folders.map((entry) => {
-      const dir = path.join(config.stagingDir, entry.name);
-      return collectRelativeFiles(dir)
-        .mapErr((error): MovePlanError => error)
-        .map((files): Maybe<StagedMediaItem> => {
-          const mediaType = detectMediaType(entry.name, files, dir);
-          if (isNone(mediaType)) return none();
+    const tasks = entries
+      .filter((entry) => (entry.isDirectory() || entry.isFile()) && !entry.name.startsWith("."))
+      .map((entry) => {
+        const entryPath = path.join(config.stagingDir, entry.name);
+        const filesTask: ResultAsync<string[], MovePlanError> = entry.isDirectory()
+          ? collectRelativeFiles(entryPath)
+          : ResultAsync.fromSafePromise(Promise.resolve([entry.name]));
 
-          return some({
+        return filesTask.map((files): StagedMediaItem => {
+          const mediaType = detectMediaType(entry.name, files, entryPath);
+          return {
             id: crypto.randomUUID(),
-            path: dir,
+            path: entryPath,
             name: entry.name,
-            type: mediaType.value,
+            type: isSome(mediaType) ? mediaType.value : "unknown",
             files,
             musicFiles: files.filter(isMusicFile),
-          });
+          };
         });
-    });
+      });
 
-    return ResultAsync.combine(tasks).map((results) => compact(results));
+    return ResultAsync.combine(tasks);
   });
 }
 
@@ -163,6 +167,28 @@ function toMovePlanItem(
   config: NasPathConfig,
 ): MovePlanItem {
   const itemId = crypto.randomUUID();
+
+  if (item.type === "unknown") {
+    return {
+      id: itemId,
+      status: "excluded",
+      mediaType: item.type,
+      sourcePath: item.path,
+      targetPath: item.path,
+      albumName: item.name,
+      cueFiles: 0,
+      cueAudioPairs: 0,
+      included: false,
+      issues: [
+        createIssue(
+          "UNSUPPORTED_MEDIA_TYPE",
+          "No supported media detected (music, movie, TV, audiobook).",
+          itemId,
+        ),
+      ],
+    };
+  }
+
   const artistName = isSome(artist) ? artist.value : undefined;
   const issues =
     item.type === "music" && isNone(artist)

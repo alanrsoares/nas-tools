@@ -5,6 +5,7 @@ import { EmptyState, Toolbar } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { authHeaders } from "@/lib/auth";
 import { api } from "../../api";
 import { Summary, SummaryCell } from "../../components/IssueList";
 import { readSseStream } from "../../utils";
@@ -47,7 +48,7 @@ function useDedupeScan() {
     setResults(undefined);
     setStatus({ type: "connecting", message: "Connecting..." });
     try {
-      const response = await fetch("/api/music-dedupe/scan");
+      const response = await fetch("/api/music-dedupe/scan", { headers: authHeaders() });
       const reader = response.body?.getReader();
       if (!reader) return;
       await readSseStream(reader, (data) => {
