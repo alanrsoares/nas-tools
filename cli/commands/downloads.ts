@@ -297,8 +297,8 @@ function runTriage(options: CommandOptions): ResultAsync<void, ReturnType<typeof
       const junkFiles = [...completeEntries, ...incompleteEntries].filter((entry) =>
         isAppleJunk(entry.name),
       );
-      const unsafeFiles = [...completeEntries, ...incompleteEntries].filter((entry) =>
-        !entry.isDirectory && isUnsafeFile(entry.name),
+      const unsafeFiles = [...completeEntries, ...incompleteEntries].filter(
+        (entry) => !entry.isDirectory && isUnsafeFile(entry.name),
       );
       const staleIncomplete = incompleteFolders.filter((entry) => entry.mtimeMs < staleCutoff);
 

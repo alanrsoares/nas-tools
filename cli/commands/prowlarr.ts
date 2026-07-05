@@ -61,28 +61,44 @@ export function getDefaultCategorySet(setName: string): string {
   }
 }
 
+function resolveCategoryIds(options: SearchOptions): number[] {
+  if (options.categories && options.categories.length > 0) {
+    return options.categories;
+  }
+  const setName = (options.set ?? "music").toUpperCase();
+  const envVarName = `PROWLARR_CATEGORY_SET_${setName}`;
+  const configStr = process.env[envVarName] ?? getDefaultCategorySet(setName);
+  return configStr
+    .split(",")
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => !Number.isNaN(n));
+}
+
+function printResultsTable(query: string, results: ProwlarrSearchResult[]): void {
+  console.log(`\n🔎 Prowlarr Search: "${query}"`);
+  console.log(`${"Indexer".padEnd(20)} ${"Seed".padEnd(5)} ${"Size".padEnd(8)} Title`);
+  console.log("-".repeat(80));
+  for (const r of results.slice(0, 20)) {
+    const sizeStr = `${(r.size / (1024 * 1024)).toFixed(0)}MB`;
+    console.log(
+      `${(r.indexer || "Unknown").slice(0, 19).padEnd(20)} ` +
+        `${r.seeders.toString().padEnd(5)} ` +
+        `${sizeStr.padEnd(8)} ` +
+        r.title,
+    );
+  }
+}
+
 function runSearch(options: SearchOptions): ResultAsync<void, AppError> {
   return ResultAsync.fromPromise(
     (async () => {
       const findings: Finding[] = [];
-      const results: ProwlarrSearchResult[] = [];
 
       if (!options.apiKey) {
         throw new Error("PROWLARR_API_KEY is required");
       }
 
-      let categoryIds: number[] = [];
-      if (options.categories && options.categories.length > 0) {
-        categoryIds = options.categories;
-      } else {
-        const setName = (options.set ?? "music").toUpperCase();
-        const envVarName = `PROWLARR_CATEGORY_SET_${setName}`;
-        const configStr = process.env[envVarName] ?? getDefaultCategorySet(setName);
-        categoryIds = configStr
-          .split(",")
-          .map((s) => Number.parseInt(s.trim(), 10))
-          .filter((n) => !Number.isNaN(n));
-      }
+      const categoryIds = resolveCategoryIds(options);
 
       const searchParams = new URLSearchParams();
       searchParams.set("query", options.query);
@@ -99,26 +115,10 @@ function runSearch(options: SearchOptions): ResultAsync<void, AppError> {
         })
         .json<ProwlarrSearchResult[]>();
 
-      for (const item of response) {
-        results.push(item);
-      }
-
-      // Sort by seeders descending
-      results.sort((a, b) => b.seeders - a.seeders);
+      const results = [...response].sort((a, b) => b.seeders - a.seeders);
 
       if (!options.json) {
-        console.log(`\n🔎 Prowlarr Search: "${options.query}"`);
-        console.log(`${"Indexer".padEnd(20)} ${"Seed".padEnd(5)} ${"Size".padEnd(8)} Title`);
-        console.log("-".repeat(80));
-        for (const r of results.slice(0, 20)) {
-          const sizeStr = `${(r.size / (1024 * 1024)).toFixed(0)}MB`;
-          console.log(
-            `${(r.indexer || "Unknown").slice(0, 19).padEnd(20)} ` +
-              `${r.seeders.toString().padEnd(5)} ` +
-              `${sizeStr.padEnd(8)} ` +
-              r.title,
-          );
-        }
+        printResultsTable(options.query, results);
       }
 
       printReport(
