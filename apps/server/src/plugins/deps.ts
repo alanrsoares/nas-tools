@@ -1,6 +1,12 @@
 import { Elysia } from "elysia";
 
-import { createDb, createJobEventsRepo, createJobsRepo, createPlansRepo } from "../db/index.js";
+import {
+  createDb,
+  createDownloadCategorySettingsRepo,
+  createJobEventsRepo,
+  createJobsRepo,
+  createPlansRepo,
+} from "../db/index.js";
 import { createExecutionService } from "../execution.js";
 import { createConfigState } from "../lib/config-state.js";
 import { createFsItemRunner } from "../lib/job-item-runner.js";
@@ -19,6 +25,7 @@ export function createDeps(options?: CreateDepsOptions): Deps {
     plans: createPlansRepo(db),
     jobs: createJobsRepo(db),
     jobEvents: createJobEventsRepo(db),
+    downloadCategorySettings: createDownloadCategorySettingsRepo(db),
   };
   return {
     config,

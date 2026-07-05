@@ -26,24 +26,17 @@ import {
 } from "@/components/styled";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { authHeaders } from "@/lib/auth";
+import { downloadCategoriesQueryOptions } from "@/lib/download-categories-query";
+import { isCategoryActive, type ProwlarrCategory } from "@/lib/prowlarr-categories";
 import { cn } from "@/lib/utils";
 import { api } from "../../api";
 import { IssueList } from "../../components/IssueList";
 import { SortableHeader } from "../../components/SortableHeader";
 import { formatBytes, readSseStream } from "../../utils";
+import { CategoryPicker } from "./CategoryPicker";
 import {
   assessPlexFit,
   type PlexFit,
@@ -51,23 +44,25 @@ import {
   type MediaKind as PlexMediaKind,
 } from "./plex-fit";
 
-type ProwlarrCategory = {
-  id: number;
-  name: string;
-  subCategories: ProwlarrCategory[];
-};
-
 type MediaKindValue = string;
 
-const DEFAULT_CATEGORY: MediaKindValue = "3040";
-
-const kindOfCategory = (cat: string): PlexMediaKind => (cat.startsWith("3") ? "music" : "video");
-
-/** Strips the "Audio/", "Movies/" etc. prefix Prowlarr puts on subcategory names. */
-function shortLabel(name: string): string {
-  const slash = name.indexOf("/");
-  return slash === -1 ? name : name.slice(slash + 1);
+/** Drops inactive subcategories and empty groups from the settings-configured tree. */
+function visibleCategories(
+  categories: ProwlarrCategory[],
+  activeIds: number[] | null,
+): ProwlarrCategory[] {
+  return categories
+    .map((group) => ({
+      ...group,
+      subCategories: group.subCategories.filter((sub) => isCategoryActive(sub.id, activeIds)),
+    }))
+    .filter((group) => isCategoryActive(group.id, activeIds) || group.subCategories.length > 0);
 }
+
+const DEFAULT_CATEGORIES: MediaKindValue[] = ["3040"];
+
+const kindOfCategories = (cats: string[]): PlexMediaKind =>
+  cats.length > 0 && cats.every((cat) => cat.startsWith("3")) ? "music" : "video";
 
 type SearchResult = {
   title: string;
@@ -396,22 +391,24 @@ function SearchResultsTable({ results, added, isPending, kind, onAdd }: SearchRe
 
 type DownloadsSearchFormProps = {
   query: string;
-  category: MediaKindValue;
+  selectedCategories: MediaKindValue[];
   categories: ProwlarrCategory[];
+  activeIds: number[] | null;
   isSearching: boolean;
   onQueryChange: (q: string) => void;
-  onCategoryChange: (c: MediaKindValue) => void;
+  onCategoriesChange: (c: MediaKindValue[]) => void;
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
 };
 
 function DownloadsSearchForm({
   query,
-  category,
+  selectedCategories,
   categories,
+  activeIds,
   isSearching,
   onQueryChange,
-  onCategoryChange,
+  onCategoriesChange,
   onSubmit,
   onCancel,
 }: DownloadsSearchFormProps) {
@@ -425,31 +422,14 @@ function DownloadsSearchForm({
         disabled={isSearching}
       />
       <div className="flex gap-2 max-sm:w-full">
-        <Select
-          value={category}
-          onValueChange={(v) => onCategoryChange(v as MediaKindValue)}
+        <CategoryPicker
+          categories={categories}
+          activeIds={activeIds}
+          value={selectedCategories}
+          onChange={onCategoriesChange}
           disabled={isSearching}
-        >
-          <SelectTrigger className="w-40 shrink-0 max-sm:flex-1">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((group, i) => (
-              <React.Fragment key={group.id}>
-                {i > 0 && <SelectSeparator />}
-                <SelectGroup>
-                  <SelectLabel>{group.name}</SelectLabel>
-                  <SelectItem value={String(group.id)}>All {group.name}</SelectItem>
-                  {group.subCategories.map((sub) => (
-                    <SelectItem key={sub.id} value={String(sub.id)}>
-                      {shortLabel(sub.name)}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </React.Fragment>
-            ))}
-          </SelectContent>
-        </Select>
+          className="w-40 shrink-0 max-sm:flex-1"
+        />
         {isSearching ? (
           <Button
             type="button"
@@ -520,20 +500,13 @@ function DownloadsBody({
 }
 
 export function Downloads() {
-  const categoriesQuery = useQuery({
-    queryKey: ["search-categories"],
-    queryFn: async () => {
-      const res = await api.search.categories.get();
-      return res.data && "categories" in res.data
-        ? (res.data.categories as ProwlarrCategory[])
-        : [];
-    },
-    staleTime: 10 * 60 * 1000,
-  });
-  const categories = categoriesQuery.data ?? [];
+  const categoriesQuery = useQuery(downloadCategoriesQueryOptions());
+  const activeIds = categoriesQuery.data?.activeIds ?? null;
+  const categories = visibleCategories(categoriesQuery.data?.categories ?? [], activeIds);
 
   const [query, setQuery] = React.useState("");
-  const [category, setCategory] = React.useState<MediaKindValue>(DEFAULT_CATEGORY);
+  const [selectedCategories, setSelectedCategories] =
+    React.useState<MediaKindValue[]>(DEFAULT_CATEGORIES);
   const [added, setAdded] = React.useState<Set<string>>(new Set());
 
   const [isSearching, setIsSearching] = React.useState(false);
@@ -567,7 +540,7 @@ export function Downloads() {
   }, [stopStream]);
 
   const handleSearch = React.useCallback(
-    async (q: string, cat: string) => {
+    async (q: string, cats: string[]) => {
       stopStream();
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -579,7 +552,7 @@ export function Downloads() {
       setSearchStatus("Connecting...");
       setSearchError(null);
       setResults([]);
-      setResultsKind(kindOfCategory(cat));
+      setResultsKind(kindOfCategories(cats));
       setSearchSuccess(false);
 
       const finish = (outcome: { results?: SearchResult[]; error?: string }) => {
@@ -594,7 +567,7 @@ export function Downloads() {
       };
 
       try {
-        const params = new URLSearchParams({ q, categories: cat });
+        const params = new URLSearchParams({ q, categories: cats.join(",") });
         const response = await fetch(`/api/search?${params}`, {
           headers: authHeaders(),
           signal: controller.signal,
@@ -652,7 +625,7 @@ export function Downloads() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) handleSearch(query.trim(), category);
+    if (query.trim()) handleSearch(query.trim(), selectedCategories);
   };
 
   return (
@@ -660,11 +633,12 @@ export function Downloads() {
       <ResponsiveCardContent className="flex flex-col gap-4">
         <DownloadsSearchForm
           query={query}
-          category={category}
+          selectedCategories={selectedCategories}
           categories={categories}
+          activeIds={activeIds}
           isSearching={isSearching}
           onQueryChange={setQuery}
-          onCategoryChange={setCategory}
+          onCategoriesChange={setSelectedCategories}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
         />

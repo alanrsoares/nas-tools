@@ -1,6 +1,11 @@
 import type { NasPathConfig } from "@nas-tools/core";
 
-import type { JobEventsRepo, JobsRepo, PlansRepo } from "../db/index.js";
+import type {
+  DownloadCategorySettingsRepo,
+  JobEventsRepo,
+  JobsRepo,
+  PlansRepo,
+} from "../db/index.js";
 import type { ExecutionService } from "../execution.js";
 import type { ConfigState } from "../lib/config-state.js";
 import type { PlayerPort } from "../player/index.js";
@@ -10,6 +15,7 @@ export type ApiRepos = {
   plans: PlansRepo;
   jobs: JobsRepo;
   jobEvents: JobEventsRepo;
+  downloadCategorySettings: DownloadCategorySettingsRepo;
 };
 
 /**

@@ -37,6 +37,11 @@ export const jobs = sqliteTable("jobs", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const downloadCategorySettings = sqliteTable("download_category_settings", {
+  id: text("id").primaryKey(),
+  activeCategoryIds: text("active_category_ids").notNull(),
+});
+
 export const jobEvents = sqliteTable("job_events", {
   id: text("id").primaryKey(),
   jobId: text("job_id")
