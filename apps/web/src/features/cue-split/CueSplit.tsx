@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authHeaders } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import { IssueList, Summary, SummaryCell } from "../../components/IssueList";
 import { SortableHeader } from "../../components/SortableHeader";
 import { readSseStream } from "../../utils";
@@ -216,33 +217,79 @@ function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
   });
 
   return (
-    <div className="overflow-x-auto rounded-md border border-border mt-4">
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => {
-                let className = "";
-                if (header.id === "select") className = "w-10";
-                else if (header.id === "status") className = "w-28";
-                return <SortableHeader key={header.id} header={header} className={className} />;
-              })}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <>
+      {/* Mobile: card list */}
+      <div className="mt-4 flex flex-col divide-y divide-border rounded-md border border-border md:hidden">
+        {table.getRowModel().rows.map((row) => {
+          const pair = row.original;
+          return (
+            <button
+              key={row.id}
+              type="button"
+              disabled={pair.blocked}
+              aria-pressed={selectedIds.has(pair.id)}
+              onClick={() => togglePair(pair.id, !selectedIds.has(pair.id))}
+              className={cn(
+                "flex items-start gap-3 p-3 text-left transition-colors duration-150 hover:bg-muted/50",
+                pair.blocked && "opacity-70",
+              )}
+            >
+              <span className="pt-0.5">
+                <Checkbox
+                  checked={selectedIds.has(pair.id)}
+                  disabled={pair.blocked}
+                  tabIndex={-1}
+                  className="pointer-events-none"
+                />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="font-mono text-xs leading-snug [overflow-wrap:anywhere]">
+                  {pair.cueFile}
+                </span>
+                <span className="font-mono text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                  {pair.audioFile}
+                </span>
+                <span className="text-[10px] leading-snug text-muted-foreground/70 [overflow-wrap:anywhere]">
+                  {pair.directory}
+                </span>
+              </span>
+              <Badge variant={pair.blocked ? "warning" : "success"} className="shrink-0">
+                {pair.blocked ? "Blocked" : "Ready"}
+              </Badge>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Desktop: table */}
+      <div className="mt-4 hidden overflow-x-auto rounded-md border border-border md:block">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  let className = "";
+                  if (header.id === "select") className = "w-10";
+                  else if (header.id === "status") className = "w-28";
+                  return <SortableHeader key={header.id} header={header} className={className} />;
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 }
 
@@ -301,7 +348,7 @@ function CueSplitActions({
   onFix,
 }: CueSplitActionsProps) {
   return (
-    <div className="flex gap-2 items-center toolbar-actions">
+    <div className="flex gap-2 items-center toolbar-actions max-md:w-full [&>button]:max-md:flex-1">
       <Button onClick={onScan} disabled={isScanning || fixIsPending} size="sm" variant="outline">
         {isScanning ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
         <span>{isScanning ? "Scanning..." : "Scan CUE"}</span>

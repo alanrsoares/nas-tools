@@ -5,6 +5,7 @@ import {
   mapTransmissionPath,
   type TransmissionTorrent,
 } from "../commands/downloads.js";
+import { isUnsafeFile } from "../lib/report.js";
 
 const torrent = (overrides: Partial<TransmissionTorrent>): TransmissionTorrent => ({
   id: 1,
@@ -40,5 +41,24 @@ describe("Transmission cleanup", () => {
 
     expect(candidates.map((candidate) => candidate.id)).toEqual([1]);
     expect(candidates[0]?.missingFiles).toBe(1);
+  });
+});
+
+describe("isUnsafeFile", () => {
+  it("returns true for unsafe executable and script extensions", () => {
+    expect(isUnsafeFile("malware.exe")).toBe(true);
+    expect(isUnsafeFile("script.sh")).toBe(true);
+    expect(isUnsafeFile("malicious.bat")).toBe(true);
+    expect(isUnsafeFile("virus.scr")).toBe(true);
+    expect(isUnsafeFile("shortcut.lnk")).toBe(true);
+    expect(isUnsafeFile("setup.msi")).toBe(true);
+  });
+
+  it("returns false for safe media and data extensions", () => {
+    expect(isUnsafeFile("song.flac")).toBe(false);
+    expect(isUnsafeFile("movie.mkv")).toBe(false);
+    expect(isUnsafeFile("album.cue")).toBe(false);
+    expect(isUnsafeFile("read.me")).toBe(false);
+    expect(isUnsafeFile("text.txt")).toBe(false);
   });
 });

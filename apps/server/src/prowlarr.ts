@@ -27,7 +27,37 @@ interface ProwlarrRaw {
   guid: string;
 }
 
-export async function prowlarrSearch(query: string, categories = [3040]): Promise<SearchResult[]> {
+export interface ProwlarrCategory {
+  id: number;
+  name: string;
+  subCategories: ProwlarrCategory[];
+}
+
+let categoriesCache: { data: ProwlarrCategory[]; expiresAt: number } | null = null;
+const CATEGORIES_TTL_MS = 10 * 60 * 1000;
+
+export async function getCategories(): Promise<ProwlarrCategory[]> {
+  if (!API_KEY) throw new Error("PROWLARR_API_KEY is not set");
+
+  if (categoriesCache && categoriesCache.expiresAt > Date.now()) {
+    return categoriesCache.data;
+  }
+
+  const res = await fetch(`${BASE_URL}/api/v1/indexer/categories`, {
+    headers: { "X-Api-Key": API_KEY },
+  });
+  if (!res.ok) throw new Error(`Prowlarr categories responded HTTP ${res.status}`);
+
+  const data = (await res.json()) as ProwlarrCategory[];
+  categoriesCache = { data, expiresAt: Date.now() + CATEGORIES_TTL_MS };
+  return data;
+}
+
+export async function prowlarrSearch(
+  query: string,
+  categories = [3040],
+  signal?: AbortSignal,
+): Promise<SearchResult[]> {
   if (!API_KEY) throw new Error("PROWLARR_API_KEY is not set");
 
   const params = new URLSearchParams({ query });
@@ -35,6 +65,7 @@ export async function prowlarrSearch(query: string, categories = [3040]): Promis
 
   const res = await fetch(`${BASE_URL}/api/v1/search?${params}`, {
     headers: { "X-Api-Key": API_KEY },
+    signal: signal ?? null,
   });
 
   if (!res.ok) throw new Error(`Prowlarr search responded HTTP ${res.status}`);

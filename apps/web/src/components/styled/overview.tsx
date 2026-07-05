@@ -45,6 +45,10 @@ export const OverviewDlSpeed = tw.span(
   "min-w-16 text-right text-[11px] tabular-nums text-muted-foreground",
 );
 
+export const OverviewDlEta = tw.span(
+  "min-w-12 text-right text-[11px] tabular-nums text-muted-foreground",
+);
+
 export const OverviewDlControls = tw.div("flex shrink-0 items-center gap-0.5");
 
 export const OverviewOrphanList = tw.div("flex flex-col gap-0.5");

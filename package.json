@@ -31,7 +31,7 @@
     "dev:server": "bun run --filter @nas-tools/server start",
     "dev:web": "bun run --filter @nas-tools/web dev",
     "start:web": "bun scripts/dev.ts",
-    "cockpit": "bun cli/index.ts cockpit",
+    "console": "bun cli/index.ts console",
     "check": "bun run lint && bun run typecheck && bun run test",
     "check:size": "bun scripts/check-file-size.ts",
     "test": "bun test cli",

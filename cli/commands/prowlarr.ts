@@ -11,7 +11,8 @@ import { logError } from "../lib/utils.js";
 const searchOptionsSchema = z.object({
   apiKey: z.string().optional().default(env.PROWLARR_API_KEY),
   baseUrl: z.string().url().optional().default(env.PROWLARR_URL),
-  categories: z.array(z.coerce.number()).optional().default([3040]), // Audio/Lossless
+  categories: z.array(z.coerce.number()).optional(),
+  set: z.string().optional().default("music"),
   json: z.boolean().optional().default(false),
   query: z.string(),
 });
@@ -41,6 +42,25 @@ interface ProwlarrSearchReport {
   findings: Finding[];
 }
 
+export function getDefaultCategorySet(setName: string): string {
+  switch (setName) {
+    case "MUSIC":
+      return env.PROWLARR_CATEGORY_SET_MUSIC;
+    case "MOVIES":
+      return env.PROWLARR_CATEGORY_SET_MOVIES;
+    case "TV":
+      return env.PROWLARR_CATEGORY_SET_TV;
+    case "AUDIOBOOK":
+      return env.PROWLARR_CATEGORY_SET_AUDIOBOOK;
+    case "EBOOK":
+      return env.PROWLARR_CATEGORY_SET_EBOOK;
+    default:
+      throw new Error(
+        `Unknown category set: ${setName}. Define PROWLARR_CATEGORY_SET_${setName} in environment to use it.`,
+      );
+  }
+}
+
 function runSearch(options: SearchOptions): ResultAsync<void, AppError> {
   return ResultAsync.fromPromise(
     (async () => {
@@ -51,9 +71,22 @@ function runSearch(options: SearchOptions): ResultAsync<void, AppError> {
         throw new Error("PROWLARR_API_KEY is required");
       }
 
+      let categoryIds: number[] = [];
+      if (options.categories && options.categories.length > 0) {
+        categoryIds = options.categories;
+      } else {
+        const setName = (options.set ?? "music").toUpperCase();
+        const envVarName = `PROWLARR_CATEGORY_SET_${setName}`;
+        const configStr = process.env[envVarName] ?? getDefaultCategorySet(setName);
+        categoryIds = configStr
+          .split(",")
+          .map((s) => Number.parseInt(s.trim(), 10))
+          .filter((n) => !Number.isNaN(n));
+      }
+
       const searchParams = new URLSearchParams();
       searchParams.set("query", options.query);
-      for (const cat of options.categories) {
+      for (const cat of categoryIds) {
         searchParams.append("categories", cat.toString());
       }
 
@@ -112,10 +145,15 @@ export default function prowlarrCommand(program: Command): void {
 
   prowlarr
     .command("search")
-    .description("Search for audio lossless")
+    .description("Search Prowlarr for media using categories or configurable category sets")
     .argument("<query>", "Search query (artist, album, etc.)")
     .option("--json", "Print JSON report", false)
-    .option("--categories <ids...>", "Prowlarr category IDs (default: 3040 for Lossless Audio)")
+    .option("--categories <ids...>", "Prowlarr category IDs (overrides --set)")
+    .option(
+      "--set <name>",
+      "Predefined category set (music, movies, tv, audiobook, ebook)",
+      "music",
+    )
     .action(async (query: string, options: Record<string, unknown>) => {
       await runParsedCommand(
         searchOptionsSchema,

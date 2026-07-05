@@ -10,7 +10,7 @@ Solo home user managing a personal NAS. Technically proficient: runs self-hosted
 
 ## Product Purpose
 
-Staging cockpit for Plex media library management. Scans a downloads directory, categorizes media (music, movies, TV, audiobooks), builds a move plan with inferred destinations, lets the user correct errors, and executes the move. Success means zero cognitive overhead between download completion and Plex availability.
+Staging console for Plex media library management. Scans a downloads directory, categorizes media (music, movies, TV, audiobooks), builds a move plan with inferred destinations, lets the user correct errors, and executes the move. Success means zero cognitive overhead between download completion and Plex availability.
 
 ## Brand Personality
 

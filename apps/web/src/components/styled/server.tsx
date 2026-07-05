@@ -1,7 +1,7 @@
 import tw from "@styled-cva/react";
 
 export const ServerPulseBadge = tw.button(
-  "inline-flex min-h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium tracking-wide text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-80",
+  "inline-flex min-h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium tracking-wide text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-80 max-md:min-h-8",
   {
     variants: {
       $connected: {

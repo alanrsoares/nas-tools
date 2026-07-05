@@ -1,10 +1,22 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, Download, FolderCog, Loader2, Pause, Play, Trash2, X } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  Film,
+  FolderCog,
+  Loader2,
+  Pause,
+  Play,
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   OverviewCardHeader,
   OverviewCardTitle,
   OverviewDlControls,
+  OverviewDlEta,
   OverviewDlItem,
   OverviewDlList,
   OverviewDlMeta,
@@ -24,11 +36,20 @@ import {
   StagingCueIndicator,
 } from "@/components/styled";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { authHeaders, withToken } from "@/lib/auth";
 import { api, queryClient } from "../../api";
 import type { ActiveDownload, OrphanedTorrent, StagingPreviewItem } from "../../types";
-import { formatBytes } from "../../utils";
+import { formatBytes, formatEta } from "../../utils";
+import { isLikelyVideo } from "../downloads/plex-fit";
 
 type TransmissionStatus = {
   downloading: ActiveDownload[];
@@ -299,8 +320,113 @@ function OrphanedTorrentsCard({ tx, loading, cleanTorrents }: OrphanedTorrentsCa
 
 type ActiveDownloadRowProps = { torrent: ActiveDownload };
 
+function DownloadRate({ torrent }: { torrent: ActiveDownload }) {
+  if (torrent.rateDownload <= 0) {
+    return (
+      <OverviewDlSpeed className="text-muted-foreground">
+        {torrent.status === 0 ? "paused" : "—"}
+      </OverviewDlSpeed>
+    );
+  }
+  const etaSeconds = (torrent.totalSize * (1 - torrent.progress)) / torrent.rateDownload;
+  return (
+    <>
+      <OverviewDlSpeed>{formatBytes(torrent.rateDownload)}/s</OverviewDlSpeed>
+      <OverviewDlEta>{formatEta(etaSeconds)}</OverviewDlEta>
+    </>
+  );
+}
+
+type PreviewStatus =
+  | { kind: "loading" }
+  | { kind: "unavailable" }
+  | { kind: "ready"; safeBytes: number; fileLength: number };
+
+async function fetchPreviewStatus(torrentId: number): Promise<PreviewStatus> {
+  try {
+    const res = await fetch(`/api/transmission/torrents/${torrentId}/preview/status`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) return { kind: "unavailable" };
+    const data = (await res.json()) as { safeBytes: number; fileLength: number };
+    return { kind: "ready", safeBytes: data.safeBytes, fileLength: data.fileLength };
+  } catch {
+    return { kind: "unavailable" };
+  }
+}
+
+function usePreviewStatus(torrentId: number, open: boolean): PreviewStatus {
+  const [status, setStatus] = useState<PreviewStatus>({ kind: "loading" });
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setStatus({ kind: "loading" });
+
+    const poll = async () => {
+      const next = await fetchPreviewStatus(torrentId);
+      if (!cancelled) setStatus(next);
+    };
+
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [open, torrentId]);
+
+  return status;
+}
+
+type PreviewDialogProps = {
+  torrentId: number;
+  name: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+function PreviewDialog({ torrentId, name, open, onOpenChange }: PreviewDialogProps) {
+  const status = usePreviewStatus(torrentId, open);
+  const previewUrl = withToken(`/api/transmission/torrents/${torrentId}/preview`);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{name}</DialogTitle>
+          <DialogDescription>
+            Partial preview — plays whatever has downloaded so far. Won't seek past the buffered
+            point.
+          </DialogDescription>
+        </DialogHeader>
+        {status.kind === "loading" ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+            <Loader2 size={16} className="animate-spin" /> Checking downloaded data…
+          </div>
+        ) : status.kind === "unavailable" ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            No previewable video yet — needs an mp4/webm file with enough contiguous data
+            downloaded.
+          </div>
+        ) : (
+          <>
+            {/* biome-ignore lint/a11y/useMediaCaption: partial-download preview has no caption source */}
+            <video controls autoPlay src={previewUrl} className="w-full rounded-md bg-black" />
+            <p className="mt-2 text-[11px] tabular-nums text-muted-foreground">
+              {formatBytes(status.safeBytes)} buffered
+              {status.fileLength > status.safeBytes ? ` of ${formatBytes(status.fileLength)}` : ""}
+            </p>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
   const isPaused = torrent.status === 0;
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const action = useMutation({
     mutationFn: async (act: "pause" | "resume" | "remove") =>
@@ -322,20 +448,29 @@ function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
           indicatorClassName={isPaused ? "bg-muted-foreground opacity-40" : ""}
         />
         <OverviewDlPct>{Math.round(torrent.progress * 100)}%</OverviewDlPct>
-        {torrent.rateDownload > 0 ? (
-          <OverviewDlSpeed>{formatBytes(torrent.rateDownload)}/s</OverviewDlSpeed>
-        ) : (
-          <OverviewDlSpeed className="text-muted-foreground">
-            {isPaused ? "paused" : "—"}
-          </OverviewDlSpeed>
-        )}
+        <DownloadRate torrent={torrent} />
         <OverviewDlControls>
+          {isLikelyVideo(torrent.name) ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0 max-md:h-8 max-md:w-8"
+                  onClick={() => setPreviewOpen(true)}
+                >
+                  <Film size={11} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Preview partial download</TooltipContent>
+            </Tooltip>
+          ) : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-6 w-6 p-0"
+                className="h-6 w-6 p-0 max-md:h-8 max-md:w-8"
                 disabled={pending}
                 onClick={() => action.mutate(isPaused ? "resume" : "pause")}
               >
@@ -355,7 +490,7 @@ function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive max-md:h-8 max-md:w-8"
                 disabled={pending}
                 onClick={() => action.mutate("remove")}
               >
@@ -370,6 +505,12 @@ function ActiveDownloadRow({ torrent }: ActiveDownloadRowProps) {
           </Tooltip>
         </OverviewDlControls>
       </OverviewDlMeta>
+      <PreviewDialog
+        torrentId={torrent.id}
+        name={torrent.name}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
     </OverviewDlItem>
   );
 }

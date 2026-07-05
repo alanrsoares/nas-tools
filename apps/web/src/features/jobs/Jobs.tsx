@@ -222,11 +222,11 @@ function useJobDetail(initialJob: JobRecord) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["jobs"] }),
   });
 
-  return { liveJob, events, cancelMutation };
+  return { liveJob, events, isTerminal, cancelMutation };
 }
 
 export function JobDetail({ job: initialJob }: JobDetailProps) {
-  const { liveJob, events, cancelMutation } = useJobDetail(initialJob);
+  const { liveJob, events, isTerminal, cancelMutation } = useJobDetail(initialJob);
   const logRef = React.useRef<HTMLDivElement>(null);
 
   // Auto-scroll log

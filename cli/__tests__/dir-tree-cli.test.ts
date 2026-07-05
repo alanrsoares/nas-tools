@@ -78,10 +78,10 @@ describe("dir-tree CLI integration", () => {
 
     // Verify the output matches expected structure
     expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
-      "📁 <test-dir-tree>
-      ├──  folder1
-      └──  folder2
-          └──  subfolder
+      " <test-dir-tree>
+      ├── folder1
+      └── folder2
+          └── subfolder
       "
     `);
   });
@@ -94,15 +94,15 @@ describe("dir-tree CLI integration", () => {
 
     // Verify the output contains files
     expect(normalizeTestDir(result1.text())).toMatchInlineSnapshot(`
-      "📁 <test-dir-tree>
-      ├── 📁 folder1
-      │   └── 📄 file3.txt
-      ├── 📁 folder2
-      │   ├── 📁 subfolder
-      │   │   └── 📄 file5.txt
-      │   └── 📄 file4.txt
-      ├── 📄 file1.txt
-      └── 📄 file2.txt
+      " <test-dir-tree>
+      ├──  folder1
+      │   └──  file3.txt
+      ├──  folder2
+      │   ├──  subfolder
+      │   │   └──  file5.txt
+      │   └──  file4.txt
+      ├──  file1.txt
+      └──  file2.txt
       "
     `);
 
@@ -120,11 +120,11 @@ describe("dir-tree CLI integration", () => {
 
     // Verify the output contains hidden files
     expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
-      "📁 <test-dir-tree>
-      ├──  .hidden
-      ├──  folder1
-      └──  folder2
-          └──  subfolder
+      " <test-dir-tree>
+      ├── .hidden
+      ├── folder1
+      └── folder2
+          └── subfolder
       "
     `);
   });
@@ -138,9 +138,9 @@ describe("dir-tree CLI integration", () => {
 
     // Verify the output matches expected structure (subfolders of folder2 hidden)
     expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
-      "📁 <test-dir-tree>
-      ├──  folder1
-      └──  folder2
+      " <test-dir-tree>
+      ├── folder1
+      └── folder2
       "
     `);
   });
@@ -154,9 +154,9 @@ describe("dir-tree CLI integration", () => {
 
     // Verify folder1 is excluded
     expect(normalizeTestDir(result.text())).toMatchInlineSnapshot(`
-      "📁 <test-dir-tree>
-      └──  folder2
-          └──  subfolder
+      " <test-dir-tree>
+      └── folder2
+          └── subfolder
       "
     `);
   });
@@ -169,7 +169,7 @@ describe("dir-tree CLI integration", () => {
     expect(result.exitCode).toBe(0);
 
     // Output should use "." for current dir
-    expect(result.text()).toContain("📁 .");
+    expect(result.text()).toContain(" .");
   });
 
   it("should handle non-existent directory gracefully", async () => {

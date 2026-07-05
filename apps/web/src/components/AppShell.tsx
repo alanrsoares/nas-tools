@@ -15,8 +15,10 @@ import {
   Brand,
   Content,
   Nav,
+  navBadgeClass,
   navLinkActiveClass,
   navLinkClass,
+  navLinkLabelClass,
   PageTitle,
   SectionDesc,
   ServerPulseAction,
@@ -26,6 +28,7 @@ import {
   Shell,
   Sidebar,
   Topbar,
+  TopbarHeading,
 } from "@/components/styled";
 import { api } from "../api";
 import { PlexScanPopover } from "../features/staging/PlexScanPopover";
@@ -114,8 +117,28 @@ export function ServerStatus() {
   );
 }
 
+function NavBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return <span className={navBadgeClass}>{count > 99 ? "99+" : count}</span>;
+}
+
+function useStagingCount(): number {
+  // Shares the ["dashboard"] cache with Staging — the queryFn must return
+  // the same unwrapped shape used there.
+  const query = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: async () => {
+      const res = await api.dashboard.get();
+      return res.data && "staging" in res.data ? res.data : null;
+    },
+    refetchInterval: 30_000,
+  });
+  return query.data?.staging?.total ?? 0;
+}
+
 export function AppShell() {
   const { pathname } = useLocation();
+  const stagingCount = useStagingCount();
 
   const currentSection = (pathname === "/" ? "overview" : pathname.slice(1)) as Section;
 
@@ -126,7 +149,7 @@ export function AppShell() {
           <BrandIcon />
           NAS Tools
         </Brand>
-        <Nav aria-label="Cockpit sections">
+        <Nav aria-label="Console sections">
           {navItems.map((item) => {
             const Icon = item.icon;
             const to = item.id === "overview" ? "/" : `/${item.id}`;
@@ -134,11 +157,13 @@ export function AppShell() {
               <Link
                 key={item.id}
                 to={to}
+                aria-label={item.label}
                 className={navLinkClass}
                 activeProps={{ className: navLinkActiveClass }}
               >
                 <Icon size={17} />
-                <span>{item.label}</span>
+                <span className={navLinkLabelClass}>{item.label}</span>
+                {item.id === "staging" ? <NavBadge count={stagingCount} /> : null}
               </Link>
             );
           })}
@@ -146,10 +171,10 @@ export function AppShell() {
       </Sidebar>
       <Content>
         <Topbar>
-          <div>
+          <TopbarHeading>
             <PageTitle>{sectionLabel[currentSection]}</PageTitle>
             <SectionDesc>{sectionDescription[currentSection]}</SectionDesc>
-          </div>
+          </TopbarHeading>
           <ServerStatus />
         </Topbar>
         <Outlet />

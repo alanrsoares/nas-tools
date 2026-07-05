@@ -109,6 +109,9 @@ export async function walk(
 
 export const isAppleJunk = (name: string): boolean => name === ".DS_Store" || name.startsWith("._");
 
+export const isUnsafeFile = (name: string): boolean =>
+  /\.(exe|scr|bat|lnk|com|cmd|vbs|msi|sh|wsf|hta)$/i.test(name);
+
 export const isMusicName = (name: string): boolean => /\.(flac|mp3|m4a|wav|ogg)$/i.test(name);
 
 export const isCueName = (name: string): boolean => /\.cue$/i.test(name);

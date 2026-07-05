@@ -9,6 +9,7 @@ import {
   type Finding,
   isAppleJunk,
   isMusicName,
+  isUnsafeFile,
   NAS_PATHS,
   pathExists,
   printReport,
@@ -47,6 +48,7 @@ interface DownloadsReport {
     musicFiles: number;
     staleIncomplete: number;
     junkFiles: number;
+    unsafeFiles: number;
     packCandidates: number;
   };
   findings: Finding[];
@@ -295,12 +297,23 @@ function runTriage(options: CommandOptions): ResultAsync<void, ReturnType<typeof
       const junkFiles = [...completeEntries, ...incompleteEntries].filter((entry) =>
         isAppleJunk(entry.name),
       );
+      const unsafeFiles = [...completeEntries, ...incompleteEntries].filter((entry) =>
+        !entry.isDirectory && isUnsafeFile(entry.name),
+      );
       const staleIncomplete = incompleteFolders.filter((entry) => entry.mtimeMs < staleCutoff);
 
       for (const entry of junkFiles.slice(0, 50)) {
         findings.push({
           severity: "info",
           message: "Apple metadata junk file found.",
+          path: entry.path,
+        });
+      }
+
+      for (const entry of unsafeFiles.slice(0, 50)) {
+        findings.push({
+          severity: "warn",
+          message: "Unsafe executable or script file found in downloads.",
           path: entry.path,
         });
       }
@@ -339,6 +352,7 @@ function runTriage(options: CommandOptions): ResultAsync<void, ReturnType<typeof
             musicFiles: musicFiles.length,
             staleIncomplete: staleIncomplete.length,
             junkFiles: junkFiles.length,
+            unsafeFiles: unsafeFiles.length,
             packCandidates: packCandidates.length,
           },
           findings,

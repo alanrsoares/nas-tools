@@ -16,6 +16,15 @@ import { Staging } from "./features/staging/Staging";
 
 import "./styles.css";
 
+// ── Service Worker (PWA) ─────────────────────────────────────
+// serviceWorker is only exposed on secure contexts (https or localhost);
+// over plain http on the LAN this is a silent no-op.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
 // ── Router Setup ─────────────────────────────────────────────
 
 const rootRoute = createRootRoute({

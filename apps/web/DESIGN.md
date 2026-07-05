@@ -1,5 +1,5 @@
 ---
-name: NAS Tools Cockpit
+name: NAS Tools Console
 description: Focused media staging tool for personal NAS management
 colors:
   midnight-teal: "oklch(0.135 0.018 175)"
@@ -69,7 +69,7 @@ components:
     padding: "7px 10px"
 ---
 
-# Design System: NAS Tools Cockpit
+# Design System: NAS Tools Console
 
 ## 1. Overview
 

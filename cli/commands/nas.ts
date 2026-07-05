@@ -8,6 +8,7 @@ import { type fail, formatError, runParsedCommand, safeAsync } from "../lib/fp.j
 import {
   type Finding,
   isAppleJunk,
+  isUnsafeFile,
   NAS_PATHS,
   pathExists,
   printReport,
@@ -105,7 +106,9 @@ async function deleteCandidate(
 function isCleanCandidate(entry: { isDirectory: boolean; name: string; path: string }): boolean {
   if (entry.isDirectory) return false;
   return (
-    isAppleJunk(entry.name) || (entry.name.endsWith(".part") && entry.path.includes("/#Recycle/"))
+    isAppleJunk(entry.name) ||
+    isUnsafeFile(entry.name) ||
+    (entry.name.endsWith(".part") && entry.path.includes("/#Recycle/"))
   );
 }
 

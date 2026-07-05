@@ -67,10 +67,13 @@
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
+  overscroll-behavior-x: none;
   background: var(--background);
   color: var(--foreground);
   font-family:
@@ -83,6 +86,21 @@ body {
 button,
 input {
   font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* 16px inputs on small screens prevent iOS focus auto-zoom */
+@media (max-width: 48rem) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
 
 input {

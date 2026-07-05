@@ -4,7 +4,7 @@ NAS Tools manages personal NAS media workflows around downloads, audits, and lib
 
 ## Language
 
-**NAS Tools Cockpit**:
+**NAS Tools Console**:
 A fully integrated web workspace for operating NAS Tools workflows from one place, reachable from trusted devices on the LAN without authentication in the first version. It is not a thin wrapper around terminal commands.
 _Avoid_: Web UI, dashboard, control plane
 
@@ -21,7 +21,7 @@ The place where completed downloads wait before they are inspected, classified, 
 _Avoid_: Source folder, complete folder
 
 **Dry Run**:
-A preview of proposed NAS changes where no files are moved, deleted, renamed, or written. File operations in the NAS Tools Cockpit begin with a Dry Run before confirmation.
+A preview of proposed NAS changes where no files are moved, deleted, renamed, or written. File operations in the NAS Tools Console begin with a Dry Run before confirmation.
 _Avoid_: Test run, simulation
 
 **Confirmation**:
@@ -33,14 +33,14 @@ The editable set of proposed file moves produced from the Download Staging Area 
 _Avoid_: Operations list, move operations
 
 **NAS Path Configuration**:
-The saved Cockpit settings for Download Staging Area, NAS Library destinations, and backup location.
+The saved Console settings for Download Staging Area, NAS Library destinations, and backup location.
 _Avoid_: Environment defaults, path options
 
 ## Example Dialogue
 
-Dev: "Should this action run from the NAS Tools CLI or the NAS Tools Cockpit?"
+Dev: "Should this action run from the NAS Tools CLI or the NAS Tools Console?"
 
-Domain expert: "Both should support it, but the Cockpit should show the Dry Run before touching the NAS Library."
+Domain expert: "Both should support it, but the Console should show the Dry Run before touching the NAS Library."
 
 Dev: "Is this folder already in the NAS Library?"
 

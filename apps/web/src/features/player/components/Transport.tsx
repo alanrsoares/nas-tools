@@ -38,7 +38,9 @@ function TransportButton({
       title={title}
       className={cn(
         "rounded-full",
-        primary ? "size-11" : "size-9 text-muted-foreground hover:text-foreground",
+        primary
+          ? "size-11 max-md:size-12"
+          : "size-9 text-muted-foreground hover:text-foreground max-md:size-10",
       )}
     >
       {children}
@@ -74,7 +76,7 @@ export function Transport() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-center gap-1.5">
+      <div className="flex items-center justify-center gap-1.5 max-md:gap-3">
         <TransportButton onClick={handlePrev} disabled={!canPrev} title="Prev (Left arrow)">
           <SkipBack data-icon="inline-start" />
         </TransportButton>

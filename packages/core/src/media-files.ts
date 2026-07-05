@@ -29,6 +29,13 @@ export const musicExtensions = [
 ] as const;
 
 const movieExtensions = [fileExtensions.mkv, fileExtensions.mp4, fileExtensions.avi] as const;
+
+/**
+ * Containers a browser <video> tag can actually play via a direct src URL.
+ * Deliberately excludes mkv/avi — no major browser decodes those natively,
+ * so a partial-download preview picked from those containers would just fail.
+ */
+export const previewableVideoExtensions = [".mp4", ".m4v", ".webm"] as const;
 const tvPattern = /[sS]\d{1,2}[eE]\d{1,2}|[sS]\d{1,2}\s|[eE]\d{1,2}\s/i;
 
 const fileNameEndsWith = (file: string, extensions: readonly string[]) =>

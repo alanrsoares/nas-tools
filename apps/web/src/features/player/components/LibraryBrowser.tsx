@@ -21,7 +21,7 @@ const formatLabel = (type: AudioFileType): string | null =>
     .exhaustive();
 
 const entryActionsClass =
-  "flex shrink-0 items-center gap-0.5 pr-1.5 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100";
+  "flex shrink-0 items-center gap-0.5 pr-1.5 opacity-100 transition-opacity duration-150 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 max-md:[&>button]:size-9";
 
 type DirectoryRowProps = {
   entry: BrowseEntry;
@@ -34,7 +34,7 @@ function DirectoryRow({ entry }: DirectoryRowProps) {
       <Button
         type="button"
         variant="ghost"
-        className="h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none px-3 text-sm font-normal"
+        className="h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none px-3 text-sm font-normal max-md:h-11"
         onClick={() => navigateTo(entry.path)}
       >
         <Folder data-icon="inline-start" className="opacity-60" />
@@ -85,7 +85,7 @@ function TrackRow({ entry, isActive }: EntryRowProps) {
         type="button"
         variant="ghost"
         className={cn(
-          "h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none px-3 text-sm font-normal",
+          "h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none px-3 text-sm font-normal max-md:h-11",
           isActive && "text-primary hover:text-primary",
         )}
         onClick={() => handlePlay(entry.path)}

@@ -74,6 +74,28 @@ type ExtensionCategory = keyof typeof extensionsByCategory;
 
 const extensionTypes = Object.keys(extensionsByCategory) as ExtensionCategory[];
 
+// Nerd Font glyphs (need a patched font in the terminal to render)
+const ICONS = {
+  directory: "", // nf-fa-folder
+  file: "", // nf-fa-file
+  symlink: "", // nf-fa-link
+  archive: "", // nf-fa-file_archive_o
+  audio: "", // nf-fa-music
+  executable: "", // nf-fa-terminal
+  image: "", // nf-fa-picture_o
+  special: "", // nf-fa-gear
+  video: "", // nf-fa-video_camera
+} as const satisfies Record<ColoredCategory | "directory" | "file" | "symlink", string>;
+
+function getFileIcon(entry: Dirent): string {
+  if (entry.isDirectory()) return ICONS.directory;
+  if (entry.isSymbolicLink?.()) return ICONS.symlink;
+  const category = extensionTypes.find((type) =>
+    hasExtension(entry.name, extensionsByCategory[type]),
+  );
+  return category ? ICONS[category] : ICONS.file;
+}
+
 // Helper function to determine file color
 function getFileColor(
   entry: {
@@ -130,8 +152,8 @@ async function buildEntryLines(
     const isDir = entry.isDirectory();
     const branchChar = isLast ? TREE_CHARS.LAST_BRANCH : TREE_CHARS.BRANCH;
     const nextPfx = isLast ? TREE_CHARS.SPACE : TREE_CHARS.VERTICAL;
-    const icon = options.showFiles ? (isDir ? "📁" : "📄") : "";
-    lines.push(`${prefix}${branchChar}${icon} ${getFileColor(entry, entry.name.startsWith("."))}`);
+    const icon = options.showFiles ? `${getFileIcon(entry)} ` : "";
+    lines.push(`${prefix}${branchChar}${icon}${getFileColor(entry, entry.name.startsWith("."))}`);
     if (isDir) {
       const childLines = await buildTree(
         path.join(dirPath, entry.name),
@@ -174,7 +196,7 @@ function run(dirPath: string, options: CommandOptions): ResultAsync<void, Return
       .andThen(() => buildTree(dirPath, "", 0, options))
       // biome-ignore lint/suspicious/useIterableCallbackReturn: Result.map for terminal side effect
       .map((treeLines) => {
-        console.log(`📁 ${pc.blue(dirPath)}`);
+        console.log(`${ICONS.directory} ${pc.blue(dirPath)}`);
 
         if (treeLines.length === 0) {
           console.log("   (empty directory)");
