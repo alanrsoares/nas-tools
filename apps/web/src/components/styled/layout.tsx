@@ -19,9 +19,6 @@ export const navLinkClass =
 
 export const navLinkLabelClass = "max-md:hidden";
 
-export const navBadgeClass =
-  "ml-auto inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-semibold leading-none tabular-nums text-primary max-md:absolute max-md:left-1/2 max-md:top-0.5 max-md:ml-0 max-md:translate-x-[7px]";
-
 export const navLinkActiveClass = "bg-accent font-medium text-foreground [&_svg]:text-primary";
 
 export const Content = tw.main(

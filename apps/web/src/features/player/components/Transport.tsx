@@ -2,6 +2,7 @@ import { match } from "@onrails/pattern";
 import { Pause, Play, SkipBack, SkipForward, Square } from "lucide-react";
 import type React from "react";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import {
   Select,
   SelectContent,
@@ -10,13 +11,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { usePlayer } from "../PlayerProvider";
 
 type TransportButtonProps = {
   onClick: () => void;
   disabled?: boolean;
-  title?: string;
+  label: string;
+  shortcut?: string;
   children: React.ReactNode;
   primary?: boolean;
 };
@@ -24,27 +27,35 @@ type TransportButtonProps = {
 function TransportButton({
   onClick,
   disabled,
-  title,
+  label,
+  shortcut,
   children,
   primary = false,
 }: TransportButtonProps) {
   return (
-    <Button
-      type="button"
-      variant={primary ? "default" : "ghost"}
-      size="icon"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={cn(
-        "rounded-full",
-        primary
-          ? "size-11 max-md:size-12"
-          : "size-9 text-muted-foreground hover:text-foreground max-md:size-10",
-      )}
-    >
-      {children}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant={primary ? "default" : "ghost"}
+          size="icon"
+          onClick={onClick}
+          disabled={disabled}
+          className={cn(
+            "rounded-full",
+            primary
+              ? "size-11 max-md:size-12"
+              : "size-9 text-muted-foreground hover:text-foreground max-md:size-10",
+          )}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="flex items-center gap-1.5">
+        {label}
+        {shortcut && <Kbd>{shortcut}</Kbd>}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -58,17 +69,17 @@ export function Transport() {
 
   const PlayPause = match(state.status)
     .with("idle", () => (
-      <TransportButton onClick={() => {}} disabled primary title="Play">
+      <TransportButton onClick={() => {}} disabled primary label="Play">
         <Play data-icon="inline-start" />
       </TransportButton>
     ))
     .with("playing", () => (
-      <TransportButton onClick={handlePause} primary title="Pause (Space)">
+      <TransportButton onClick={handlePause} primary label="Pause" shortcut="Space">
         <Pause data-icon="inline-start" />
       </TransportButton>
     ))
     .with("paused", () => (
-      <TransportButton onClick={handleResume} primary title="Resume (Space)">
+      <TransportButton onClick={handleResume} primary label="Resume" shortcut="Space">
         <Play data-icon="inline-start" />
       </TransportButton>
     ))
@@ -77,14 +88,19 @@ export function Transport() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-center gap-1.5 max-md:gap-3">
-        <TransportButton onClick={handlePrev} disabled={!canPrev} title="Prev (Left arrow)">
+        <TransportButton onClick={handlePrev} disabled={!canPrev} label="Prev" shortcut="←">
           <SkipBack data-icon="inline-start" />
         </TransportButton>
         {PlayPause}
-        <TransportButton onClick={handleStop} disabled={state.status === "idle"} title="Stop (Esc)">
+        <TransportButton
+          onClick={handleStop}
+          disabled={state.status === "idle"}
+          label="Stop"
+          shortcut="Esc"
+        >
           <Square data-icon="inline-start" />
         </TransportButton>
-        <TransportButton onClick={handleNext} disabled={!canNext} title="Next (Right arrow)">
+        <TransportButton onClick={handleNext} disabled={!canNext} label="Next" shortcut="→">
           <SkipForward data-icon="inline-start" />
         </TransportButton>
       </div>

@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   GitMerge,
   ListChecks,
-  Loader2,
   SkipForward,
   XCircle,
 } from "lucide-react";
@@ -33,10 +32,12 @@ import {
 } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { withToken } from "@/lib/auth";
 import { api, queryClient } from "../../api";
+import { StatusBadge } from "../../components/status-badge";
+import { TintedProgress } from "../../components/tinted-progress";
 import type { JobEventRecord, JobRecord, JobStatus } from "../../types";
 import { TERMINAL_STATUSES } from "../../types";
 import { formatRelativeTime } from "../../utils";
@@ -136,21 +137,21 @@ export function JobStatusBadge({ status }: JobStatusBadgeProps) {
   return match(status)
     .with("running", () => (
       <Badge variant="default" className="gap-1">
-        <Loader2 size={11} className="animate-spin" />
+        <Spinner className="size-[11px]" />
         Running
       </Badge>
     ))
     .with("completed", () => (
-      <Badge variant="success" className="gap-1">
+      <StatusBadge tone="success" className="gap-1">
         <CheckCircle2 size={11} />
         Completed
-      </Badge>
+      </StatusBadge>
     ))
     .with("completed_with_failures", () => (
-      <Badge variant="warning" className="gap-1">
+      <StatusBadge tone="warning" className="gap-1">
         <AlertTriangle size={11} />
         Partial
-      </Badge>
+      </StatusBadge>
     ))
     .with("canceled", () => <Badge variant="secondary">Canceled</Badge>)
     .with("interrupted", () => <Badge variant="secondary">Interrupted</Badge>)
@@ -279,7 +280,7 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
               </span>
               <span>{progress}%</span>
             </div>
-            <Progress
+            <TintedProgress
               value={progress}
               className="h-1 bg-muted"
               indicatorClassName={counts.failed > 0 ? "bg-[oklch(0.78_0.13_60)]" : ""}

@@ -1,3 +1,4 @@
+import { Separator } from "@/components/ui/separator";
 import { usePlayer } from "../PlayerProvider";
 
 const basename = (filePath: string) =>
@@ -15,7 +16,8 @@ export function QueuePanel() {
   if (upcoming.length === 0) return null;
 
   return (
-    <div className="border-t pt-3">
+    <div>
+      <Separator className="mb-3" />
       <p className="mb-2 text-xs font-medium text-muted-foreground">Up next · {remaining}</p>
       <ol className="flex flex-col gap-1">
         {upcoming.map((filePath, index) => (

@@ -1,19 +1,36 @@
-import { BookOpen, Film, type LucideIcon, Music2, Search, Tv } from "lucide-react";
+import {
+  BookOpen,
+  EyeOff,
+  Film,
+  Gamepad2,
+  type LucideIcon,
+  Monitor,
+  Music2,
+  Package,
+  Search,
+  Tv,
+} from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Item, ItemContent } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import { isCategoryActive, type ProwlarrCategory } from "@/lib/prowlarr-categories";
 import { cn } from "@/lib/utils";
 
-/** Torznab top-level category ids: 2000 Movies, 3000 Audio, 5000 TV, 7000 Books. */
+/** Torznab top-level category ids: 1000 Console, 2000 Movies, 3000 Audio, 4000 PC, 5000 TV, 6000 XXX, 7000 Books, 8000 Other (+ synthetic 0 Other). */
 const CATEGORY_GROUP_ICONS: Record<number, LucideIcon> = {
+  0: Package,
+  1000: Gamepad2,
   2000: Film,
   3000: Music2,
+  4000: Monitor,
   5000: Tv,
+  6000: EyeOff,
   7000: BookOpen,
+  8000: Package,
 };
 
 /** Strips the "Audio/", "Movies/" etc. prefix Prowlarr puts on subcategory names. */
@@ -148,7 +165,7 @@ export function CategoryPicker({
               const GroupIcon = CATEGORY_GROUP_ICONS[group.id];
               return (
                 <React.Fragment key={group.id}>
-                  {i > 0 && <div className="my-1 h-px bg-border" />}
+                  {i > 0 && <Separator className="my-1" />}
                   <div className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     {GroupIcon && <GroupIcon size={12} className="shrink-0" />}
                     {group.name}

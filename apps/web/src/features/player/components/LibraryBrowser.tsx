@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { AudioFileType, BrowseEntry } from "../../../types";
 import { usePlayer } from "../PlayerProvider";
@@ -42,26 +43,34 @@ function DirectoryRow({ entry }: DirectoryRowProps) {
         <ChevronRight data-icon="inline-end" className="ml-auto opacity-40" />
       </Button>
       <div className={entryActionsClass}>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          title="Play all"
-          className="size-8"
-          onClick={() => handlePlayAll(entry.path)}
-        >
-          <Play data-icon="inline-start" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          title="Add to queue"
-          className="size-8"
-          onClick={() => handleAddDirToQueue(entry.path)}
-        >
-          <Plus data-icon="inline-start" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={() => handlePlayAll(entry.path)}
+            >
+              <Play data-icon="inline-start" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Play all</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={() => handleAddDirToQueue(entry.path)}
+            >
+              <Plus data-icon="inline-start" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Add to queue</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -110,16 +119,20 @@ function TrackRow({ entry, isActive }: EntryRowProps) {
         )}
       </Button>
       <div className={entryActionsClass}>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          title="Add to queue"
-          className="size-8"
-          onClick={() => handleAddToQueue(entry.path)}
-        >
-          <Plus data-icon="inline-start" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={() => handleAddToQueue(entry.path)}
+            >
+              <Plus data-icon="inline-start" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Add to queue</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );

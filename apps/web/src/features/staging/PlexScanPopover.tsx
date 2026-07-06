@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Loader2, Radio } from "lucide-react";
+import { CheckCircle2, Radio } from "lucide-react";
 import React from "react";
 import {
   PlexScanAction,
@@ -12,6 +12,7 @@ import {
 } from "@/components/styled";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "../../api";
 
@@ -62,7 +63,7 @@ export function PlexSectionRow({
       <PlexScanTitle>{section.title}</PlexScanTitle>
       <PlexScanAction>
         {scanning ? (
-          <Loader2 size={12} className="animate-spin" />
+          <Spinner className="size-[12px]" />
         ) : done ? (
           <CheckCircle2 size={12} />
         ) : (
@@ -84,7 +85,7 @@ function PlexScanTrigger({ renderTrigger, anyPending, open }: PlexScanTriggerPro
       <TooltipTrigger asChild>
         <PopoverTrigger asChild>
           <Button size="sm" variant="ghost" disabled={anyPending && !open}>
-            {anyPending ? <Loader2 size={15} className="animate-spin" /> : <Radio size={15} />}
+            {anyPending ? <Spinner className="size-[15px]" /> : <Radio size={15} />}
             <span>{anyPending ? "Scanning…" : "Plex scan"}</span>
           </Button>
         </PopoverTrigger>
@@ -106,7 +107,7 @@ function PlexScanListBody({
   if (isLoading) {
     return (
       <PlexScanLoading>
-        <Loader2 size={14} className="animate-spin" />
+        <Spinner className="size-[14px]" />
         <span>Loading libraries…</span>
       </PlexScanLoading>
     );
@@ -180,11 +181,7 @@ export function PlexScanPopover({ renderTrigger }: PlexScanPopoverProps) {
               disabled={anyPending || sections.length === 0}
               onClick={() => scanAll.mutate()}
             >
-              {scanAll.isPending ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Radio size={12} />
-              )}
+              {scanAll.isPending ? <Spinner className="size-[12px]" /> : <Radio size={12} />}
               {scanAll.isPending ? "Scanning…" : "Scan all"}
             </Button>
           </PlexScanHeader>

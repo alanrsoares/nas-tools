@@ -29,25 +29,59 @@ export const OverviewStatLabel = tw.span(
   "mt-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground",
 );
 
-export const OverviewDlList = tw.div("flex flex-col gap-2.5");
+export const OverviewDlHeaderStats = tw.div("flex items-center gap-2.5");
 
-export const OverviewDlItem = tw.div("flex flex-col gap-1");
+export const OverviewAggregateRate = tw.span(
+  "flex items-center gap-1 text-[12px] font-semibold tabular-nums text-primary",
+);
 
-export const OverviewDlName = tw.span("max-w-full truncate text-[13px]");
+export const OverviewDlList = tw.div("flex flex-col gap-1.5");
 
-export const OverviewDlMeta = tw.div("flex items-center gap-2");
+export const OverviewDlItem = tw.div(
+  "flex flex-col gap-1.5 rounded-md border border-border/60 bg-background/30 px-2.5 py-2 transition-colors duration-150 hover:bg-accent/40",
+  {
+    variants: {
+      $inactive: {
+        true: "opacity-45 border-border/20 bg-background/10 hover:opacity-85 hover:bg-accent/20",
+        false: "",
+      },
+    },
+    defaultVariants: { $inactive: false },
+  },
+);
+
+export const OverviewDlHeader = tw.div("flex items-center gap-2");
+
+export const OverviewDlStatusDot = tw.span("size-1.5 shrink-0 rounded-full", {
+  variants: {
+    $active: { true: "bg-primary", false: "bg-muted-foreground/50" },
+  },
+  defaultVariants: { $active: false },
+});
+
+export const OverviewDlName = tw.span("min-w-0 flex-1 truncate text-[13px]", {
+  variants: {
+    $inactive: {
+      true: "text-muted-foreground",
+      false: "text-foreground",
+    },
+  },
+  defaultVariants: { $inactive: false },
+});
 
 export const OverviewDlPct = tw.span(
-  "min-w-7 text-right text-[11px] tabular-nums text-muted-foreground",
+  "shrink-0 text-[12px] font-semibold tabular-nums text-foreground",
 );
 
-export const OverviewDlSpeed = tw.span(
-  "min-w-16 text-right text-[11px] tabular-nums text-muted-foreground",
+export const OverviewDlFooter = tw.div("flex items-center justify-between gap-2");
+
+export const OverviewDlRate = tw.div(
+  "flex items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground",
 );
 
-export const OverviewDlEta = tw.span(
-  "min-w-12 text-right text-[11px] tabular-nums text-muted-foreground",
-);
+export const OverviewDlSpeed = tw.span("min-w-14 tabular-nums");
+
+export const OverviewDlEta = tw.span("text-muted-foreground/70");
 
 export const OverviewDlControls = tw.div("flex shrink-0 items-center gap-0.5");
 

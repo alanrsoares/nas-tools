@@ -1,13 +1,16 @@
 import { useMutation } from "@tanstack/react-query";
-import { Copy, Loader2, Search, Trash2 } from "lucide-react";
+import { Copy, Search, Trash2 } from "lucide-react";
 import React from "react";
 import { EmptyState, ResponsiveCard, ResponsiveCardContent, Toolbar } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import { authHeaders } from "@/lib/auth";
 import { api } from "../../api";
 import { Summary, SummaryCell } from "../../components/IssueList";
+import { StatusBadge } from "../../components/status-badge";
 import { formatBytes, readSseStream } from "../../utils";
 
 type DedupeGroup = {
@@ -87,7 +90,7 @@ function DedupeProgress({ status }: DedupeProgressProps) {
       : 0;
   return (
     <div className="mt-8 flex flex-col items-center justify-center p-12 max-md:p-6 text-center">
-      <Loader2 size={32} className="animate-spin mb-4 text-primary" />
+      <Spinner className="size-[32px] mb-4 text-primary" />
       <div className="text-lg font-medium mb-1">{status.message}</div>
       {showProgress && (
         <div className="w-full max-w-md mt-4">
@@ -97,12 +100,7 @@ function DedupeProgress({ status }: DedupeProgressProps) {
             </span>
             <span>{progressPercent}%</span>
           </div>
-          <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-300 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
+          <Progress value={progressPercent} className="h-2" />
         </div>
       )}
     </div>
@@ -118,7 +116,6 @@ function AlbumFolderRow({ folder, type }: { folder: AlbumFolder; type: "keep" | 
   const bgClass = isKeep
     ? "bg-success/5 border-success/20 hover:bg-success/10"
     : "bg-muted/30 border-border/50 hover:bg-muted/50";
-  const badgeVariant = isKeep ? "success" : "secondary";
   const badgeLabel = isKeep ? "KEEP" : "MOVE";
 
   const sr =
@@ -131,9 +128,15 @@ function AlbumFolderRow({ folder, type }: { folder: AlbumFolder; type: "keep" | 
     <div className={`flex flex-col gap-2 p-2.5 rounded-lg border transition-colors ${bgClass}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Badge variant={badgeVariant} className="text-[10px] font-bold px-1.5 py-0.5">
-            {badgeLabel}
-          </Badge>
+          {isKeep ? (
+            <StatusBadge tone="success" className="text-[10px] font-bold px-1.5 py-0.5">
+              {badgeLabel}
+            </StatusBadge>
+          ) : (
+            <Badge variant="secondary" className="text-[10px] font-bold px-1.5 py-0.5">
+              {badgeLabel}
+            </Badge>
+          )}
           <span className="text-[11px] font-semibold text-foreground/90">{specsStr}</span>
         </div>
         <span className="text-[10px] text-muted-foreground/80 font-medium">
@@ -237,11 +240,7 @@ export function Dedupe() {
                 disabled={apply.isPending || isScanning}
                 size="sm"
               >
-                {apply.isPending ? (
-                  <Loader2 size={15} className="animate-spin" />
-                ) : (
-                  <Trash2 size={15} />
-                )}
+                {apply.isPending ? <Spinner className="size-[15px]" /> : <Trash2 size={15} />}
                 <span>{apply.isPending ? "Applying…" : "Apply Dedupe"}</span>
               </Button>
             )}

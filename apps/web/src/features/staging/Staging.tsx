@@ -8,15 +8,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  FolderCog,
-  Loader2,
-  Scissors,
-  Search,
-  Trash2,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, FolderCog, Scissors, Search, Trash2 } from "lucide-react";
 import React from "react";
 import {
   CueSplitToggle as CueSplitToggleBox,
@@ -35,12 +27,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { api, queryClient } from "../../api";
 import { IssueList, Summary, SummaryCell } from "../../components/IssueList";
 import { SortableHeader } from "../../components/SortableHeader";
+import { StatusBadge } from "../../components/status-badge";
 import type { StagingPreviewItem } from "../../types";
 import { mediaLabel, summarizePlan, updatePlanItem } from "../../utils";
 
@@ -135,11 +129,7 @@ function StagingCleanButton({ cleanTorrents, orphanedCount }: StagingCleanButton
           size="sm"
           variant="ghost"
         >
-          {cleanTorrents.isPending ? (
-            <Loader2 size={15} className="animate-spin" />
-          ) : (
-            <Trash2 size={15} />
-          )}
+          {cleanTorrents.isPending ? <Spinner className="size-[15px]" /> : <Trash2 size={15} />}
           <span>{label}</span>
         </Button>
       </TooltipTrigger>
@@ -181,11 +171,7 @@ function StagingConfirmButton({
       <TooltipTrigger asChild>
         <span className="max-md:block max-md:w-full [&>button]:max-md:w-full">
           <Button onClick={onConfirm} disabled={!canConfirm || confirmIsPending} size="sm">
-            {confirmIsPending ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <CheckCircle2 size={15} />
-            )}
+            {confirmIsPending ? <Spinner className="size-[15px]" /> : <CheckCircle2 size={15} />}
             <span>{confirmIsPending ? "Confirming…" : "Confirm"}</span>
           </Button>
         </span>
@@ -374,10 +360,10 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
               {(item.cueAudioPairs ?? 0) > 0 ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Badge variant="warning" className="gap-1 cursor-default">
+                    <StatusBadge tone="warning" className="gap-1 cursor-default">
                       <Scissors size={12} />
                       CUE {item.cueAudioPairs}
-                    </Badge>
+                    </StatusBadge>
                   </TooltipTrigger>
                   <TooltipContent>Will split after move when Split CUE is enabled</TooltipContent>
                 </Tooltip>
@@ -430,7 +416,7 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
         },
         id: "status",
         header: "Status",
-        cell: ({ row }) => <StatusBadge item={row.original} />,
+        cell: ({ row }) => <PlanStatusBadge item={row.original} />,
       },
       {
         accessorKey: "targetPath",
@@ -534,10 +520,10 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
                       <div className="font-bold text-sm text-foreground/95 flex flex-wrap items-center gap-1.5 leading-snug">
                         <span>{item.albumName}</span>
                         {(item.cueAudioPairs ?? 0) > 0 ? (
-                          <Badge variant="warning" className="gap-0.5 text-[9px] px-1 py-0 h-4">
+                          <StatusBadge tone="warning" className="gap-0.5 text-[9px] px-1 py-0 h-4">
                             <Scissors size={10} />
                             CUE {item.cueAudioPairs}
-                          </Badge>
+                          </StatusBadge>
                         ) : null}
                       </div>
                       <div className="text-[10px] text-muted-foreground mt-0.5">
@@ -546,7 +532,7 @@ function MovePlanTable({ plan, setPlan }: MovePlanTableProps) {
                     </div>
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-1">
-                    <StatusBadge item={item} />
+                    <PlanStatusBadge item={item} />
                   </div>
                 </div>
 
@@ -622,7 +608,7 @@ function StagingBody({ plan, scanIsPending, setPlan }: StagingBodyProps) {
   }
   return (
     <EmptyState>
-      {scanIsPending ? <Loader2 size={28} className="animate-spin" /> : <FolderCog size={28} />}
+      {scanIsPending ? <Spinner className="size-[28px]" /> : <FolderCog size={28} />}
       <span>
         {scanIsPending ? "Scanning staging area…" : "Scan the staging area to build a Move Plan."}
       </span>
@@ -630,9 +616,9 @@ function StagingBody({ plan, scanIsPending, setPlan }: StagingBodyProps) {
   );
 }
 
-type StatusBadgeProps = { item: MovePlanItem };
+type PlanStatusBadgeProps = { item: MovePlanItem };
 
-function StatusBadge({ item }: StatusBadgeProps) {
+function PlanStatusBadge({ item }: PlanStatusBadgeProps) {
   if (item.mediaType === "unknown") {
     return (
       <Tooltip>
@@ -649,10 +635,10 @@ function StatusBadge({ item }: StatusBadgeProps) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge variant="warning" className="gap-1 cursor-default">
+          <StatusBadge tone="warning" className="gap-1 cursor-default">
             <AlertTriangle size={13} />
             Needs fix
-          </Badge>
+          </StatusBadge>
         </TooltipTrigger>
         <TooltipContent>{item.issues.map((issue) => issue.message).join(" · ")}</TooltipContent>
       </Tooltip>
@@ -660,10 +646,10 @@ function StatusBadge({ item }: StatusBadgeProps) {
   }
   if (!item.included) return <Badge variant="secondary">Excluded</Badge>;
   return (
-    <Badge variant="success" className="gap-1">
+    <StatusBadge tone="success" className="gap-1">
       <CheckCircle2 size={13} />
       Included
-    </Badge>
+    </StatusBadge>
   );
 }
 

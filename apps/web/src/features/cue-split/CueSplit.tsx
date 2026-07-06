@@ -7,7 +7,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { Loader2, Scissors, Search } from "lucide-react";
+import { Scissors, Search } from "lucide-react";
 import React from "react";
 import { z } from "zod";
 import {
@@ -17,14 +17,15 @@ import {
   ResponsiveCardContent,
   Toolbar,
 } from "@/components/styled";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { authHeaders } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { IssueList, Summary, SummaryCell } from "../../components/IssueList";
 import { SortableHeader } from "../../components/SortableHeader";
+import { StatusBadge } from "../../components/status-badge";
 import { readSseStream } from "../../utils";
 
 type CuePair = {
@@ -142,7 +143,7 @@ type CueScanProgressProps = {
 function CueScanProgress({ scanStatus }: CueScanProgressProps) {
   return (
     <div className="mt-8 flex flex-col items-center justify-center p-12 text-center">
-      <Loader2 size={32} className="animate-spin mb-4 text-primary" />
+      <Spinner className="size-[32px] mb-4 text-primary" />
       <div className="text-lg font-medium mb-1">{scanStatus.message}</div>
       <div className="text-xs text-muted-foreground">
         {scanStatus.scannedDirectories} directories, {scanStatus.foundPairs} pairs
@@ -196,9 +197,9 @@ function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <Badge variant={row.original.blocked ? "warning" : "success"}>
+          <StatusBadge tone={row.original.blocked ? "warning" : "success"}>
             {row.original.blocked ? "Blocked" : "Ready"}
-          </Badge>
+          </StatusBadge>
         ),
       },
     ],
@@ -253,9 +254,9 @@ function CuePairTable({ pairs, selectedIds, togglePair }: CuePairTableProps) {
                   {pair.directory}
                 </span>
               </span>
-              <Badge variant={pair.blocked ? "warning" : "success"} className="shrink-0">
+              <StatusBadge tone={pair.blocked ? "warning" : "success"} className="shrink-0">
                 {pair.blocked ? "Blocked" : "Ready"}
-              </Badge>
+              </StatusBadge>
             </button>
           );
         })}
@@ -350,7 +351,7 @@ function CueSplitActions({
   return (
     <div className="flex gap-2 items-center toolbar-actions max-md:w-full [&>button]:max-md:flex-1">
       <Button onClick={onScan} disabled={isScanning || fixIsPending} size="sm" variant="outline">
-        {isScanning ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+        {isScanning ? <Spinner className="size-[15px]" /> : <Search size={15} />}
         <span>{isScanning ? "Scanning..." : "Scan CUE"}</span>
       </Button>
       {readyPairs.length > 0 ? (
@@ -359,7 +360,7 @@ function CueSplitActions({
           disabled={selectedPairs.length === 0 || isScanning || fixIsPending}
           size="sm"
         >
-          {fixIsPending ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
+          {fixIsPending ? <Spinner className="size-[15px]" /> : <Scissors size={15} />}
           <span>{fixIsPending ? "Starting..." : `Fix ${selectedPairs.length}`}</span>
         </Button>
       ) : null}

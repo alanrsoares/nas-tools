@@ -15,7 +15,6 @@ import {
   Brand,
   Content,
   Nav,
-  navBadgeClass,
   navLinkActiveClass,
   navLinkClass,
   navLinkLabelClass,
@@ -30,6 +29,8 @@ import {
   Topbar,
   TopbarHeading,
 } from "@/components/styled";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "../api";
 import { PlexScanPopover } from "../features/staging/PlexScanPopover";
 import type { NavItem, Section } from "../types";
@@ -98,20 +99,23 @@ export function ServerStatus() {
   return (
     <PlexScanPopover
       renderTrigger={({ anyPending }) => (
-        <ServerPulseBadge
-          $connected={!!connected}
-          disabled={anyPending}
-          title={`${connected ? "Connected" : "Offline or unreachable"}. Trigger a Plex library refresh.`}
-        >
-          <ServerPulseStatus
-            className={connected ? "[&_svg]:animate-pulse [&_svg]:opacity-100" : ""}
-          >
-            <Activity size={14} />
-            Server
-          </ServerPulseStatus>
-          <ServerPulseDivider aria-hidden="true" />
-          <ServerPulseAction>{anyPending ? "Scanning…" : "Plex scan"}</ServerPulseAction>
-        </ServerPulseBadge>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ServerPulseBadge $connected={!!connected} disabled={anyPending}>
+              <ServerPulseStatus
+                className={connected ? "[&_svg]:animate-pulse [&_svg]:opacity-100" : ""}
+              >
+                <Activity size={14} />
+                Server
+              </ServerPulseStatus>
+              <ServerPulseDivider aria-hidden="true" />
+              <ServerPulseAction>{anyPending ? "Scanning…" : "Plex scan"}</ServerPulseAction>
+            </ServerPulseBadge>
+          </TooltipTrigger>
+          <TooltipContent>
+            {connected ? "Connected" : "Offline or unreachable"}. Trigger a Plex library refresh.
+          </TooltipContent>
+        </Tooltip>
       )}
     />
   );
@@ -119,7 +123,14 @@ export function ServerStatus() {
 
 function NavBadge({ count }: { count: number }) {
   if (count <= 0) return null;
-  return <span className={navBadgeClass}>{count > 99 ? "99+" : count}</span>;
+  return (
+    <Badge
+      variant="outline"
+      className="ml-auto h-[17px] min-w-[17px] justify-center border-transparent bg-primary/15 px-1 text-[10px] font-semibold leading-none tabular-nums text-primary max-md:absolute max-md:left-1/2 max-md:top-0.5 max-md:ml-0 max-md:translate-x-[7px]"
+    >
+      {count > 99 ? "99+" : count}
+    </Badge>
+  );
 }
 
 function useStagingCount(): number {

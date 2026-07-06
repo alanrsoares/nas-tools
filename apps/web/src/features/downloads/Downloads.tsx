@@ -6,15 +6,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import {
-  ArrowDown,
-  CheckCircle2,
-  Download,
-  ExternalLink,
-  Loader2,
-  Plus,
-  Search,
-} from "lucide-react";
+import { ArrowDown, CheckCircle2, Download, ExternalLink, Plus, Search } from "lucide-react";
 import React from "react";
 import PlexGlyph from "@/assets/plex.svg?react";
 import {
@@ -24,8 +16,10 @@ import {
   ResponsiveCard,
   ResponsiveCardContent,
 } from "@/components/styled";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { authHeaders } from "@/lib/auth";
@@ -176,15 +170,16 @@ function PlexFitBadge({ fit }: { fit: PlexFit | null }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span
+        <Badge
+          variant="outline"
           className={cn(
-            "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-1.5 text-[10px] font-medium leading-4",
+            "shrink-0 gap-1 whitespace-nowrap px-1.5 py-0 text-[10px] font-medium leading-4",
             plexFitStyles[fit.level],
           )}
         >
           <PlexGlyph width={9} height={9} aria-hidden="true" className="shrink-0" />
           {fit.label}
-        </span>
+        </Badge>
       </TooltipTrigger>
       <TooltipContent className="max-w-xs">{fit.detail}</TooltipContent>
     </Tooltip>
@@ -438,7 +433,7 @@ function DownloadsSearchForm({
             size="sm"
             className="max-sm:flex-1"
           >
-            <Loader2 size={15} className="animate-spin" />
+            <Spinner className="size-[15px]" />
             <span>Cancel</span>
           </Button>
         ) : (
@@ -644,7 +639,7 @@ export function Downloads() {
         />
         {searchStatus ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse pl-1">
-            <Loader2 size={14} className="animate-spin" />
+            <Spinner className="size-[14px]" />
             <span>{searchStatus}</span>
           </div>
         ) : null}
