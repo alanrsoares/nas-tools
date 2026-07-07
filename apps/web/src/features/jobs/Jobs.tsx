@@ -361,7 +361,7 @@ export function Jobs() {
   return (
     <div className="flex gap-4 max-md:flex-col" style={{ minWidth: 0 }}>
       {/* Job list */}
-      <ResponsiveCard className="w-[220px] shrink-0 max-md:w-full">
+      <ResponsiveCard className="w-[220px] shrink-0 max-md:w-full md:sticky md:top-0 md:max-h-[calc(100dvh-7.5rem)] md:overflow-y-auto md:self-start">
         <ResponsiveCardContent className="p-2 max-md:p-0">
           <div className="grid gap-1 max-md:flex max-md:overflow-x-auto max-md:pb-1 max-md:pt-0.5 max-md:gap-1.5 max-md:[scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {jobList.map((job) => {

@@ -1,9 +1,11 @@
 import tw from "@styled-cva/react";
 
-export const Shell = tw.div("grid min-h-screen grid-cols-[220px_minmax(0,1fr)] max-md:grid-cols-1");
+export const Shell = tw.div(
+  "grid min-h-screen md:h-dvh grid-cols-[220px_minmax(0,1fr)] max-md:grid-cols-1 md:overflow-hidden",
+);
 
 export const Sidebar = tw.aside(
-  "flex flex-col border-r border-border bg-[oklch(0.125_0.015_175)] px-2.5 py-4 text-[oklch(0.92_0.006_155)] max-md:contents",
+  "flex flex-col border-r border-border bg-[oklch(0.125_0.015_175)] px-2.5 py-4 text-[oklch(0.92_0.006_155)] max-md:contents md:overflow-y-auto",
 );
 
 export const Brand = tw.div(
@@ -22,7 +24,7 @@ export const navLinkLabelClass = "max-md:hidden";
 export const navLinkActiveClass = "bg-accent font-medium text-foreground [&_svg]:text-primary";
 
 export const Content = tw.main(
-  "min-w-0 bg-background px-6 py-5 max-md:px-3.5 max-md:pt-3 max-md:pb-[calc(72px+env(safe-area-inset-bottom))]",
+  "min-w-0 bg-background px-6 py-5 max-md:px-3.5 max-md:pt-3 max-md:pb-[calc(72px+env(safe-area-inset-bottom))] md:h-full md:flex md:flex-col md:overflow-hidden",
 );
 
 export const Topbar = tw.header(

@@ -741,7 +741,7 @@ export function Downloads() {
             />
             <Label
               htmlFor="hide-in-lib"
-              className="text-[11px] font-medium cursor-pointer select-none"
+              className="text-[11px] font-medium cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors"
             >
               Hide releases already in library
             </Label>

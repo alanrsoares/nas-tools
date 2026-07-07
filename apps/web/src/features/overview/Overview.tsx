@@ -41,6 +41,7 @@ import {
   StagingCueIndicator,
 } from "@/components/styled";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { authHeaders, withToken } from "@/lib/auth";
@@ -325,15 +327,20 @@ function ActiveDownloadsBody({
 
 function ActiveDownloadsCard({ tx, loading }: ActiveDownloadsCardProps) {
   const [showAllUnstarted, setShowAllUnstarted] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
 
-  const downloading = tx?.downloading ?? [];
+  const rawDownloading = tx?.downloading ?? [];
+  const downloading = showHidden
+    ? rawDownloading
+    : rawDownloading.filter((t) => t.progress >= 0.001);
+
   const activeOrInProgress = downloading.filter((t) => t.status !== 0 || t.progress > 0.001);
   const unstartedTorrents = downloading.filter((t) => t.status === 0 && t.progress <= 0.001);
 
   const sortedActive = sortActiveTorrents(activeOrInProgress);
   const sortedUnstarted = sortNonStartedTorrents(unstartedTorrents);
 
-  const totalRate = downloading.reduce((sum, t) => sum + Math.max(t.rateDownload, 0), 0);
+  const totalRate = rawDownloading.reduce((sum, t) => sum + Math.max(t.rateDownload, 0), 0);
 
   return (
     <ResponsiveCard className="col-span-full">
@@ -351,6 +358,19 @@ function ActiveDownloadsCard({ tx, loading }: ActiveDownloadsCardProps) {
                   {formatBytes(totalRate)}/s
                 </OverviewAggregateRate>
               ) : null}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="show-hidden-torrents"
+                  checked={showHidden}
+                  onCheckedChange={(checked) => setShowHidden(!!checked)}
+                />
+                <Label
+                  htmlFor="show-hidden-torrents"
+                  className="text-[11px] font-medium cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Show hidden
+                </Label>
+              </div>
               <span className="text-xs text-muted-foreground">
                 {tx.seeding > 0 ? `${tx.seeding} seeding · ` : ""}
                 {tx.total} total
@@ -681,9 +701,9 @@ export function Overview() {
 
   return (
     <OverviewGrid>
-      <ActiveDownloadsCard tx={tx} loading={loading} />
       <StagingAreaCard staging={staging} loading={loading} navigate={navigate} />
       <OrphanedTorrentsCard tx={tx} loading={loading} cleanTorrents={cleanTorrents} />
+      <ActiveDownloadsCard tx={tx} loading={loading} />
     </OverviewGrid>
   );
 }

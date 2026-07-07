@@ -188,7 +188,9 @@ export function AppShell() {
           </TopbarHeading>
           <ServerStatus />
         </Topbar>
-        <Outlet />
+        <div className="md:flex-1 md:min-h-0 md:overflow-y-auto">
+          <Outlet />
+        </div>
       </Content>
     </Shell>
   );
