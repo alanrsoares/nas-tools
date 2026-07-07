@@ -18,7 +18,9 @@ import {
 } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -67,6 +69,7 @@ type SearchResult = {
   downloadUrl: string | null;
   infoUrl: string | null;
   guid: string;
+  libraryMatch?: { exists: boolean; path?: string } | null;
 };
 
 function TorrentInfoLink({ url }: { url: string | null }) {
@@ -212,6 +215,20 @@ function SearchResultsTable({ results, added, isPending, kind, onAdd }: SearchRe
               </TooltipTrigger>
               <TooltipContent className="max-w-sm break-words">{row.original.title}</TooltipContent>
             </Tooltip>
+            {row.original.libraryMatch?.exists && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 gap-1 shrink-0 px-1.5 py-0 text-[10px] font-medium leading-4 dark:text-emerald-400"
+                  >
+                    <CheckCircle2 size={9} />
+                    In Library
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>Found: {row.original.libraryMatch.path}</TooltipContent>
+              </Tooltip>
+            )}
             <PlexFitBadge fit={assessPlexFit(row.original.title, kind)} />
           </div>
         ),
@@ -304,8 +321,16 @@ function SearchResultsTable({ results, added, isPending, kind, onAdd }: SearchRe
       <div className="flex flex-col divide-y divide-border rounded-md border border-border md:hidden">
         {table.getRowModel().rows.map((row) => {
           const r = row.original;
+          const inLibrary = r.libraryMatch?.exists;
           return (
-            <div key={row.id} className="flex items-center gap-3 p-3">
+            <div
+              key={row.id}
+              className={cn(
+                "flex items-center gap-3 p-3 transition-opacity duration-200",
+                inLibrary &&
+                  "opacity-50 hover:opacity-100 bg-emerald-500/[0.015] dark:bg-emerald-500/[0.008]",
+              )}
+            >
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] leading-snug [overflow-wrap:anywhere]">{r.title}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] tabular-nums text-muted-foreground">
@@ -317,6 +342,15 @@ function SearchResultsTable({ results, added, isPending, kind, onAdd }: SearchRe
                   <span aria-hidden="true">·</span>
                   <span>{formatBytes(r.size)}</span>
                   <PlexFitBadge fit={assessPlexFit(r.title, kind)} />
+                  {r.libraryMatch?.exists && (
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 gap-1 px-1.5 py-0 text-[10px] font-medium leading-4 dark:text-emerald-400"
+                    >
+                      <CheckCircle2 size={9} />
+                      In Library
+                    </Badge>
+                  )}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -360,23 +394,32 @@ function SearchResultsTable({ results, added, isPending, kind, onAdd }: SearchRe
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => {
-                  let className = "";
-                  if (cell.column.id === "seeders" || cell.column.id === "size") {
-                    className = "text-right";
-                  } else if (cell.column.id === "actions") {
-                    className = "text-right";
-                  }
-                  return (
-                    <TableCell key={cell.id} className={className}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
-            ))}
+            {table.getRowModel().rows.map((row) => {
+              const inLibrary = row.original.libraryMatch?.exists;
+              return (
+                <TableRow
+                  key={row.id}
+                  className={cn(
+                    inLibrary &&
+                      "opacity-50 hover:opacity-100 bg-emerald-500/[0.015] dark:bg-emerald-500/[0.008] transition-opacity duration-200",
+                  )}
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    let className = "";
+                    if (cell.column.id === "seeders" || cell.column.id === "size") {
+                      className = "text-right";
+                    } else if (cell.column.id === "actions") {
+                      className = "text-right";
+                    }
+                    return (
+                      <TableCell key={cell.id} className={className}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -494,120 +537,168 @@ function DownloadsBody({
   return null;
 }
 
+interface SearchState {
+  query: string;
+  selectedCategories: MediaKindValue[];
+  added: Set<string>;
+  isSearching: boolean;
+  searchStatus?: string;
+  results: SearchResult[];
+  resultsKind: PlexMediaKind;
+  searchSuccess: boolean;
+  searchError: string | null;
+  controller: AbortController | null;
+  reader: ReadableStreamDefaultReader<Uint8Array> | null;
+  hideInLibrary: boolean;
+}
+
+let globalSearchState: SearchState = {
+  query: "",
+  selectedCategories: DEFAULT_CATEGORIES,
+  added: new Set(),
+  isSearching: false,
+  searchStatus: undefined,
+  results: [],
+  resultsKind: "music",
+  searchSuccess: false,
+  searchError: null,
+  controller: null,
+  reader: null,
+  hideInLibrary: false,
+};
+
+const storeListeners = new Set<() => void>();
+function updateGlobalState(patch: Partial<SearchState>) {
+  globalSearchState = {
+    ...globalSearchState,
+    ...patch,
+  };
+  for (const listener of storeListeners) {
+    listener();
+  }
+}
+
+const searchStore = {
+  subscribe(listener: () => void) {
+    storeListeners.add(listener);
+    return () => {
+      storeListeners.delete(listener);
+    };
+  },
+  getSnapshot() {
+    return globalSearchState;
+  },
+};
+
+function stopSearchStream() {
+  if (globalSearchState.reader) {
+    globalSearchState.reader.cancel().catch(() => {});
+  }
+  if (globalSearchState.controller) {
+    globalSearchState.controller.abort();
+  }
+  updateGlobalState({
+    reader: null,
+    controller: null,
+  });
+}
+
+function handleCancelSearch() {
+  stopSearchStream();
+  updateGlobalState({
+    isSearching: false,
+    searchStatus: undefined,
+    searchError: null,
+  });
+}
+
+async function runSearch(q: string, cats: string[]) {
+  stopSearchStream();
+  const controller = new AbortController();
+
+  updateGlobalState({
+    controller,
+    isSearching: true,
+    searchStatus: "Connecting...",
+    searchError: null,
+    results: [],
+    resultsKind: kindOfCategories(cats),
+    searchSuccess: false,
+  });
+
+  const isCurrent = () => globalSearchState.controller === controller;
+
+  const finish = (outcome: { results?: SearchResult[]; error?: string }) => {
+    if (!isCurrent()) return;
+    updateGlobalState({
+      isSearching: false,
+      searchStatus: undefined,
+      ...(outcome.results ? { results: outcome.results, searchSuccess: true } : {}),
+      ...(outcome.error ? { searchError: outcome.error } : {}),
+      controller: null,
+      reader: null,
+    });
+  };
+
+  try {
+    const params = new URLSearchParams({ q, categories: cats.join(",") });
+    const response = await fetch(`/api/search?${params}`, {
+      headers: authHeaders(),
+      signal: controller.signal,
+    });
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Search stream did not open");
+    if (!isCurrent()) {
+      reader.cancel().catch(() => {});
+      return;
+    }
+    updateGlobalState({ reader });
+
+    let finished = false;
+    await readSearchStream(
+      reader,
+      (msg) => {
+        if (isCurrent()) updateGlobalState({ searchStatus: msg });
+      },
+      (res) => {
+        finished = true;
+        finish({ results: res });
+      },
+      (err) => {
+        finished = true;
+        finish({ error: err });
+      },
+    );
+
+    if (!finished) {
+      finish({ error: "Search connection closed unexpectedly — try again" });
+    }
+  } catch (cause: unknown) {
+    finish({ error: getSearchErrorMessage(cause) });
+  } finally {
+    if (isCurrent()) {
+      updateGlobalState({
+        reader: null,
+        controller: null,
+      });
+    }
+  }
+}
+
 export function Downloads() {
   const categoriesQuery = useQuery(downloadCategoriesQueryOptions());
   const activeIds = categoriesQuery.data?.activeIds ?? null;
   const categories = visibleCategories(categoriesQuery.data?.categories ?? [], activeIds);
 
-  const [query, setQuery] = React.useState("");
-  const [selectedCategories, setSelectedCategories] =
-    React.useState<MediaKindValue[]>(DEFAULT_CATEGORIES);
-  const [added, setAdded] = React.useState<Set<string>>(new Set());
+  const state = React.useSyncExternalStore(searchStore.subscribe, searchStore.getSnapshot);
 
-  const [isSearching, setIsSearching] = React.useState(false);
-  const [searchStatus, setSearchStatus] = React.useState<string>();
-  const [results, setResults] = React.useState<SearchResult[]>([]);
-  // Captured at search time so badge assessment matches the results shown
-  // even if the category dropdown changes afterwards.
-  const [resultsKind, setResultsKind] = React.useState<PlexMediaKind>("music");
-  const [searchSuccess, setSearchSuccess] = React.useState(false);
-  const [searchError, setSearchError] = React.useState<string | null>(null);
-
-  const abortControllerRef = React.useRef<AbortController | null>(null);
-  const readerRef = React.useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
-
-  // Cancelling the reader (not just the fetch) matters: WebKit does not
-  // reject a pending read() on fetch abort, so abort alone hangs on iOS.
-  const stopStream = React.useCallback(() => {
-    readerRef.current?.cancel().catch(() => {});
-    readerRef.current = null;
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-  }, []);
-
-  React.useEffect(() => stopStream, [stopStream]);
-
-  const handleCancel = React.useCallback(() => {
-    stopStream();
-    setIsSearching(false);
-    setSearchStatus(undefined);
-    setSearchError(null);
-  }, [stopStream]);
-
-  const handleSearch = React.useCallback(
-    async (q: string, cats: string[]) => {
-      stopStream();
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      // False once cancelled or superseded by a newer search; stale streams
-      // must not touch state after that.
-      const isCurrent = () => abortControllerRef.current === controller;
-
-      setIsSearching(true);
-      setSearchStatus("Connecting...");
-      setSearchError(null);
-      setResults([]);
-      setResultsKind(kindOfCategories(cats));
-      setSearchSuccess(false);
-
-      const finish = (outcome: { results?: SearchResult[]; error?: string }) => {
-        if (!isCurrent()) return;
-        if (outcome.results) {
-          setResults(outcome.results);
-          setSearchSuccess(true);
-        }
-        if (outcome.error) setSearchError(outcome.error);
-        setIsSearching(false);
-        setSearchStatus(undefined);
-      };
-
-      try {
-        const params = new URLSearchParams({ q, categories: cats.join(",") });
-        const response = await fetch(`/api/search?${params}`, {
-          headers: authHeaders(),
-          signal: controller.signal,
-        });
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("Search stream did not open");
-        if (!isCurrent()) {
-          reader.cancel().catch(() => {});
-          return;
-        }
-        readerRef.current = reader;
-
-        let finished = false;
-        await readSearchStream(
-          reader,
-          (msg) => {
-            if (isCurrent()) setSearchStatus(msg);
-          },
-          (res) => {
-            finished = true;
-            finish({ results: res });
-          },
-          (err) => {
-            finished = true;
-            finish({ error: err });
-          },
-        );
-
-        // Stream closed without result or error (idle timeout, server
-        // restart) — without this the spinner runs forever.
-        if (!finished) {
-          finish({ error: "Search connection closed unexpectedly — try again" });
-        }
-      } catch (cause: unknown) {
-        finish({ error: getSearchErrorMessage(cause) });
-      } finally {
-        if (isCurrent()) {
-          readerRef.current = null;
-          abortControllerRef.current = null;
-        }
-      }
-    },
-    [stopStream],
-  );
+  const displayedResults = React.useMemo(() => {
+    if (state.hideInLibrary) {
+      return state.results.filter((r) => !r.libraryMatch?.exists);
+    }
+    return state.results;
+  }, [state.results, state.hideInLibrary]);
 
   const addTorrent = useMutation({
     mutationFn: async (url: string) => {
@@ -615,46 +706,65 @@ export function Downloads() {
       if (res.error) throw new Error(getAddErrorMessage(res.error.value));
       return res.data;
     },
-    onSuccess: (_, url) => setAdded((prev) => new Set([...prev, url])),
+    onSuccess: (_, url) => {
+      updateGlobalState({
+        added: new Set([...state.added, url]),
+      });
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) handleSearch(query.trim(), selectedCategories);
+    if (state.query.trim()) runSearch(state.query.trim(), state.selectedCategories);
   };
 
   return (
     <ResponsiveCard>
       <ResponsiveCardContent className="flex flex-col gap-4">
         <DownloadsSearchForm
-          query={query}
-          selectedCategories={selectedCategories}
+          query={state.query}
+          selectedCategories={state.selectedCategories}
           categories={categories}
           activeIds={activeIds}
-          isSearching={isSearching}
-          onQueryChange={setQuery}
-          onCategoriesChange={setSelectedCategories}
+          isSearching={state.isSearching}
+          onQueryChange={(q) => updateGlobalState({ query: q })}
+          onCategoriesChange={(c) => updateGlobalState({ selectedCategories: c })}
           onSubmit={handleSubmit}
-          onCancel={handleCancel}
+          onCancel={handleCancelSearch}
         />
-        {searchStatus ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse pl-1">
-            <Spinner className="size-[14px]" />
-            <span>{searchStatus}</span>
+        <div className="flex items-center gap-6 text-xs text-muted-foreground border-b border-border/40 pb-3 pl-1">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="hide-in-lib"
+              checked={state.hideInLibrary}
+              onCheckedChange={(checked) => updateGlobalState({ hideInLibrary: !!checked })}
+            />
+            <Label
+              htmlFor="hide-in-lib"
+              className="text-[11px] font-medium cursor-pointer select-none"
+            >
+              Hide releases already in library
+            </Label>
           </div>
-        ) : null}
-        {searchError ? (
-          <IssueList issues={[{ code: "SEARCH_ERROR", message: searchError }]} />
+          {state.searchStatus ? (
+            <div className="flex items-center gap-2 animate-pulse text-sm">
+              <Spinner className="size-[14px]" />
+              <span>{state.searchStatus}</span>
+            </div>
+          ) : null}
+        </div>
+        {state.searchError ? (
+          <IssueList issues={[{ code: "SEARCH_ERROR", message: state.searchError }]} />
         ) : null}
         {addTorrent.isError ? (
           <IssueList issues={[{ code: "ADD_ERROR", message: addTorrent.error.message }]} />
         ) : null}
         <DownloadsBody
-          searchIsSuccess={searchSuccess}
-          results={results}
-          added={added}
+          searchIsSuccess={state.searchSuccess}
+          results={displayedResults}
+          added={state.added}
           isPending={addTorrent.isPending}
-          kind={resultsKind}
+          kind={state.resultsKind}
           onAdd={(url) => addTorrent.mutate(url)}
         />
       </ResponsiveCardContent>
