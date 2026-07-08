@@ -9,7 +9,12 @@ import type { Deps } from "../types/deps.js";
 
 export function jobsModule(deps: Deps) {
   return publicSubrouter(deps)
-    .get("/jobs", ({ repos }) => ({ ok: true, jobs: repos.jobs.list() }))
+    .get("/jobs", ({ repos, query }) => {
+      const limit = Math.min(Number(query.limit ?? 30) || 30, 100);
+      const offset = Number(query.offset ?? 0) || 0;
+      const { jobs, total } = repos.jobs.list({ limit, offset });
+      return { ok: true, jobs, total, limit, offset };
+    })
     .get("/jobs/:id", ({ repos, params, set }) => {
       const job = repos.jobs.load(params.id);
       if (isNone(job)) {

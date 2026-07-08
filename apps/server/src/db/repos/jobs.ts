@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import type { Maybe } from "../../lib/maybe.js";
 import { none, some } from "../../lib/maybe.js";
 import type { CreateJobInput, JobCounts, JobStatus, JobStatusExtra } from "../../lib/schemas.js";
@@ -15,8 +15,11 @@ export type ParsedJob = Omit<JobRow, "status" | "counts"> & {
 
 export type { CreateJobInput } from "../../lib/schemas.js";
 
+export type ListJobsInput = { limit?: number; offset?: number };
+export type ListJobsResult = { jobs: ParsedJob[]; total: number };
+
 export type JobsRepo = {
-  list: () => ParsedJob[];
+  list: (input?: ListJobsInput) => ListJobsResult;
   load: (jobId: string) => Maybe<ParsedJob>;
   create: (input: CreateJobInput) => void;
   updateStatus: (
@@ -29,13 +32,23 @@ export type JobsRepo = {
 };
 
 export const createJobsRepo = (db: Db): JobsRepo => ({
-  list() {
-    const rows = db.select().from(jobs).orderBy(jobs.createdAt).all().reverse();
-    return rows.map((row) => ({
-      ...row,
-      status: jobStatusSchema.parse(row.status),
-      counts: jobCountsSchema.parse(JSON.parse(row.counts)),
-    }));
+  list({ limit = 30, offset = 0 }: ListJobsInput = {}) {
+    const rows = db
+      .select()
+      .from(jobs)
+      .orderBy(desc(jobs.createdAt))
+      .limit(limit)
+      .offset(offset)
+      .all();
+    const total = db.select({ count: sql<number>`count(*)` }).from(jobs).get()?.count ?? 0;
+    return {
+      total,
+      jobs: rows.map((row) => ({
+        ...row,
+        status: jobStatusSchema.parse(row.status),
+        counts: jobCountsSchema.parse(JSON.parse(row.counts)),
+      })),
+    };
   },
 
   load(jobId) {

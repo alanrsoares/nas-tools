@@ -4,6 +4,8 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   GitMerge,
   ListChecks,
   SkipForward,
@@ -32,6 +34,12 @@ import {
 } from "@/components/styled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+} from "@/components/ui/pagination";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { withToken } from "@/lib/auth";
@@ -327,21 +335,122 @@ export function JobDetail({ job: initialJob }: JobDetailProps) {
   );
 }
 
+const JOBS_PAGE_SIZE = 30;
+
+type JobsPaginationProps = {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+};
+
+function JobsPagination({ currentPage, totalPages, onPageChange }: JobsPaginationProps) {
+  if (totalPages <= 1) return null;
+  return (
+    <Pagination className="mt-2 max-md:mt-1">
+      <PaginationContent className="gap-0.5">
+        <PaginationItem>
+          <PaginationLink
+            size="icon"
+            aria-label="Previous page"
+            className={currentPage <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+            onClick={(e) => {
+              e.preventDefault();
+              if (currentPage > 1) onPageChange(currentPage - 1);
+            }}
+          >
+            <ChevronLeft className="size-4" />
+          </PaginationLink>
+        </PaginationItem>
+        <PaginationItem>
+          <span className="px-1 text-xs text-muted-foreground whitespace-nowrap">
+            {currentPage} / {totalPages}
+          </span>
+        </PaginationItem>
+        <PaginationItem>
+          <PaginationLink
+            size="icon"
+            aria-label="Next page"
+            className={
+              currentPage >= totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"
+            }
+            onClick={(e) => {
+              e.preventDefault();
+              if (currentPage < totalPages) onPageChange(currentPage + 1);
+            }}
+          >
+            <ChevronRight className="size-4" />
+          </PaginationLink>
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
+  );
+}
+
+type JobListEntriesProps = {
+  jobList: JobRecord[];
+  selectedId: string | undefined;
+  onSelect: (jobId: string) => void;
+};
+
+function JobListEntries({ jobList, selectedId, onSelect }: JobListEntriesProps) {
+  return (
+    <div className="grid gap-1 max-md:flex max-md:overflow-x-auto max-md:pb-1 max-md:pt-0.5 max-md:gap-1.5 max-md:[scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {jobList.map((job) => {
+        const itemLabel =
+          job.counts.total > 0
+            ? `${job.counts.total} item${job.counts.total !== 1 ? "s" : ""}`
+            : job.type === "cue_fix"
+              ? "CUE fix"
+              : "Move Plan";
+        return (
+          <JobListItem
+            key={job.id}
+            type="button"
+            $active={selectedId === job.id}
+            onClick={() => onSelect(job.id)}
+          >
+            <JobStatusDot status={job.status} />
+            <JobListMeta>
+              <JobListType>{itemLabel}</JobListType>
+              <JobListTime>{formatRelativeTime(job.createdAt)}</JobListTime>
+            </JobListMeta>
+          </JobListItem>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Jobs() {
-  const { jobId } = useSearch({ from: "/jobs" });
+  const { jobId, page } = useSearch({ from: "/jobs" });
   const navigate = useNavigate();
+  const currentPage = page ?? 1;
 
   const jobsQuery = useQuery({
-    queryKey: ["jobs"],
+    queryKey: ["jobs", currentPage],
     queryFn: async () => {
-      const res = await api.jobs.get();
-      return res.data && "jobs" in res.data ? (res.data.jobs as JobRecord[]) : [];
+      const res = await api.jobs.get({
+        query: {
+          limit: String(JOBS_PAGE_SIZE),
+          offset: String((currentPage - 1) * JOBS_PAGE_SIZE),
+        },
+      });
+      const jobs = res.data && "jobs" in res.data ? (res.data.jobs as JobRecord[]) : [];
+      const total = res.data && "total" in res.data ? (res.data.total as number) : jobs.length;
+      return { jobs, total };
     },
-    refetchInterval: 3000,
+    // Only the most recent page tracks running jobs; older pages are static history.
+    refetchInterval: currentPage === 1 ? 3000 : false,
     refetchOnMount: "always",
   });
 
-  const jobList = jobsQuery.data ?? [];
+  const jobList = jobsQuery.data?.jobs ?? [];
+  const total = jobsQuery.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / JOBS_PAGE_SIZE));
+
+  function goToPage(next: number) {
+    navigate({ to: "/jobs", search: { page: next } });
+  }
 
   if (jobList.length === 0 && !jobsQuery.isLoading) {
     return (
@@ -363,30 +472,16 @@ export function Jobs() {
       {/* Job list */}
       <ResponsiveCard className="w-[220px] shrink-0 max-md:w-full md:sticky md:top-0 md:max-h-[calc(100dvh-7.5rem)] md:overflow-y-auto md:self-start">
         <ResponsiveCardContent className="p-2 max-md:p-0">
-          <div className="grid gap-1 max-md:flex max-md:overflow-x-auto max-md:pb-1 max-md:pt-0.5 max-md:gap-1.5 max-md:[scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {jobList.map((job) => {
-              const itemLabel =
-                job.counts.total > 0
-                  ? `${job.counts.total} item${job.counts.total !== 1 ? "s" : ""}`
-                  : job.type === "cue_fix"
-                    ? "CUE fix"
-                    : "Move Plan";
-              return (
-                <JobListItem
-                  key={job.id}
-                  type="button"
-                  $active={selected?.id === job.id}
-                  onClick={() => navigate({ to: "/jobs", search: { jobId: job.id } })}
-                >
-                  <JobStatusDot status={job.status} />
-                  <JobListMeta>
-                    <JobListType>{itemLabel}</JobListType>
-                    <JobListTime>{formatRelativeTime(job.createdAt)}</JobListTime>
-                  </JobListMeta>
-                </JobListItem>
-              );
-            })}
-          </div>
+          <JobListEntries
+            jobList={jobList}
+            selectedId={selected?.id}
+            onSelect={(id) => navigate({ to: "/jobs", search: { jobId: id } })}
+          />
+          <JobsPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={goToPage}
+          />
         </ResponsiveCardContent>
       </ResponsiveCard>
 

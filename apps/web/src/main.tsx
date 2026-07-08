@@ -57,6 +57,7 @@ const cueRoute = createRoute({
 
 const jobsSearchSchema = z.object({
   jobId: z.string().optional(),
+  page: z.number().optional(),
 });
 
 const jobsRoute = createRoute({
