@@ -16,6 +16,8 @@ const envSchema = z.object({
   TRANSMISSION_RPC_PASSWORD: z.string().default(""),
   MUSIC_LIBRARY_PATH: z.string().default("/volume1/music"),
   ALSA_DEVICE: z.string().default("hw:1,0"),
+  OPENROUTER_API_KEY: z.string().default(""),
+  OPENROUTER_MODEL: z.string().default("google/gemini-2.5-flash"),
   NAS_TOOLS_API_TOKEN: z.string().optional(),
   ALLOWED_ORIGINS: z.string().default(""),
 });

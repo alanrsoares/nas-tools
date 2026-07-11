@@ -34,6 +34,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { api } from "../api";
 import { PlexScanPopover } from "../features/staging/PlexScanPopover";
 import type { NavItem, Section } from "../types";
+import { AssistantDrawer } from "./AssistantDrawer";
 
 export const navItems: NavItem[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -191,6 +192,7 @@ export function AppShell() {
         <div className="md:flex-1 md:min-h-0 md:overflow-y-auto">
           <Outlet />
         </div>
+        <AssistantDrawer />
       </Content>
     </Shell>
   );

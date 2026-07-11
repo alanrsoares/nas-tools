@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-
+import { assistantModule } from "./modules/assistant.js";
 import { configModule } from "./modules/config.js";
 import { cueModule } from "./modules/cue.js";
 import { dashboardModule } from "./modules/dashboard.js";
@@ -29,6 +29,7 @@ export const createApi = (deps: Deps) =>
     .use(transmissionModule(deps))
     .use(plexModule(deps))
     .use(searchModule(deps))
-    .use(playerModule(deps));
+    .use(playerModule(deps))
+    .use(assistantModule(deps));
 
 export type App = ReturnType<typeof createApi>;
