@@ -58,8 +58,8 @@ export function AssistantDrawer() {
         </button>
       </SheetTrigger>
 
-      <SheetContent className="w-[480px] sm:w-[640px] flex flex-col h-full bg-background/95 backdrop-blur-lg border-l border-border/40 z-50 p-0 shadow-2xl">
-        <SheetHeader className="flex flex-row items-center justify-between border-b border-border/30 px-6 py-4.5 bg-card/30 backdrop-blur-md">
+      <SheetContent className="w-full sm:max-w-[480px] md:max-w-[540px] flex flex-col h-full bg-background/95 backdrop-blur-lg border-l border-border/40 z-50 p-0 shadow-2xl">
+        <SheetHeader className="flex flex-row items-center justify-between border-b border-border/30 px-4 sm:px-6 py-3.5 sm:py-4.5 bg-card/30 backdrop-blur-md">
           <SheetTitle className="flex items-center gap-2 text-foreground font-semibold tracking-tight">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
               <Sparkles className="h-4.5 w-4.5 text-primary animate-pulse" />
@@ -81,7 +81,7 @@ export function AssistantDrawer() {
         </SheetHeader>
 
         {/* ChatContainer handles auto-scroll anchoring */}
-        <ChatContainerRoot className="flex-1 px-6 py-5 overflow-y-auto bg-gradient-to-b from-background via-muted/5 to-background relative">
+        <ChatContainerRoot className="flex-1 px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto bg-gradient-to-b from-background via-muted/5 to-background relative">
           <ChatContainerContent className="gap-5">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center pt-8 text-center animate-fade-in">
@@ -96,7 +96,7 @@ export function AssistantDrawer() {
                 </p>
 
                 {/* Suggestions Grid */}
-                <div className="grid grid-cols-2 gap-3 w-full max-w-[420px]">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3 w-full max-w-[420px]">
                   <button
                     type="button"
                     onClick={() => handleSuggestionClick("pause music player")}
