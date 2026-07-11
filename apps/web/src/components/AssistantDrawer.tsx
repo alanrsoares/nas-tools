@@ -47,7 +47,7 @@ export function AssistantDrawer() {
       <SheetTrigger asChild>
         <button
           type="button"
-          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-[0_4px_20px_oklch(0.58_0.14_170_/_0.4)] hover:shadow-[0_6px_25px_oklch(0.58_0.14_170_/_0.6)] bg-gradient-to-tr from-primary to-[oklch(0.65_0.14_165)] hover:from-[oklch(0.62_0.14_170)] hover:to-[oklch(0.68_0.14_160)] text-primary-foreground hover:scale-110 active:scale-95 transition-all duration-300 z-45 border-none cursor-pointer flex items-center justify-center group"
+          className="fixed bottom-24 sm:bottom-6 right-6 h-14 w-14 rounded-full shadow-[0_4px_20px_oklch(0.58_0.14_170_/_0.4)] hover:shadow-[0_6px_25px_oklch(0.58_0.14_170_/_0.6)] bg-gradient-to-tr from-primary to-[oklch(0.65_0.14_165)] hover:from-[oklch(0.62_0.14_170)] hover:to-[oklch(0.68_0.14_160)] text-primary-foreground hover:scale-110 active:scale-95 transition-all duration-300 z-40 border-none cursor-pointer flex items-center justify-center group"
           aria-label="Open assistant"
         >
           <Sparkles className="h-6 w-6 transition-transform duration-500 group-hover:rotate-12 group-hover:scale-110" />
