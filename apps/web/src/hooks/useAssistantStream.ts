@@ -45,13 +45,43 @@ export function useAssistantStream() {
       // Add placeholder for streaming assistant response
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
+      let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        assistantReply += chunk;
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
 
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let hasNewContent = false;
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const content = line.endsWith("\r") ? line.slice(6, -1) : line.slice(6);
+            assistantReply += content;
+            hasNewContent = true;
+          } else if (line === "data:") {
+            hasNewContent = true;
+          }
+        }
+
+        if (hasNewContent) {
+          setMessages((prev) => {
+            const next = [...prev];
+            const lastIndex = next.length - 1;
+            if (next[lastIndex].role === "assistant") {
+              next[lastIndex] = { role: "assistant", content: assistantReply };
+            }
+            return next;
+          });
+        }
+      }
+
+      if (buffer.startsWith("data: ")) {
+        const content = buffer.endsWith("\r") ? buffer.slice(6, -1) : buffer.slice(6);
+        assistantReply += content;
         setMessages((prev) => {
           const next = [...prev];
           const lastIndex = next.length - 1;
