@@ -34,7 +34,14 @@ export class Subagent<TArgs = Record<string, unknown>> {
     return this;
   }
 
-  async run(task: string, args: TArgs, openRouter: OpenRouter): Promise<string> {
+  async run(
+    task: string,
+    args: TArgs,
+    openRouter: OpenRouter,
+  ): Promise<{
+    report: string;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  }> {
     let gatheredContext = "";
     if (this.contextFn) {
       try {
@@ -55,7 +62,10 @@ export class Subagent<TArgs = Record<string, unknown>> {
       },
     });
 
-    return response.choices?.[0]?.message?.content || "No report generated";
+    return {
+      report: response.choices?.[0]?.message?.content || "No report generated",
+      usage: response.usage,
+    };
   }
 }
 
@@ -200,8 +210,8 @@ async function executeTool(
         if (matchedAgent) {
           const openRouter = new OpenRouter({ apiKey: env.OPENROUTER_API_KEY });
           // biome-ignore lint/suspicious/noExplicitAny: type safety verified by runtime checks
-          const report = await matchedAgent.run(args.task as string, args as any, openRouter);
-          return { ok: true, report };
+          const result = await matchedAgent.run(args.task as string, args as any, openRouter);
+          return { ok: true, report: result.report, usage: result.usage };
         }
         return { error: `Tool ${name} not found` };
       }
@@ -224,6 +234,9 @@ export function assistantModule(deps: Deps) {
 
       // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: handle sequential streaming steps cleanly
       return new Stream(async (stream) => {
+        let promptTokens = 0;
+        let completionTokens = 0;
+
         try {
           // biome-ignore lint/suspicious/noExplicitAny: mixed OpenAI schema types
           const payloadMessages: any[] = [
@@ -253,6 +266,13 @@ export function assistantModule(deps: Deps) {
             },
           });
 
+          if (firstResponse.usage) {
+            promptTokens +=
+              firstResponse.usage.promptTokens || firstResponse.usage.prompt_tokens || 0;
+            completionTokens +=
+              firstResponse.usage.completionTokens || firstResponse.usage.completion_tokens || 0;
+          }
+
           const firstMessage = firstResponse.choices?.[0]?.message;
 
           if (!firstMessage) {
@@ -272,7 +292,14 @@ export function assistantModule(deps: Deps) {
                 args = JSON.parse(toolCall.function.arguments);
               } catch {}
 
-              const result = await executeTool(name, args, deps);
+              // biome-ignore lint/suspicious/noExplicitAny: typecast tool response payload dynamically
+              const result: any = await executeTool(name, args, deps);
+              if (result?.usage) {
+                promptTokens += result.usage.promptTokens || result.usage.prompt_tokens || 0;
+                completionTokens +=
+                  result.usage.completionTokens || result.usage.completion_tokens || 0;
+              }
+
               payloadMessages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
@@ -288,18 +315,41 @@ export function assistantModule(deps: Deps) {
                 model: env.OPENROUTER_MODEL,
                 messages: payloadMessages,
                 stream: true,
+                streamOptions: {
+                  includeUsage: true,
+                },
               },
             });
 
             for await (const chunk of streamResponse) {
               const text = chunk.choices?.[0]?.delta?.content;
               if (text) stream.send(text);
+
+              if (chunk.usage) {
+                promptTokens += chunk.usage.promptTokens || chunk.usage.prompt_tokens || 0;
+                completionTokens +=
+                  chunk.usage.completionTokens || chunk.usage.completion_tokens || 0;
+              }
             }
           } else {
             // No tool calls, just stream the text we already fetched in phase 1
             const textContent = firstMessage.content || "";
             stream.send(textContent);
           }
+
+          // Send final aggregated telemetry statistics
+          const totalTokens = promptTokens + completionTokens;
+          // Gemini 2.5 Flash pricing: input = $0.075 / 1M tokens, output = $0.30 / 1M tokens
+          const cost = (promptTokens * 0.075 + completionTokens * 0.3) / 1000000;
+
+          const telemetryData = {
+            type: "telemetry",
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            cost,
+          };
+          stream.send(`__telemetry__:${JSON.stringify(telemetryData)}`);
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
           stream.send(`Error executing assistant query: ${errMsg}`);

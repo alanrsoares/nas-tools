@@ -6,9 +6,22 @@ export interface MessageType {
   content: string;
 }
 
+export interface TelemetryType {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cost: number;
+}
+
 export function useAssistantStream() {
   const [messages, setMessages] = useState<MessageType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [telemetry, setTelemetry] = useState<TelemetryType>({
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+  });
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: handle fetch streaming loop cleanly
   const sendMessage = async (userText: string) => {
@@ -60,8 +73,22 @@ export function useAssistantStream() {
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             const content = line.endsWith("\r") ? line.slice(6, -1) : line.slice(6);
-            assistantReply += content;
-            hasNewContent = true;
+            if (content.startsWith("__telemetry__:")) {
+              try {
+                const data = JSON.parse(content.slice(14));
+                setTelemetry((prev) => ({
+                  promptTokens: prev.promptTokens + (data.promptTokens || 0),
+                  completionTokens: prev.completionTokens + (data.completionTokens || 0),
+                  totalTokens: prev.totalTokens + (data.totalTokens || 0),
+                  cost: prev.cost + (data.cost || 0),
+                }));
+              } catch (err) {
+                console.error("Telemetry parse failed", err);
+              }
+            } else {
+              assistantReply += content;
+              hasNewContent = true;
+            }
           } else if (line === "data:") {
             hasNewContent = true;
           }
@@ -81,15 +108,29 @@ export function useAssistantStream() {
 
       if (buffer.startsWith("data: ")) {
         const content = buffer.endsWith("\r") ? buffer.slice(6, -1) : buffer.slice(6);
-        assistantReply += content;
-        setMessages((prev) => {
-          const next = [...prev];
-          const lastIndex = next.length - 1;
-          if (next[lastIndex].role === "assistant") {
-            next[lastIndex] = { role: "assistant", content: assistantReply };
+        if (content.startsWith("__telemetry__:")) {
+          try {
+            const data = JSON.parse(content.slice(14));
+            setTelemetry((prev) => ({
+              promptTokens: prev.promptTokens + (data.promptTokens || 0),
+              completionTokens: prev.completionTokens + (data.completionTokens || 0),
+              totalTokens: prev.totalTokens + (data.totalTokens || 0),
+              cost: prev.cost + (data.cost || 0),
+            }));
+          } catch (err) {
+            console.error("Telemetry parse failed", err);
           }
-          return next;
-        });
+        } else {
+          assistantReply += content;
+          setMessages((prev) => {
+            const next = [...prev];
+            const lastIndex = next.length - 1;
+            if (next[lastIndex].role === "assistant") {
+              next[lastIndex] = { role: "assistant", content: assistantReply };
+            }
+            return next;
+          });
+        }
       }
     } catch (error: unknown) {
       console.error("Stream failed", error);
@@ -102,7 +143,13 @@ export function useAssistantStream() {
 
   const clearMessages = () => {
     setMessages([]);
+    setTelemetry({
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cost: 0,
+    });
   };
 
-  return { messages, sendMessage, clearMessages, isLoading };
+  return { messages, sendMessage, clearMessages, telemetry, isLoading };
 }

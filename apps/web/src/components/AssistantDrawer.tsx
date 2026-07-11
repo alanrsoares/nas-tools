@@ -28,7 +28,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { useAssistantStream } from "../hooks/useAssistantStream";
 
 export function AssistantDrawer() {
-  const { messages, sendMessage, clearMessages, isLoading } = useAssistantStream();
+  const { messages, sendMessage, clearMessages, telemetry, isLoading } = useAssistantStream();
   const [input, setInput] = useState("");
 
   const handleSend = () => {
@@ -197,6 +197,21 @@ export function AssistantDrawer() {
           {/* Scroll down quick-button */}
           <ScrollButton className="absolute bottom-4 right-4 bg-background border border-border/40 hover:bg-accent/40 shadow-xl cursor-pointer" />
         </ChatContainerRoot>
+
+        {/* Telemetry Stats Bar */}
+        {telemetry.totalTokens > 0 && (
+          <div className="flex items-center justify-between px-6 py-2 bg-muted/20 border-t border-border/10 text-[10px] text-muted-foreground font-mono">
+            <span className="flex items-center gap-1">
+              Cost:{" "}
+              <span className="text-emerald-500 font-semibold">${telemetry.cost.toFixed(5)}</span>
+            </span>
+            <span className="flex items-center gap-2">
+              <span>Prompt: {telemetry.promptTokens} t</span>
+              <span>Completion: {telemetry.completionTokens} t</span>
+              <span className="text-foreground">Total: {telemetry.totalTokens} t</span>
+            </span>
+          </div>
+        )}
 
         {/* PromptInput container with glass effect */}
         <div className="p-4 border-t border-border/20 bg-card/20 backdrop-blur-md">
