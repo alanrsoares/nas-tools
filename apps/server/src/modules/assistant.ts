@@ -1,5 +1,6 @@
 import { Stream } from "@elysiajs/stream";
 import { isErr } from "@onrails/result";
+import { OpenRouter } from "@openrouter/sdk";
 import { t } from "elysia";
 import { env } from "../env.js";
 import { publicSubrouter } from "../lib/subrouter.js";
@@ -110,13 +111,8 @@ export function assistantModule(deps: Deps) {
       // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: handle sequential streaming steps cleanly
       return new Stream(async (stream) => {
         try {
-          const payloadMessages: {
-            role: string;
-            content: string;
-            name?: string;
-            tool_call_id?: string;
-            tool_calls?: unknown;
-          }[] = [
+          // biome-ignore lint/suspicious/noExplicitAny: mixed OpenAI schema types
+          const payloadMessages: any[] = [
             {
               role: "system",
               content:
@@ -125,32 +121,25 @@ export function assistantModule(deps: Deps) {
             ...messages,
           ];
 
-          // Phase 1: Call OpenRouter non-streaming to detect/handle tool calls
-          const firstResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-              "Content-Type": "application/json",
-              "HTTP-Referer": "https://github.com/nas-tools",
-              "X-Title": "nas-tools Assistant",
-            },
-            body: JSON.stringify({
-              model: env.OPENROUTER_MODEL,
-              messages: payloadMessages,
-              tools: getAssistantTools(),
-              tool_choice: "auto",
-            }),
+          const openRouter = new OpenRouter({
+            apiKey: env.OPENROUTER_API_KEY,
+            httpReferer: "https://github.com/nas-tools",
+            appTitle: "nas-tools Assistant",
           });
 
-          if (!firstResponse.ok) {
-            const errText = await firstResponse.text();
-            stream.send(`Error from OpenRouter: ${errText}`);
-            stream.close();
-            return;
-          }
+          // Phase 1: Call OpenRouter non-streaming to detect/handle tool calls
+          // biome-ignore lint/suspicious/noExplicitAny: openrouter response type wrapper
+          const firstResponse: any = await openRouter.chat.send({
+            chatRequest: {
+              model: env.OPENROUTER_MODEL,
+              messages: payloadMessages,
+              // biome-ignore lint/suspicious/noExplicitAny: schema validation mismatch
+              tools: getAssistantTools() as any,
+              toolChoice: "auto",
+            },
+          });
 
-          const firstData = await firstResponse.json();
-          const firstMessage = firstData.choices?.[0]?.message;
+          const firstMessage = firstResponse.choices?.[0]?.message;
 
           if (!firstMessage) {
             stream.send("Error: Invalid response structure from OpenRouter");
@@ -179,49 +168,18 @@ export function assistantModule(deps: Deps) {
             }
 
             // Phase 2: Call OpenRouter again with stream=true after submitting tool results
-            const streamResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/nas-tools",
-                "X-Title": "nas-tools Assistant",
-              },
-              body: JSON.stringify({
+            // biome-ignore lint/suspicious/noExplicitAny: openrouter response type wrapper
+            const streamResponse: any = await openRouter.chat.send({
+              chatRequest: {
                 model: env.OPENROUTER_MODEL,
                 messages: payloadMessages,
                 stream: true,
-              }),
+              },
             });
 
-            if (!streamResponse.ok || !streamResponse.body) {
-              stream.send("Error: Failed to initiate final stream response");
-              stream.close();
-              return;
-            }
-
-            const reader = streamResponse.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split("\n");
-              buffer = lines.pop() || "";
-
-              for (const line of lines) {
-                const cleaned = line.replace(/^data: /, "").trim();
-                if (cleaned === "" || cleaned === "[DONE]") continue;
-
-                try {
-                  const parsed = JSON.parse(cleaned);
-                  const text = parsed.choices?.[0]?.delta?.content;
-                  if (text) stream.send(text);
-                } catch {}
-              }
+            for await (const chunk of streamResponse) {
+              const text = chunk.choices?.[0]?.delta?.content;
+              if (text) stream.send(text);
             }
           } else {
             // No tool calls, just stream the text we already fetched in phase 1

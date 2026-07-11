@@ -20,6 +20,7 @@
     "@onrails/maybe": "catalog:",
     "@onrails/pattern": "catalog:",
     "@onrails/result": "catalog:",
+    "@openrouter/sdk": "^0.13.43",
     "drizzle-orm": "latest",
     "elysia": "latest",
     "pino": "^10.3.1",

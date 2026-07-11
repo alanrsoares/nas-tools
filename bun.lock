@@ -36,6 +36,7 @@
         "@onrails/maybe": "catalog:",
         "@onrails/pattern": "catalog:",
         "@onrails/result": "catalog:",
+        "@openrouter/sdk": "^0.13.43",
         "drizzle-orm": "latest",
         "elysia": "latest",
         "pino": "^10.3.1",
@@ -371,6 +372,8 @@
     "@open-draft/logger": ["@open-draft/logger@0.3.0", "", { "dependencies": { "is-node-process": "^1.2.0", "outvariant": "^1.4.0" } }, "sha512-X2g45fzhxH238HKO4xbSr7+wBS8Fvw6ixhTDuvLd5mqh6bJJCFAPwU9mPDxbcrRtfxv4u5IHCEH77BmxvXmmxQ=="],
 
     "@open-draft/until": ["@open-draft/until@2.1.0", "", {}, "sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg=="],
+
+    "@openrouter/sdk": ["@openrouter/sdk@0.13.43", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-wD4SMxNfx/MYI4X7whWgft1IFr8mZJeB+MSod+oX8lNAk4MaJ6VoPQXVhaVU7ALttFpyvbLrYcIjsCXGnnkdlA=="],
 
     "@oxc-project/types": ["@oxc-project/types@0.138.0", "", {}, "sha512-1a7ZKmrRTCoN1XMZ4L0PyyqrMnrNlLyPuOkdSX2MZg7IiIGRUyurNhAm73ptDOraoBcIordsIGKNPKUzy3ZmfA=="],
 
