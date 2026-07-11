@@ -7,7 +7,7 @@ import { env } from "../env.js";
 import { publicSubrouter } from "../lib/subrouter.js";
 import type { Deps } from "../types/deps.js";
 
-class Subagent<TArgs = Record<string, unknown>> {
+export class Subagent<TArgs = Record<string, unknown>> {
   public name: string;
   public description: string;
   public systemPrompt = "";
