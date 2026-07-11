@@ -7,6 +7,103 @@ import { env } from "../env.js";
 import { publicSubrouter } from "../lib/subrouter.js";
 import type { Deps } from "../types/deps.js";
 
+class Subagent<TArgs = Record<string, unknown>> {
+  public name: string;
+  public description: string;
+  public systemPrompt = "";
+  public contextFn?: (args: TArgs) => Promise<string> | string;
+  public schema?: Record<string, unknown>;
+
+  constructor(name: string, description: string) {
+    this.name = name;
+    this.description = description;
+  }
+
+  prompt(promptText: string) {
+    this.systemPrompt = promptText;
+    return this;
+  }
+
+  args(schema: Record<string, unknown>) {
+    this.schema = schema;
+    return this;
+  }
+
+  context(fn: (args: TArgs) => Promise<string> | string) {
+    this.contextFn = fn;
+    return this;
+  }
+
+  async run(task: string, args: TArgs, openRouter: OpenRouter): Promise<string> {
+    let gatheredContext = "";
+    if (this.contextFn) {
+      try {
+        gatheredContext = await this.contextFn(args);
+      } catch (err) {
+        gatheredContext = `[Context gather failed]: ${err}`;
+      }
+    }
+
+    // biome-ignore lint/suspicious/noExplicitAny: openrouter response type wrapper
+    const response: any = await openRouter.chat.send({
+      chatRequest: {
+        model: env.OPENROUTER_MODEL,
+        messages: [
+          { role: "system", content: this.systemPrompt },
+          { role: "user", content: `Task: ${task}\n\nContext:\n${gatheredContext}` },
+        ],
+      },
+    });
+
+    return response.choices?.[0]?.message?.content || "No report generated";
+  }
+}
+
+const musicCurator = new Subagent<{ task: string; folderPath?: string }>(
+  "delegate_to_music_curator",
+  "Delegate complex music library organization, variant planning, cue troubleshooting, and tagging questions to the Music Curator specialist subagent.",
+)
+  .prompt(
+    "You are the Music Curator specialist subagent for nas-tools. Your goal is to analyze the provided metadata context and complete the music curation task. Keep your report extremely precise, actionable, and formatted in markdown.",
+  )
+  .args({
+    type: "object",
+    properties: {
+      task: { type: "string", description: "Detailed description of the music task to perform" },
+      folderPath: { type: "string", description: "Optional path to the music folder to analyze" },
+    },
+    required: ["task"],
+  })
+  .context(async (args) => {
+    if (args.folderPath) {
+      return await $`bun dist/cli/index.js music-variants --path ${args.folderPath}`.text();
+    }
+    return await $`bun dist/cli/index.js music-audit`.text();
+  });
+
+const systemDiagnostician = new Subagent<{ task: string }>(
+  "delegate_to_system_diagnostician",
+  "Delegate server errors, ALSA/MPD player issues, network problems, or logs troubleshooting to the System Diagnostician specialist subagent.",
+)
+  .prompt(
+    "You are the System Diagnostician specialist subagent for nas-tools. Your goal is to diagnose playback, config, or network errors using the provided doctor diagnostics. Keep your troubleshooting steps precise, actionable, and formatted in markdown.",
+  )
+  .args({
+    type: "object",
+    properties: {
+      task: {
+        type: "string",
+        description: "Detailed description of the system issue or error to diagnose",
+      },
+    },
+    required: ["task"],
+  })
+  .context(async () => {
+    return await $`bun dist/cli/index.js doctor`.text();
+  });
+
+const subagents = [musicCurator, systemDiagnostician];
+
 function getAssistantTools() {
   return [
     {
@@ -52,46 +149,14 @@ function getAssistantTools() {
         },
       },
     },
-    {
+    ...subagents.map((agent) => ({
       type: "function",
       function: {
-        name: "delegate_to_music_curator",
-        description:
-          "Delegate complex music library organization, variant planning, cue troubleshooting, and tagging questions to the Music Curator specialist subagent.",
-        parameters: {
-          type: "object",
-          properties: {
-            task: {
-              type: "string",
-              description: "Detailed description of the music task to perform",
-            },
-            folderPath: {
-              type: "string",
-              description: "Optional path to the music folder to analyze",
-            },
-          },
-          required: ["task"],
-        },
+        name: agent.name,
+        description: agent.description,
+        parameters: agent.schema,
       },
-    },
-    {
-      type: "function",
-      function: {
-        name: "delegate_to_system_diagnostician",
-        description:
-          "Delegate server errors, ALSA/MPD player issues, network problems, or logs troubleshooting to the System Diagnostician specialist subagent.",
-        parameters: {
-          type: "object",
-          properties: {
-            task: {
-              type: "string",
-              description: "Detailed description of the system issue or error to diagnose",
-            },
-          },
-          required: ["task"],
-        },
-      },
-    },
+    })),
   ];
 }
 
@@ -130,90 +195,16 @@ async function executeTool(
         }
         return { ok: true, action };
       }
-      case "delegate_to_music_curator": {
-        const task = args.task as string;
-        const folderPath = args.folderPath as string | undefined;
-
-        let context = "";
-        try {
-          if (folderPath) {
-            // Run variants dry-run to get info
-            const output =
-              await $`bun dist/cli/index.js music-variants --path ${folderPath}`.text();
-            context += `[CLI music-variants output for ${folderPath}]:\n${output}\n\n`;
-          } else {
-            // Run general library audit
-            const output = await $`bun dist/cli/index.js music-audit`.text();
-            context += `[CLI music-audit output]:\n${output}\n\n`;
-          }
-        } catch (err) {
-          context += `[CLI Context gather failed]: ${err}\n\n`;
+      default: {
+        const matchedAgent = subagents.find((a) => a.name === name);
+        if (matchedAgent) {
+          const openRouter = new OpenRouter({ apiKey: env.OPENROUTER_API_KEY });
+          // biome-ignore lint/suspicious/noExplicitAny: type safety verified by runtime checks
+          const report = await matchedAgent.run(args.task as string, args as any, openRouter);
+          return { ok: true, report };
         }
-
-        const openRouter = new OpenRouter({
-          apiKey: env.OPENROUTER_API_KEY,
-        });
-
-        // biome-ignore lint/suspicious/noExplicitAny: openrouter response type wrapper
-        const response: any = await openRouter.chat.send({
-          chatRequest: {
-            model: env.OPENROUTER_MODEL,
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are the Music Curator specialist subagent for nas-tools. Your goal is to analyze the provided metadata context and complete the music curation task. Keep your report extremely precise, actionable, and formatted in markdown.",
-              },
-              {
-                role: "user",
-                content: `Task: ${task}\n\nContext:\n${context}`,
-              },
-            ],
-          },
-        });
-
-        const reply = response.choices?.[0]?.message?.content;
-        return { ok: true, report: reply || "No report generated by curator" };
-      }
-      case "delegate_to_system_diagnostician": {
-        const task = args.task as string;
-
-        let context = "";
-        try {
-          // Run system doctor
-          const output = await $`bun dist/cli/index.js doctor`.text();
-          context += `[CLI doctor output]:\n${output}\n\n`;
-        } catch (err) {
-          context += `[CLI Context gather failed]: ${err}\n\n`;
-        }
-
-        const openRouter = new OpenRouter({
-          apiKey: env.OPENROUTER_API_KEY,
-        });
-
-        // biome-ignore lint/suspicious/noExplicitAny: openrouter response type wrapper
-        const response: any = await openRouter.chat.send({
-          chatRequest: {
-            model: env.OPENROUTER_MODEL,
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are the System Diagnostician specialist subagent for nas-tools. Your goal is to diagnose playback, config, or network errors using the provided doctor diagnostics. Keep your troubleshooting steps precise, actionable, and formatted in markdown.",
-              },
-              {
-                role: "user",
-                content: `Task: ${task}\n\nDiagnostics:\n${context}`,
-              },
-            ],
-          },
-        });
-
-        const reply = response.choices?.[0]?.message?.content;
-        return { ok: true, report: reply || "No report generated by diagnostician" };
-      }
-      default:
         return { error: `Tool ${name} not found` };
+      }
     }
   } catch (err: unknown) {
     return { error: err instanceof Error ? err.message : String(err) };
