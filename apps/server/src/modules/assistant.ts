@@ -282,10 +282,10 @@ export function assistantModule(deps: Deps) {
           }
 
           // If the model wants to call tools, execute them and stream the final answer
-          if (firstMessage.tool_calls && firstMessage.tool_calls.length > 0) {
+          if (firstMessage.toolCalls && firstMessage.toolCalls.length > 0) {
             payloadMessages.push(firstMessage);
 
-            for (const toolCall of firstMessage.tool_calls) {
+            for (const toolCall of firstMessage.toolCalls) {
               const name = toolCall.function.name;
               let args: Record<string, unknown> = {};
               try {
@@ -302,8 +302,7 @@ export function assistantModule(deps: Deps) {
 
               payloadMessages.push({
                 role: "tool",
-                tool_call_id: toolCall.id,
-                name: name,
+                toolCallId: toolCall.id,
                 content: JSON.stringify(result),
               });
             }
@@ -371,7 +370,9 @@ export function assistantModule(deps: Deps) {
             content: t.String(),
             name: t.Optional(t.String()),
             tool_call_id: t.Optional(t.String()),
+            toolCallId: t.Optional(t.String()),
             tool_calls: t.Optional(t.Any()),
+            toolCalls: t.Optional(t.Any()),
           }),
         ),
       }),
