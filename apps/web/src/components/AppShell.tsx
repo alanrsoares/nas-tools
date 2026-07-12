@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useLocation } from "@tanstack/react-router";
 import {
@@ -152,6 +153,37 @@ export function AppShell() {
   const { pathname } = useLocation();
   const stagingCount = useStagingCount();
 
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      setIsInstallable(false);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") {
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+    }
+  };
+
   const currentSection = (pathname === "/" ? "overview" : pathname.slice(1)) as Section;
 
   return (
@@ -187,7 +219,19 @@ export function AppShell() {
             <PageTitle>{sectionLabel[currentSection]}</PageTitle>
             <SectionDesc>{sectionDescription[currentSection]}</SectionDesc>
           </TopbarHeading>
-          <ServerStatus />
+          <div className="flex items-center gap-3">
+            {isInstallable && (
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary transition-all hover:bg-primary/20 active:scale-95 cursor-pointer"
+              >
+                <Download size={13} />
+                Install App
+              </button>
+            )}
+            <ServerStatus />
+          </div>
         </Topbar>
         <div className="md:flex-1 md:min-h-0 md:overflow-y-auto">
           <Outlet />

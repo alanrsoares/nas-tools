@@ -7,6 +7,15 @@ import { env } from "../env.js";
 import { publicSubrouter } from "../lib/subrouter.js";
 import type { Deps } from "../types/deps.js";
 
+import { createMovePlanDraft, getMusicTargetDirectory } from "@nas-tools/core";
+import type { MovePlan, FieldIssue } from "@nas-tools/core";
+import { findCuePairs } from "../cue.js";
+import type { CuePair } from "../cue.js";
+import { addTorrent, cleanCompletedTorrents } from "../transmission.js";
+import { prowlarrSearch } from "../prowlarr.js";
+import { scanAllPlexLibraries, scanPlexSection } from "../plex.js";
+import { isNone } from "../lib/maybe.js";
+
 export class Subagent<TArgs = Record<string, unknown>> {
   public name: string;
   public description: string;
@@ -114,6 +123,42 @@ const systemDiagnostician = new Subagent<{ task: string }>(
 
 const subagents = [musicCurator, systemDiagnostician];
 
+type MovePlanItem = MovePlan["items"][number];
+type ItemEdit = { id: string; artistName?: string; included: boolean };
+
+function mergeItemEdit(
+  item: MovePlanItem,
+  edit: ItemEdit | undefined,
+  musicDir: string,
+  issues: FieldIssue[],
+): MovePlanItem {
+  const artistName = edit?.artistName ?? item.artistName;
+  const included = edit?.included ?? item.included;
+
+  if (included && item.mediaType === "music" && !artistName) {
+    issues.push({
+      path: ["items", item.id, "artistName"],
+      code: "ARTIST_REQUIRED",
+      message: `Artist name required for "${item.albumName}"`,
+    });
+  }
+
+  if (included && item.mediaType === "unknown") {
+    issues.push({
+      path: ["items", item.id, "included"],
+      code: "UNSUPPORTED_MEDIA_TYPE",
+      message: `"${item.albumName}" has no supported media type and cannot be moved`,
+    });
+  }
+
+  const targetPath =
+    item.mediaType === "music" && artistName && artistName !== item.artistName
+      ? `${getMusicTargetDirectory(artistName, musicDir)}/${item.albumName}`
+      : item.targetPath;
+
+  return { ...item, artistName, included, targetPath };
+}
+
 function getAssistantTools() {
   return [
     {
@@ -156,6 +201,139 @@ function getAssistantTools() {
             action: { type: "string", enum: ["pause", "resume", "stop"] },
           },
           required: ["action"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "scan_move_completed_staging",
+        description: "Scan Download Staging Area for completed downloads and return a Move Plan Draft.",
+        parameters: { type: "object", properties: {} },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "confirm_move_completed_plan",
+        description: "Confirm a move plan draft by plan ID and execute the move job to organize files in the library.",
+        parameters: {
+          type: "object",
+          properties: {
+            planId: { type: "string", description: "The ID of the move plan draft to confirm." },
+            items: {
+              type: "array",
+              description: "Edits to specific items in the plan.",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string", description: "Item ID (original file/folder path)." },
+                  artistName: { type: "string", description: "Optional artist name override for music items." },
+                  included: { type: "boolean", description: "Whether to include this item in the move operation." },
+                },
+                required: ["id", "included"],
+              },
+            },
+            cueSplitEnabled: { type: "boolean", description: "Whether to automatically split CUE files on import." },
+          },
+          required: ["planId", "items"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "scan_unsplit_cue",
+        description: "Scan the music library (or a specific root directory) for unsplit CUE audio/cue file pairs.",
+        parameters: {
+          type: "object",
+          properties: {
+            root: { type: "string", description: "Optional directory path to scan. Defaults to the music library root." },
+            maxDepth: { type: "number", description: "Maximum directory depth to scan. Defaults to 6." },
+          },
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "split_cue_files",
+        description: "Queue and execute a job to split a list of unsplit CUE pairs.",
+        parameters: {
+          type: "object",
+          properties: {
+            pairs: {
+              type: "array",
+              description: "Array of CUE pairs to split.",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  directory: { type: "string" },
+                  cueFile: { type: "string" },
+                  audioFile: { type: "string" },
+                  blocked: { type: "boolean" },
+                  risks: { type: "array", items: { type: "string" } },
+                },
+                required: ["id", "directory", "cueFile", "audioFile", "blocked", "risks"],
+              },
+            },
+          },
+          required: ["pairs"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "clean_transmission_torrents",
+        description: "Remove completed torrent records from Transmission whose files have already been moved/deleted from the complete folder.",
+        parameters: { type: "object", properties: {} },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "add_transmission_torrent",
+        description: "Add a new torrent to Transmission via magnet link or torrent file URL.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "The magnet link or URL of the torrent file to add." },
+          },
+          required: ["url"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "search_prowlarr",
+        description: "Search Prowlarr indexers for a query and check if results already exist in the library.",
+        parameters: {
+          type: "object",
+          properties: {
+            q: { type: "string", description: "The query string to search for." },
+            categories: {
+              type: "array",
+              description: "Optional array of category IDs to filter the search.",
+              items: { type: "number" },
+            },
+          },
+          required: ["q"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "scan_plex_library",
+        description: "Trigger a Plex scan for all libraries or a specific section.",
+        parameters: {
+          type: "object",
+          properties: {
+            sectionKey: { type: "string", description: "Optional section key to scan. If omitted, scans all sections." },
+          },
         },
       },
     },
@@ -204,6 +382,127 @@ async function executeTool(
           return { ok: false, error: result.error.message };
         }
         return { ok: true, action };
+      }
+      case "scan_move_completed_staging": {
+        const result = await createMovePlanDraft(deps.config.get());
+        if (isErr(result)) {
+          return { ok: false, error: "Failed to scan staging area", issues: result.error };
+        }
+        deps.repos.plans.persist(result.value);
+        return { ok: true, plan: result.value };
+      }
+      case "confirm_move_completed_plan": {
+        const planId = args.planId as string;
+        const bodyItems = args.items as { id: string; artistName?: string; included: boolean }[];
+        const cueSplitEnabled = args.cueSplitEnabled as boolean | undefined;
+
+        const plan = deps.repos.plans.load(planId);
+        if (isNone(plan)) {
+          return { ok: false, error: "Plan not found" };
+        }
+        if (plan.value.status !== "draft") {
+          return { ok: false, error: "Plan is not a draft" };
+        }
+
+        const loadedPlan = plan.value;
+        const editMap = new Map(bodyItems.map((edit) => [edit.id, edit]));
+
+        const issues: FieldIssue[] = [];
+        const mergedItems = loadedPlan.items.map((item) =>
+          mergeItemEdit(item, editMap.get(item.id), loadedPlan.config.musicDir, issues),
+        );
+
+        if (issues.length > 0) {
+          return { ok: false, error: "Validation issues found", issues };
+        }
+
+        const now = new Date().toISOString();
+        const confirmedPlan: MovePlan = {
+          ...loadedPlan,
+          status: "confirmed",
+          cueSplitEnabled: cueSplitEnabled ?? loadedPlan.cueSplitEnabled,
+          items: mergedItems,
+          updatedAt: now,
+        };
+
+        deps.repos.plans.confirm(confirmedPlan, mergedItems);
+
+        const jobId = crypto.randomUUID();
+        deps.repos.jobs.create({
+          id: jobId,
+          type: "move_completed",
+          status: "queued",
+          planId: loadedPlan.id,
+          counts: { total: 0, completed: 0, failed: 0, skipped: 0 },
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        deps.execution.executeJob(jobId, confirmedPlan);
+
+        return { ok: true, jobId };
+      }
+      case "scan_unsplit_cue": {
+        const nasConfig = deps.config.get();
+        const root = typeof args.root === "string" ? args.root : nasConfig.musicDir;
+        const maxDepth = Number(args.maxDepth ?? 6);
+        const pairs = await findCuePairs(root, maxDepth);
+        return {
+          ok: true,
+          root,
+          pairs,
+          ready: pairs.filter((pair) => !pair.blocked).length,
+          blocked: pairs.filter((pair) => pair.blocked).length,
+        };
+      }
+      case "split_cue_files": {
+        const pairs = (args.pairs as CuePair[]).filter((pair) => !pair.blocked);
+        const jobId = crypto.randomUUID();
+        const now = new Date().toISOString();
+
+        deps.repos.jobs.create({
+          id: jobId,
+          type: "cue_fix",
+          status: "queued",
+          planId: null,
+          counts: {
+            total: pairs.length,
+            completed: 0,
+            failed: 0,
+            skipped: 0,
+          },
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        deps.execution.executeCueJob(jobId, pairs);
+
+        return { ok: true, jobId };
+      }
+      case "clean_transmission_torrents": {
+        const result = await cleanCompletedTorrents(deps.config.get().stagingDir);
+        return { ok: true, ...result };
+      }
+      case "add_transmission_torrent": {
+        const url = args.url as string;
+        const result = await addTorrent(url);
+        return { ok: true, ...result };
+      }
+      case "search_prowlarr": {
+        const q = args.q as string;
+        const categories = args.categories as number[] | undefined;
+        const results = await prowlarrSearch(q.trim(), categories);
+        return { ok: true, results };
+      }
+      case "scan_plex_library": {
+        const sectionKey = args.sectionKey as string | undefined;
+        if (sectionKey) {
+          const result = await scanPlexSection(sectionKey);
+          return { ok: true, ...result };
+        } else {
+          const result = await scanAllPlexLibraries();
+          return { ok: true, ...result };
+        }
       }
       default: {
         const matchedAgent = subagents.find((a) => a.name === name);
