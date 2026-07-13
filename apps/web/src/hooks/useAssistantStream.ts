@@ -1,9 +1,17 @@
 import { useState } from "react";
 import { authHeaders } from "@/lib/auth";
 
+export interface ToolInvocation {
+  toolCallId: string;
+  toolName: string;
+  args: any;
+  result?: any;
+}
+
 export interface MessageType {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  toolInvocations?: ToolInvocation[];
 }
 
 export interface TelemetryType {
@@ -54,9 +62,48 @@ export function useAssistantStream() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantReply = "";
+      let toolCalls: ToolInvocation[] = [];
 
       // Add placeholder for streaming assistant response
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: "", toolInvocations: [] }]);
+
+      const handleLine = (line: string): boolean => {
+        if (!line.startsWith("data: ")) return false;
+        const rawContent = line.endsWith("\r") ? line.slice(6, -1) : line.slice(6);
+        if (!rawContent.trim()) return false;
+
+        try {
+          const data = JSON.parse(rawContent);
+          if (data.type === "telemetry") {
+            setTelemetry((prev) => ({
+              promptTokens: prev.promptTokens + (data.promptTokens || 0),
+              completionTokens: prev.completionTokens + (data.completionTokens || 0),
+              totalTokens: prev.totalTokens + (data.totalTokens || 0),
+              cost: prev.cost + (data.cost || 0),
+            }));
+            return false;
+          } else if (data.type === "text") {
+            assistantReply += data.delta;
+            return true;
+          } else if (data.type === "tool_call") {
+            toolCalls.push({
+              toolCallId: data.id,
+              toolName: data.name,
+              args: data.args,
+            });
+            return true;
+          } else if (data.type === "tool_result") {
+            toolCalls = toolCalls.map((tc) =>
+              tc.toolCallId === data.id ? { ...tc, result: data.result } : tc
+            );
+            return true;
+          }
+        } catch (err) {
+          assistantReply += rawContent;
+          return true;
+        }
+        return false;
+      };
 
       let buffer = "";
       while (true) {
@@ -71,24 +118,8 @@ export function useAssistantStream() {
 
         let hasNewContent = false;
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const content = line.endsWith("\r") ? line.slice(6, -1) : line.slice(6);
-            if (content.startsWith("__telemetry__:")) {
-              try {
-                const data = JSON.parse(content.slice(14));
-                setTelemetry((prev) => ({
-                  promptTokens: prev.promptTokens + (data.promptTokens || 0),
-                  completionTokens: prev.completionTokens + (data.completionTokens || 0),
-                  totalTokens: prev.totalTokens + (data.totalTokens || 0),
-                  cost: prev.cost + (data.cost || 0),
-                }));
-              } catch (err) {
-                console.error("Telemetry parse failed", err);
-              }
-            } else {
-              assistantReply += content;
-              hasNewContent = true;
-            }
+          if (handleLine(line)) {
+            hasNewContent = true;
           } else if (line === "data:") {
             hasNewContent = true;
           }
@@ -99,34 +130,28 @@ export function useAssistantStream() {
             const next = [...prev];
             const lastIndex = next.length - 1;
             if (next[lastIndex].role === "assistant") {
-              next[lastIndex] = { role: "assistant", content: assistantReply };
+              next[lastIndex] = {
+                role: "assistant",
+                content: assistantReply,
+                toolInvocations: [...toolCalls],
+              };
             }
             return next;
           });
         }
       }
 
-      if (buffer.startsWith("data: ")) {
-        const content = buffer.endsWith("\r") ? buffer.slice(6, -1) : buffer.slice(6);
-        if (content.startsWith("__telemetry__:")) {
-          try {
-            const data = JSON.parse(content.slice(14));
-            setTelemetry((prev) => ({
-              promptTokens: prev.promptTokens + (data.promptTokens || 0),
-              completionTokens: prev.completionTokens + (data.completionTokens || 0),
-              totalTokens: prev.totalTokens + (data.totalTokens || 0),
-              cost: prev.cost + (data.cost || 0),
-            }));
-          } catch (err) {
-            console.error("Telemetry parse failed", err);
-          }
-        } else {
-          assistantReply += content;
+      if (buffer) {
+        if (handleLine(buffer)) {
           setMessages((prev) => {
             const next = [...prev];
             const lastIndex = next.length - 1;
             if (next[lastIndex].role === "assistant") {
-              next[lastIndex] = { role: "assistant", content: assistantReply };
+              next[lastIndex] = {
+                role: "assistant",
+                content: assistantReply,
+                toolInvocations: [...toolCalls],
+              };
             }
             return next;
           });

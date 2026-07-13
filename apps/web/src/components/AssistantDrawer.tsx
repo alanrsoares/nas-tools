@@ -7,6 +7,9 @@ import {
   Send,
   Sparkles,
   Trash2,
+  FolderCog,
+  Scissors,
+  Search,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +29,22 @@ import {
 import { ScrollButton } from "@/components/ui/scroll-button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAssistantStream } from "../hooks/useAssistantStream";
+import { MovePlanWidget, SearchWidget, CueSplitWidget } from "./AssistantWidgets";
+
+const TOOL_UI_MAP: Record<string, React.FC<any>> = {
+  scan_move_completed_staging: ({ result }) => {
+    if (!result || !result.plan) return null;
+    return <MovePlanWidget planId={result.plan.id} plan={result.plan} />;
+  },
+  search_prowlarr: ({ result }) => {
+    if (!result || !result.results) return null;
+    return <SearchWidget results={result.results} />;
+  },
+  scan_unsplit_cue: ({ result }) => {
+    if (!result || !result.pairs) return null;
+    return <CueSplitWidget pairs={result.pairs} />;
+  },
+};
 
 export function AssistantDrawer() {
   const { messages, sendMessage, clearMessages, telemetry, isLoading } = useAssistantStream();
@@ -99,54 +118,50 @@ export function AssistantDrawer() {
                 <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3 w-full max-w-[420px]">
                   <button
                     type="button"
-                    onClick={() => handleSuggestionClick("pause music player")}
-                    className="flex flex-col items-start gap-1.5 p-3 rounded-xl border border-border/50 bg-card/40 hover:bg-accent/40 text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5 group"
-                  >
-                    <div className="h-7 w-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
-                      <Pause className="h-3.5 w-3.5" />
-                    </div>
-                    <span className="text-xs font-medium text-foreground">Pause Playback</span>
-                    <span className="text-[10px] text-muted-foreground">Pause ALSA MPD player</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSuggestionClick("resume music player")}
+                    onClick={() => handleSuggestionClick("scan staging area for completed downloads")}
                     className="flex flex-col items-start gap-1.5 p-3 rounded-xl border border-border/50 bg-card/40 hover:bg-accent/40 text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5 group"
                   >
                     <div className="h-7 w-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                      <Play className="h-3.5 w-3.5" />
+                      <FolderCog className="h-3.5 w-3.5" />
                     </div>
-                    <span className="text-xs font-medium text-foreground">Resume Playback</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      Resume ALSA MPD player
-                    </span>
+                    <span className="text-xs font-medium text-foreground">Scan Staging</span>
+                    <span className="text-[10px] text-muted-foreground">Find staging files to move</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => handleSuggestionClick("list active jobs")}
+                    onClick={() => handleSuggestionClick("scan music library for unsplit CUE files")}
                     className="flex flex-col items-start gap-1.5 p-3 rounded-xl border border-border/50 bg-card/40 hover:bg-accent/40 text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5 group"
                   >
                     <div className="h-7 w-7 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-                      <ListChecks className="h-3.5 w-3.5" />
+                      <Scissors className="h-3.5 w-3.5" />
                     </div>
-                    <span className="text-xs font-medium text-foreground">Check Active Jobs</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      List import and cue jobs
-                    </span>
+                    <span className="text-xs font-medium text-foreground">Scan CUE Files</span>
+                    <span className="text-[10px] text-muted-foreground">Find and split CUE audio</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => handleSuggestionClick("check server health")}
+                    onClick={() => handleSuggestionClick("clean finished torrents from transmission")}
+                    className="flex flex-col items-start gap-1.5 p-3 rounded-xl border border-border/50 bg-card/40 hover:bg-accent/40 text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5 group"
+                  >
+                    <div className="h-7 w-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </div>
+                    <span className="text-xs font-medium text-foreground">Clean Torrents</span>
+                    <span className="text-[10px] text-muted-foreground">Remove completed torrents</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSuggestionClick("search prowlarr for flac ")}
                     className="flex flex-col items-start gap-1.5 p-3 rounded-xl border border-border/50 bg-card/40 hover:bg-accent/40 text-left cursor-pointer transition-all duration-200 hover:-translate-y-0.5 group"
                   >
                     <div className="h-7 w-7 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
-                      <Activity className="h-3.5 w-3.5" />
+                      <Search className="h-3.5 w-3.5" />
                     </div>
-                    <span className="text-xs font-medium text-foreground">Server Health</span>
-                    <span className="text-[10px] text-muted-foreground">Verify backend status</span>
+                    <span className="text-xs font-medium text-foreground">Search Prowlarr</span>
+                    <span className="text-[10px] text-muted-foreground">Search lossless music releases</span>
                   </button>
                 </div>
               </div>
@@ -164,16 +179,30 @@ export function AssistantDrawer() {
                       : "bg-gradient-to-tr from-primary to-[oklch(0.65_0.14_165)] text-primary-foreground font-semibold"
                   }
                 />
-                <MessageContent
-                  markdown
-                  className={
-                    m.role === "user"
-                      ? "bg-gradient-to-br from-primary to-[oklch(0.52_0.13_170)] text-primary-foreground shadow-md rounded-2xl rounded-tr-none px-3.5 py-2 border-none max-w-[85%] leading-relaxed text-[13.5px]"
-                      : "bg-card border border-border/50 text-foreground shadow-sm rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[85%] leading-relaxed text-[13.5px] prose-invert"
-                  }
-                >
-                  {m.content}
-                </MessageContent>
+                <div className="flex flex-col gap-2 max-w-[85%]">
+                  <MessageContent
+                    markdown
+                    className={
+                      m.role === "user"
+                        ? "bg-gradient-to-br from-primary to-[oklch(0.52_0.13_170)] text-primary-foreground shadow-md rounded-2xl rounded-tr-none px-3.5 py-2 border-none w-full leading-relaxed text-[13.5px]"
+                        : "bg-card border border-border/50 text-foreground shadow-sm rounded-2xl rounded-tl-none px-4 py-2.5 w-full leading-relaxed text-[13.5px] prose-invert"
+                    }
+                  >
+                    {m.content}
+                  </MessageContent>
+
+                  {m.toolInvocations?.map((inv) => {
+                    const Widget = TOOL_UI_MAP[inv.toolName];
+                    if (Widget && inv.result) {
+                      return (
+                        <div key={inv.toolCallId} className="w-full mt-1 animate-fade-in">
+                          <Widget args={inv.args} result={inv.result} />
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
               </Message>
             ))}
 

@@ -575,13 +575,31 @@ export function assistantModule(deps: Deps) {
           const firstMessage = firstResponse.choices?.[0]?.message;
 
           if (!firstMessage) {
-            stream.send("Error: Invalid response structure from OpenRouter");
+            const errPayload = { type: "text", delta: "Error: Invalid response structure from OpenRouter" };
+            stream.send(JSON.stringify(errPayload) + "\n");
             stream.close();
             return;
           }
 
           // If the model wants to call tools, execute them and stream the final answer
           if (firstMessage.toolCalls && firstMessage.toolCalls.length > 0) {
+            // Stream tool calls to client immediately
+            for (const toolCall of firstMessage.toolCalls) {
+              const name = toolCall.function.name;
+              let args: Record<string, unknown> = {};
+              try {
+                args = JSON.parse(toolCall.function.arguments);
+              } catch {}
+
+              const toolCallPayload = {
+                type: "tool_call",
+                id: toolCall.id,
+                name,
+                args,
+              };
+              stream.send(JSON.stringify(toolCallPayload) + "\n");
+            }
+
             payloadMessages.push(firstMessage);
 
             for (const toolCall of firstMessage.toolCalls) {
@@ -593,6 +611,16 @@ export function assistantModule(deps: Deps) {
 
               // biome-ignore lint/suspicious/noExplicitAny: typecast tool response payload dynamically
               const result: any = await executeTool(name, args, deps);
+              
+              // Stream tool results to client
+              const toolResultPayload = {
+                type: "tool_result",
+                id: toolCall.id,
+                name,
+                result,
+              };
+              stream.send(JSON.stringify(toolResultPayload) + "\n");
+
               if (result?.usage) {
                 promptTokens += result.usage.promptTokens || result.usage.prompt_tokens || 0;
                 completionTokens +=
@@ -621,7 +649,10 @@ export function assistantModule(deps: Deps) {
 
             for await (const chunk of streamResponse) {
               const text = chunk.choices?.[0]?.delta?.content;
-              if (text) stream.send(text);
+              if (text) {
+                const textPayload = { type: "text", delta: text };
+                stream.send(JSON.stringify(textPayload) + "\n");
+              }
 
               if (chunk.usage) {
                 promptTokens += chunk.usage.promptTokens || chunk.usage.prompt_tokens || 0;
@@ -632,7 +663,8 @@ export function assistantModule(deps: Deps) {
           } else {
             // No tool calls, just stream the text we already fetched in phase 1
             const textContent = firstMessage.content || "";
-            stream.send(textContent);
+            const textPayload = { type: "text", delta: textContent };
+            stream.send(JSON.stringify(textPayload) + "\n");
           }
 
           // Send final aggregated telemetry statistics
@@ -647,7 +679,7 @@ export function assistantModule(deps: Deps) {
             totalTokens,
             cost,
           };
-          stream.send(`__telemetry__:${JSON.stringify(telemetryData)}`);
+          stream.send(JSON.stringify(telemetryData) + "\n");
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
           stream.send(`Error executing assistant query: ${errMsg}`);
